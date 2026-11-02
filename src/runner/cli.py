@@ -9,6 +9,7 @@ import json
 import pathlib
 import sys
 
+from src import __version__
 from src.onramp import flow as getters
 from src.manage import inbox
 from src import providers
@@ -285,6 +286,9 @@ def routes_base():
 
 def build_parser():
     p = argparse.ArgumentParser(prog="heyphony", description="telephony an agent can hold")
+    # --version is answered here rather than by a caller reading __init__.py, so an install can be
+    # checked with the command the install put on the path: `heyphony --version`.
+    p.add_argument("--version", action="version", version=__version__)
     p.add_argument("--setup", action="store_true", help="print the telephony setup plan as json and stop")
     sub = p.add_subparsers(dest="cmd")
     s = sub.add_parser("setup", help="the plan, `setup select sip` to walk it, or `setup areas` to choose one")

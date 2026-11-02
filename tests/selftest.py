@@ -1188,6 +1188,22 @@ class TestTheMarketArgumentAndTheProviderIndex(unittest.TestCase):
         self.assertNotIn("we tested", text)
 
 
+class TestTheInstalledCommandCanSayWhatItIs(unittest.TestCase):
+    def test_version_is_answered_by_the_command_not_by_reading_the_file(self):
+        done = subprocess.run([str(ROOT / "bin" / "heyphony"), "--version"],
+                              capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        import src
+        self.assertEqual(done.stdout.strip(), src.__version__)
+        self.assertIn('"version", action="version"', (ROOT / "src/runner/cli.py").read_text(),
+                      "argparse is what makes --version work with no terminal and no config")
+
+    def test_the_installer_asks_the_command_it_installed(self):
+        script = (ROOT / "npm/install.sh").read_text()
+        self.assertIn('"$BIN_DIR/heyphony" --version', script,
+                      "reading the version out of a file does not prove the shim runs")
+
+
 if __name__ == "__main__":
     suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])
     result = unittest.TextTestRunner(verbosity=0).run(suite)
