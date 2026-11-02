@@ -43,4 +43,4 @@ after the number answers, you live in one command: `heyphony open messages --unr
 
 ## what is refused, so you do not waste a turn
 
-a did is voip, and voip numbers are refused by exactly the flows most likely to be asked for. so there is no otp story here, no bulk outbound path, and no "warm the container so a text can arrive" trick, because texts never travel over sip and arrive whether the machine is awake or not. the outgoing lane keeps drafts and does not send. if a task needs to blast a hundred messages or verify an account by sms, stop before the attempt and say why: `heyphony/src/manage/outgoing/readme.md` is the page that has the argument.
+a did is voip, and voip numbers are refused by exactly the flows most likely to be asked for. so there is no otp story here, no bulk outbound path, and no "warm the container so a text can arrive" trick, because texts never travel over sip and arrive whether the machine is awake or not. the outgoing lane keeps drafts and does not send. if a task needs to blast a hundred messages or verify an account by sms, stop before the attempt and say why: `src/manage/outgoing/readme.md` is the page that has the argument.

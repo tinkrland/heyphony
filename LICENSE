@@ -1,21 +1,140 @@
-MIT License
+heyphony source available license, version 1.1
 
-Copyright (c) 2026 tinkrland
+this is a source available licence, not an open source one. it is adapted deliberately from three
+licences: the business source licence 1.1 (mariadb), which supplies the shape of a licence with a
+change date and a change licence; the functional source licence 1.1 (sentry), which supplies the
+permitted purposes and the competing use restriction; and the elastic licence 2.0, which supplies the
+three prohibitions in section 4. it is not itself any of those licences, and it is not an spdx
+identifier. sections 1 and 7 decide what it means for a particular version.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. parameters
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+  licensor            tinkrland
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+  licensed work       the contents of the repository that carries this file, including its source
+                      code, its documentation, its command line interface and any packaged or
+                      bundled form of them
+
+  additional use      none. the permitted purposes in section 2 are the whole of the grant, and
+  grant               there is no further carve out hidden elsewhere in this text
+
+  change licence      the mit licence (https://opensource.org/license/mit)
+
+  change date         for each version, the second anniversary of the day that version was first
+                      made available under this licence. section 7 records the dates
+
+2. grant of rights
+
+subject to sections 3, 4 and 6, the licensor grants you a non exclusive, royalty free, worldwide,
+non transferable licence to use, reproduce, modify, prepare derivative works of, publicly display,
+publicly perform, distribute and make the licensed work available, for a permitted purpose.
+
+the permitted purposes are:
+
+  - your own personal use, and the internal business use of your own organisation, including
+    production use. giving an agent a phone number of its own is the intended use, not a loophole
+  - evaluation, research, experimentation and prototyping
+  - building applications, integrations and services that use the licensed work and are not
+    themselves a competing use under section 3
+  - copying and distributing the licensed work, in original or modified form, provided section 6
+    is met
+  - teaching, writing about, and demonstrating the licensed work
+
+3. competing use
+
+you may not use the licensed work, in whole or in a substantial part, to provide a commercial
+product or service that substitutes for it: something a customer chooses instead of the licensed
+work, in order to give a program a telephone number, an agent operated communications identity, or
+a hosted inbox behind either.
+
+three things are not a competing use, and this list is exhaustive:
+
+  - running the licensed work for your own numbers, your own agents and your own organisation
+  - charging for your own product or service where the licensed work is a supporting part of it
+    rather than the thing being sold, which is to say where your value is not the number, the
+    registration or the inbox
+  - redistributing the licensed work unmodified and free of charge, with its licence and notices
+    intact
+
+4. three further limitations
+
+  you may not:
+
+  - circumvent, disable, remove or defeat any licence key, usage limit, seat limit, rate limit or
+    paid feature of the licensed work, or of any service the licensor offers beside it
+  - remove, obscure, or alter any notice of copyright, licence or attribution in the licensed work
+  - use the licensor's names, marks, logos or product names except as required to describe the
+    origin of the licensed work, or as section 6 requires
+
+5. no trademark licence
+
+this licence grants no rights in any trademark, service mark, trade name or logo of the licensor,
+beyond the descriptive and attribution use allowed by section 4.
+
+6. distribution
+
+if you distribute the licensed work, or a modified version of it:
+
+  - you must include this licence, unmodified, with the copy
+  - you must keep the copyright, licence and attribution notices that the copy carries
+  - you must mark modified files, and state the changes, in a way a recipient can find
+  - you may not impose terms on the copy that contradict this licence, and you may not offer the
+    copy under a different licence except as section 7 allows for a version whose change date has
+    passed
+
+7. change date and change licence
+
+each version of the licensed work becomes available under the change licence on its change date,
+and from that day this licence stops applying to that version. older versions convert while newer
+ones stay under this licence, which is the point of dating it per version rather than per project.
+
+  version   first made available   change date   change licence
+  0.1.0     2026-11-01             2028-11-01    MIT
+  0.2.0     2026-11-02             2028-11-02    MIT
+
+a version that was never released, or a change made after a version's change date, does not inherit
+that date: only a released version has one, and a release that is not listed here is dated by the
+day it was first made available.
+
+8. contributions
+
+unless you state otherwise in writing, a contribution you submit to the licensed work is licensed to
+the licensor under this licence, and you confirm you have the right to grant that.
+
+9. termination
+
+this licence terminates automatically if you breach it. it is reinstated, automatically and without
+notice, if you cure the breach within thirty days of discovering it, or of receiving written notice
+of it, whichever comes first. termination of your rights under this licence does not terminate the
+rights of anyone who received the licensed work from you in compliance with it, and does not revive
+any licence you had that was already terminated for breach. sections 3, 4, 5, 10 and 11 survive
+termination.
+
+10. no warranty, and the limit of liability
+
+the licensed work is provided as is, without warranty of any kind, express or implied, including
+without limitation any warranty of merchantability, fitness for a particular purpose, title or non
+infringement. the licensor does not warrant that the licensed work will be uninterrupted, error free,
+or that any call, message or number will behave as a telephone is expected to behave.
+
+to the maximum extent permitted by law, the licensor is not liable for any indirect, incidental,
+special, consequential or punitive damages, or for any lost profits, revenue, data, goodwill or
+opportunity, arising out of or related to this licence or the licensed work, whether in contract,
+tort or otherwise, even if advised of the possibility. the licensor's total liability under this
+licence will not exceed the greater of the amount you paid the licensor for the licensed work in the
+twelve months before the claim, or one hundred united states dollars.
+
+nothing in this licence limits liability that cannot be limited by law.
+
+11. general
+
+if a provision of this licence is unenforceable it is modified to the minimum extent needed to make
+it enforceable, and the rest stays in force. this licence is the entire agreement between you and
+the licensor about the licensed work, and it replaces anything said about it before. it is governed
+by the laws applicable where the licensor is established, without regard to conflict of law rules,
+and the courts of that place have exclusive jurisdiction, except that either party may seek relief
+in any court of competent jurisdiction to protect its intellectual property. a waiver is only
+effective in writing. if you are accepting this licence for an organisation, you confirm you are
+authorised to do so on its behalf.
+
+copyright 2026 tinkrland. all rights reserved except as granted above.

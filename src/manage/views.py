@@ -15,8 +15,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from heyphony.src.manage import inbox
-from heyphony.src.linphone import sip
+from src.manage import inbox
+from src.linphone import sip
 
 PREVIEW = 64
 

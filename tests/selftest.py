@@ -21,17 +21,20 @@ import time
 import unittest
 import urllib.parse
 
+# this repo carries no .gitignore, so nothing here may leave __pycache__ behind
+sys.dont_write_bytecode = True
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from heyphony.src.runner import cli as telephony_cli
-from heyphony.src.manage import catcher as phone_catcher
-from heyphony.src.onramp import flow as getters
-from heyphony.src.manage import inbox
-from heyphony.src import providers
-from heyphony.src.setup import flow as setup_flow
-from heyphony.src.linphone import sip
-from heyphony.src.linphone import sip as linphone
+from src.runner import cli as telephony_cli
+from src.manage import catcher as phone_catcher
+from src.onramp import flow as getters
+from src.manage import inbox
+from src import providers
+from src.setup import flow as setup_flow
+from src.linphone import sip
+from src.linphone import sip as linphone
 
 
 def call_db(path, rows):
@@ -81,7 +84,7 @@ class TestTheShimRuns(unittest.TestCase):
 
     def test_the_menu_pulls_termios_in_only_when_a_terminal_is_involved(self):
         """every command has to run on a host with no terminal, which is most of them."""
-        source = (ROOT / "heyphony/src/setup/flow.py").read_text()
+        source = (ROOT / "src/setup/flow.py").read_text()
         self.assertNotIn("\nimport termios", source, "termios moved to the top level, so windows breaks")
         self.assertNotIn("\nimport tty", source)
         self.assertIn("import termios", source, "the interactive path lost its terminal handling")
@@ -92,30 +95,30 @@ class TestThePackageIsStandalone(unittest.TestCase):
 
     def test_no_import_reaches_outside_the_package_or_the_standard_library(self):
         allowed = {"argparse", "base64", "email", "hashlib", "hmac", "http", "json", "os",
-                   "pathlib", "re", "shutil", "sqlite3", "subprocess", "sys", "termios", "time",
-                   "tty", "urllib", "xml"}
-        for path in sorted((ROOT / "heyphony").rglob("*.py")):
+                   "contextlib", "pathlib", "re", "shutil", "sqlite3", "src", "subprocess", "sys", "termios",
+                   "time", "tty", "urllib", "xml"}
+        for path in sorted((ROOT / "src").rglob("*.py")):
             for line in path.read_text().splitlines():
                 stripped = line.strip()
                 if not stripped.startswith(("import ", "from ")):
                     continue
-                if stripped.startswith(("from heyphony", "import heyphony")):
+                if stripped.startswith(("from src", "import src")):
                     continue
                 module = stripped.split()[1].split(".")[0]
                 self.assertIn(module, allowed,
                               f"{path.relative_to(ROOT)} imports {module}, which is not in the package")
 
     def test_the_umbrella_is_not_named_in_an_import_anywhere(self):
-        for path in sorted((ROOT / "heyphony").rglob("*.py")):
+        for path in sorted((ROOT / "src").rglob("*.py")):
             for line in path.read_text().splitlines():
                 stripped = line.strip()
                 if stripped.startswith(("import ", "from ")):
                     self.assertNotIn("comms", stripped, f"{path.relative_to(ROOT)}: {stripped}")
 
     def test_one_version_number_for_the_code_and_the_package(self):
-        import heyphony
+        import src
         manifest = json.loads((ROOT / "npm/package.json").read_text())
-        self.assertEqual(manifest["version"], heyphony.__version__,
+        self.assertEqual(manifest["version"], src.__version__,
                          "the npm package would ship under a version its own code does not claim")
 
 
@@ -150,11 +153,11 @@ class TestTheNpmPackageIsInstallable(unittest.TestCase):
         done = subprocess.run([self.node(), str(self.npm / "scripts/bundle.js"), "--strict"],
                               capture_output=True, text=True, timeout=120)
         self.assertEqual(done.returncode, 0, done.stderr)
-        bundled = self.npm / "python/heyphony"
+        bundled = self.npm / "python"
         self.assertTrue((bundled / "src/runner/cli.py").is_file())
         self.assertEqual(list(bundled.rglob("__pycache__")), [], "a cached .pyc does not belong in a tarball")
-        self.assertEqual((bundled / "__init__.py").read_text().count("__version__"),
-                         (ROOT / "heyphony/__init__.py").read_text().count("__version__"))
+        self.assertEqual((bundled / "src/__init__.py").read_text().count("__version__"),
+                         (ROOT / "src/__init__.py").read_text().count("__version__"))
 
     def test_the_installed_shim_runs_the_bundled_code(self):
         node = self.node()
@@ -163,8 +166,8 @@ class TestTheNpmPackageIsInstallable(unittest.TestCase):
         version = subprocess.run([node, str(self.npm / "bin/heyphony.js"), "--version"],
                                  capture_output=True, text=True, timeout=120)
         self.assertEqual(version.returncode, 0, version.stderr)
-        import heyphony
-        self.assertEqual(version.stdout.strip(), heyphony.__version__)
+        import src
+        self.assertEqual(version.stdout.strip(), src.__version__)
         doctor = subprocess.run([node, str(self.npm / "bin/heyphony.js"), "doctor"],
                                 capture_output=True, text=True, timeout=120)
         self.assertEqual(doctor.returncode, 0, doctor.stderr)
@@ -176,12 +179,17 @@ class TestTheNpmPackageIsInstallable(unittest.TestCase):
         for needle in ("ENOENT", "brew install python3", "HEYPHONY_PYTHON", "127"):
             self.assertIn(needle, source, f"the missing-interpreter path lost {needle!r}")
 
-    def test_the_bundle_work_is_not_committed(self):
-        """the copy is made at pack time. a committed copy is a second tree that drifts."""
-        ignore = (ROOT / ".gitignore").read_text()
-        self.assertIn("npm/python", ignore)
-        self.assertIn("node_modules", ignore)
-        self.assertIn("__pycache__", ignore)
+    def test_the_bundle_work_is_removed_rather_than_ignored(self):
+        """there is no .gitignore on this branch, so the copy has to delete itself after a pack."""
+        self.assertFalse((ROOT / ".gitignore").exists(), "main carries no ignore file by request")
+        manifest = json.loads((self.npm / "package.json").read_text())
+        self.assertEqual(manifest["scripts"]["postpack"], "node scripts/bundle.js --clean")
+        done = subprocess.run([self.node(), str(self.npm / "scripts/bundle.js"), "--clean"],
+                              capture_output=True, text=True, timeout=120)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertFalse((self.npm / "python").exists(), "postpack left the generated tree behind")
+        subprocess.run([self.node(), str(self.npm / "scripts/bundle.js"), "--strict"],
+                       capture_output=True, text=True, timeout=120, check=True)
 
     def test_the_url_installer_checks_its_two_prerequisites_first(self):
         script = (self.npm / "install.sh").read_text()
@@ -193,8 +201,10 @@ class TestTheNpmPackageIsInstallable(unittest.TestCase):
     def test_the_installed_layout_is_the_one_the_installer_claims(self):
         """the shim resolves ../python relative to itself, and the installer must preserve that."""
         shim = (self.npm / "bin/heyphony.js").read_text()
-        self.assertIn('path.join(pythonTree, "heyphony", "src", "runner", "cli.py")', shim)
-        self.assertIn("heyphony.src.runner.cli", shim)
+        self.assertIn('path.join(pythonTree, "src", "runner", "cli.py")', shim)
+        self.assertIn('"-m", "src.runner.cli"', shim)
+        self.assertIn('PYTHONDONTWRITEBYTECODE', shim, "the shim must not leave a __pycache__ in a tree "
+                                                      "that has no .gitignore to hide it")
 
 
 class TestThePagesSayHowToGetIt(unittest.TestCase):
@@ -238,8 +248,8 @@ class TestThePagesSayHowToGetIt(unittest.TestCase):
 
     def test_the_package_page_admits_it_came_from_the_umbrella(self):
         """the prose names sibling lanes that live elsewhere, so the page has to say so."""
-        text = (ROOT / "heyphony/readme.md").read_text()
-        self.assertIn("this copy is the standalone package", text)
+        text = (ROOT / "readme.md").read_text()
+        self.assertIn("this repo is the standalone package", text)
         self.assertIn("spawnables/tree/comms", text)
 
     def test_the_planned_branches_are_named_as_planned(self):
@@ -446,7 +456,7 @@ class TestGetters(unittest.TestCase):
 
     def test_get_list_says_what_each_path_needs(self):
         """the list is the first thing an agent reads, so it must not need a second command to be useful."""
-        from heyphony.src.runner import cli as telephony_cli
+        from src.runner import cli as telephony_cli
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
             telephony_cli.main(["get", "--list"])
@@ -461,18 +471,18 @@ class TestGetters(unittest.TestCase):
                          "the usage line must not name one getter's paths as if they were all of them")
 
     def test_the_onramp_page_names_both_ramps(self):
-        text = pathlib.Path("heyphony/src/onramp/readme.md").read_text()
+        text = pathlib.Path("src/onramp/readme.md").read_text()
         for needle in ("## signal, which is built", "## telegram, which is two rails",
                        "webhook", "botfather", "heyphony get telegram"):
             self.assertIn(needle, text, f"the onramp page lost {needle!r}")
-        self.assertIn("telegram.json", str(list(pathlib.Path("heyphony/src/onramp").glob("*.json"))))
+        self.assertIn("telegram.json", str(list(pathlib.Path("src/onramp").glob("*.json"))))
 
 
 class TestOpeningTheInboxes(unittest.TestCase):
     def setUp(self):
         import tempfile
         self.home = tempfile.mkdtemp()
-        from heyphony.src.manage import inbox as store
+        from src.manage import inbox as store
         self.store = store
         self.path = pathlib.Path(self.home) / "telephony" / "inbox.jsonl"
         store.append({"id": "a1", "channel": "sms", "sender": "+1555",
@@ -480,30 +490,30 @@ class TestOpeningTheInboxes(unittest.TestCase):
         store.append({"id": "a2", "channel": "sms", "sender": "+1666", "body": "hello", "at": 1700000100}, self.path)
 
     def test_rows_are_numbered_and_previewed(self):
-        from heyphony.src.manage import views
+        from src.manage import views
         out = views.messages(home=self.home, path=self.path)
         self.assertEqual([r["n"] for r in out["rows"]], [1, 2])
         self.assertEqual(out["rows"][0]["from"], "+1666")
         self.assertTrue(out["rows"][0]["preview"])
 
     def test_the_unread_mark_is_ours_because_the_provider_does_not_track_it(self):
-        from heyphony.src.manage import views
+        from src.manage import views
         self.assertEqual(views.messages(home=self.home, path=self.path)["unread_total"], 2)
         views.messages(home=self.home, path=self.path, do_mark=[1])
         self.assertEqual(views.messages(home=self.home, path=self.path, unread=True)["count"], 1)
 
     def test_show_expands_exactly_one_body(self):
-        from heyphony.src.manage import views
+        from src.manage import views
         out = views.messages(home=self.home, path=self.path, show=2)
         self.assertIn("signal code", out["message"]["body"])
 
     def test_a_thread_filter_narrows_to_one_number(self):
-        from heyphony.src.manage import views
+        from src.manage import views
         out = views.messages(home=self.home, path=self.path, thread="+1555")
         self.assertEqual(out["count"], 1)
 
     def test_voicemail_reads_its_sidecar_and_never_invents_a_transcript(self):
-        from heyphony.src.manage import views
+        from src.manage import views
         folder = pathlib.Path(self.home) / "telephony" / "voicemail"
         folder.mkdir(parents=True)
         (folder / "vm1.wav").write_bytes(b"RIFF")
@@ -515,12 +525,12 @@ class TestOpeningTheInboxes(unittest.TestCase):
         self.assertTrue(any(r["transcript"] == "" for r in rows))
 
     def test_the_call_log_is_empty_rather_than_wrong_without_a_database(self):
-        from heyphony.src.manage import views
+        from src.manage import views
         out = views.calls(home=self.home)
         self.assertEqual((out["count"], out["rows"]), (0, []))
 
     def test_open_is_one_command_for_all_three(self):
-        from heyphony.src.manage import views
+        from src.manage import views
         self.assertEqual(views.messages(home=self.home, path=self.path)["inbox"], "messages")
         self.assertEqual(views.calls(home=self.home)["inbox"], "calls")
         self.assertEqual(views.voicemail(home=self.home)["inbox"], "voicemail")
@@ -530,7 +540,7 @@ class TestTheDirectoryExplainsItself(unittest.TestCase):
     """the complaint that started this: python files, no way to see how the thing runs."""
 
     root = pathlib.Path(__file__).resolve().parent.parent
-    hey = root / "heyphony"
+    hey = root
 
     def test_the_map_exists_and_is_a_map(self):
         text = (self.hey / "directory.md").read_text()
@@ -576,7 +586,7 @@ class TestTheDirectoryExplainsItself(unittest.TestCase):
 
     def test_the_off_routing_page_matches_the_vendor_table(self):
         """the table a person reads and the data the code routes on must be the same table."""
-        from heyphony.src import providers
+        from src import providers
         text = (self.hey / "src/manage/turnedoff/readme.md").read_text()
         for name in providers.inbox_providers():
             self.assertIn(f"| {name} |", text, f"{name} is missing from the off-routing table")
@@ -595,7 +605,7 @@ class TestTheDirectoryExplainsItself(unittest.TestCase):
                 self.fail(f"{name} has no row")
 
     def test_the_command_index_names_the_commands_that_exist(self):
-        from heyphony.src.runner import cli
+        from src.runner import cli
         parser = cli.build_parser()
         subs = set()
         for action in parser._actions:
@@ -618,7 +628,7 @@ class TestTheDirectoryExplainsItself(unittest.TestCase):
 
 class TestTheCatcherKnowsEveryPath(unittest.TestCase):
     def test_a_provider_path_is_recognised_and_a_stranger_is_not(self):
-        from heyphony.src.manage import catcher
+        from src.manage import catcher
         for name in ("flowroute", "anveo", "signalwire", "questblue", "bulkvs"):
             self.assertEqual(catcher.provider_of(f"/sms/{name}?x=1"), name)
         self.assertIsNone(catcher.provider_of("/sms/twilio"))
@@ -634,7 +644,7 @@ class TestTheProvisioningChainStopsBeforeItSpends(unittest.TestCase):
         return code, out.getvalue()
 
     def test_areas_carry_stock_and_prices_in_dollars(self):
-        from heyphony.src.setup import provision
+        from src.setup import provision
         row = provision._area_row({"AREA_ID": "191.195.165.31.230", "AREA_CODE": "256",
                                    "AREA_NAME": "ALBERTVILLE", "STOCK": "49",
                                    "rate_plans": [{"RATE_PLAN_ID": "SU", "RATE_PLAN_NAME": "Service Unlimited",
@@ -644,7 +654,7 @@ class TestTheProvisioningChainStopsBeforeItSpends(unittest.TestCase):
         self.assertEqual(row["rate_plans"][0]["setup_usd"], 2.49)
 
     def test_apply_asks_for_stock_and_stops_at_the_order(self):
-        from heyphony.src.setup import provision
+        from src.setup import provision
         saved = {k: os.environ.pop(v, None) for k, v in provision.ENV.items()}
         try:
             answer = provision.plan("212", apply=True)
@@ -660,7 +670,7 @@ class TestTheProvisioningChainStopsBeforeItSpends(unittest.TestCase):
                          [("ANVEO.AREAS.LIST", True), ("DID.ORDER", False), ("DID.UPDATE", True)])
 
     def test_the_purchase_step_is_parked_rather_than_forgotten(self):
-        from heyphony.src.setup import provision
+        from src.setup import provision
         parked = provision.plan("212", purchase=True)
         self.assertFalse(parked["ok"])
         self.assertEqual(parked["purchase"], "parked")
@@ -668,7 +678,7 @@ class TestTheProvisioningChainStopsBeforeItSpends(unittest.TestCase):
         self.assertIn("hooks anveo --apply", parked["instead"])
 
     def test_area_selection_is_first_class(self):
-        from heyphony.src.setup import provision
+        from src.setup import provision
         self.assertEqual(sorted(provision.DID_TYPES), ["GEOGRAPHIC", "MOBILE", "NATIONAL", "TOLLFREE"])
         plan = provision.plan("212", area_name="new york", country_id="US")
         self.assertEqual(plan["area_name"], "new york")
@@ -677,7 +687,7 @@ class TestTheProvisioningChainStopsBeforeItSpends(unittest.TestCase):
 
 class TestTheSetupPlanCoversVoicemailAndCatching(unittest.TestCase):
     def test_a_connect_line_is_not_the_whole_errand(self):
-        from heyphony.src.setup import flow as flow
+        from src.setup import flow as flow
         plan = flow.plan_sip("voip.ms", "+12125551234")
         self.assertEqual(plan["catching"]["kind"], "email")
         self.assertIn("heyphony serve", plan["catching"]["serve"])
@@ -709,7 +719,7 @@ class TestTheLauncher(unittest.TestCase):
             inbox.append(entry, path=self.inbox)
 
     def test_texts_and_voicemail_merge_into_one_thread_per_person(self):
-        from heyphony.src.runner import gui as launcher
+        from src.runner import gui as launcher
         raw = ("From: voipms@voip.ms\nSubject: VOICEMAIL from 15551230000\n"
                "Date: Sun, 01 Nov 2026 09:00:00 +0000\nContent-Type: text/plain\n\n"
                "new voicemail, 14 seconds. transcript: call me back about the invoice.\n")
@@ -726,7 +736,7 @@ class TestTheLauncher(unittest.TestCase):
 
     def test_a_forwarded_voicemail_is_not_counted_twice(self):
         """the message and its recording are one thing to a person, so the thread shows it once."""
-        from heyphony.src.runner import gui as launcher
+        from src.runner import gui as launcher
         raw = ("From: voipms@voip.ms\nSubject: VOICEMAIL from 15559998888\n"
                "Date: Sun, 01 Nov 2026 09:00:00 +0000\nMIME-Version: 1.0\n"
                "Content-Type: multipart/mixed; boundary=B\n\n--B\nContent-Type: text/plain\n\n"
@@ -745,7 +755,7 @@ class TestTheLauncher(unittest.TestCase):
         self.assertEqual(launcher.views.voicemail(path=self.voice)["count"], 1)
 
     def test_a_reply_is_a_draft_with_a_route_and_never_a_send(self):
-        from heyphony.src.runner import gui as launcher
+        from src.runner import gui as launcher
         answer = launcher.draft("+15551230000", "sure, 3 works", path=self.inbox)
         self.assertFalse(answer["applied"])
         self.assertEqual(answer["provider"], "voip.ms")
@@ -754,7 +764,7 @@ class TestTheLauncher(unittest.TestCase):
         self.assertIn("draft", answer["note"])
 
     def test_voicemail_rows_carry_a_time_a_person_can_read(self):
-        from heyphony.src.runner import gui as launcher
+        from src.runner import gui as launcher
         raw = ("From: voipms@voip.ms\nSubject: VOICEMAIL from 15557776666\n"
                "Date: Sun, 01 Nov 2026 09:00:00 +0000\nMIME-Version: 1.0\n"
                "Content-Type: multipart/mixed; boundary=B\n\n--B\nContent-Type: text/plain\n\n"
@@ -768,7 +778,7 @@ class TestTheLauncher(unittest.TestCase):
 
     def test_app_json_answers_and_exits_instead_of_serving_forever(self):
         """a flag called --json that binds a port and never returns is a hang, not an answer."""
-        from heyphony.src.runner import cli as telephony_cli
+        from src.runner import cli as telephony_cli
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
             started = time.time()
@@ -787,7 +797,7 @@ class TestTheLauncher(unittest.TestCase):
     def test_the_page_serves_tabs_and_json(self):
         import threading
         import urllib.request
-        from heyphony.src.runner import gui as launcher
+        from src.runner import gui as launcher
         server = launcher.serve(port=0, path=self.inbox, voicemail_dir=self.voice)
         port = server.server_address[1]
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -810,7 +820,7 @@ class TestTheLauncher(unittest.TestCase):
             server.server_close()
 
     def test_a_carrier_email_keeps_its_audio_and_never_guesses_a_sender(self):
-        from heyphony.src.manage import mailparse
+        from src.manage import mailparse
         raw = ("From: voipms@voip.ms\nSubject: VOICEMAIL from 12125550123\n"
                "Date: Sun, 01 Nov 2026 10:00:00 +0000\nMIME-Version: 1.0\n"
                "Content-Type: multipart/mixed; boundary=B\n\n--B\n"
@@ -836,12 +846,12 @@ class TestProvisioningIsACliWhereTheProviderAllowsIt(unittest.TestCase):
         return code, out.getvalue()
 
     def test_anveo_signature_matches_their_published_example(self):
-        from heyphony.src.setup import provision
+        from src.setup import provision
         self.assertEqual(provision.signature("some@email.com", "my secure phrase"),
                          "396cdfaff3491f457b95e51a5ebd89ad516d623d")
 
     def test_anveo_answers_parse_into_areas_and_numbers(self):
-        from heyphony.src.setup import provision
+        from src.setup import provision
         areas = provision.parse(
             '<RESPONSE><RESULT>SUCCESS</RESULT><AREAS>'
             '<AREA AREA_NAME="ALBERTVILLE" AREA_ID="191.195.165.31.230" AREA_CODE="256" STOCK="49">'
@@ -858,7 +868,7 @@ class TestProvisioningIsACliWhereTheProviderAllowsIt(unittest.TestCase):
         self.assertEqual(bought["dids"][0]["E164"], "12121111111")
 
     def test_provisioning_is_a_plan_without_apply_and_names_its_credentials(self):
-        from heyphony.src.setup import provision
+        from src.setup import provision
         saved = {k: os.environ.pop(v, None) for k, v in provision.ENV.items()}
         try:
             plan = provision.plan("212", sms_url="https://host:8099/sms/anveo?from=$[from]$")
@@ -881,7 +891,7 @@ class TestProvisioningIsACliWhereTheProviderAllowsIt(unittest.TestCase):
         code, text = self.run_cli(["provision", "--provider", "anveo", "--area-code", "212"])
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(text)["provider"], "anveo")
-        from heyphony.src.setup import flow as flow
+        from src.setup import flow as flow
         anveo = flow.plan_sip("anveo", "+12125551234")
         self.assertEqual(anveo["provisioning"]["now"], "cli")
         self.assertIn("setup provision", anveo["provisioning"]["command"])
@@ -891,8 +901,8 @@ class TestProvisioningIsACliWhereTheProviderAllowsIt(unittest.TestCase):
         self.assertEqual(flowroute["provisioning"]["now"], "browser")
 
     def test_arming_anveos_sms_refuses_without_credentials_and_shows_the_call(self):
-        from heyphony.src.setup import provision
-        from heyphony.src.setup import routes
+        from src.setup import provision
+        from src.setup import routes
         saved = {k: os.environ.pop(v, None) for k, v in provision.ENV.items()}
         try:
             answer = routes.apply_hook("anveo", "https://host:8099", "+12125551234")
@@ -919,7 +929,7 @@ class TestTheGuidedSetup(unittest.TestCase):
         return code, out.getvalue()
 
     def test_the_menu_is_every_provider_the_routes_know_about(self):
-        from heyphony.src.setup import routes
+        from src.setup import routes
         keys = [c["key"] for c in setup_flow.PROVIDER_CHOICES]
         self.assertEqual(keys, ["voip.ms", "flowroute", "anveo", "signalwire", "questblue",
                                 "bulkvs", "jmp.chat", "voyced", "voxacall", "bitcall"])
@@ -1010,7 +1020,7 @@ class TestTheGuidedSetup(unittest.TestCase):
         self.assertEqual(providers.profile("bulkvs")["did_usd_month"], 0.06)
 
     def test_every_route_says_what_a_person_pastes_and_what_to_do_when_nothing_can_be_pasted(self):
-        from heyphony.src.setup import routes
+        from src.setup import routes
         for name in routes.ROUTES:
             hook = routes.hook(name, "https://host:8099")
             self.assertIn(hook["kind"], ("email", "webhook-json", "url-forward", "post-to-url", "xmpp", "none"))
@@ -1025,7 +1035,7 @@ class TestTheGuidedSetup(unittest.TestCase):
         self.assertIn("$[message]$", anveo)
 
     def test_bulkvs_registers_one_webhook_over_its_api_and_needs_credentials_first(self):
-        from heyphony.src.setup import routes
+        from src.setup import routes
         dry = routes.apply_hook("bulkvs", "https://host:8099")
         self.assertFalse(dry["applied"])
         self.assertEqual(sorted(dry["missing"]), ["BULKVS_API_PASS", "BULKVS_API_USER"])
@@ -1034,7 +1044,7 @@ class TestTheGuidedSetup(unittest.TestCase):
         self.assertIn('"Webhook": "comms"', dry["as_curl"])
 
     def test_one_envelope_out_of_five_more_shapes(self):
-        from heyphony.src.setup import routes
+        from src.setup import routes
         bulk = routes.normalize("bulkvs", {"From": "+1555", "To": "+1666", "Message": "yo", "RefId": "r1"})
         self.assertEqual((bulk["sender"], bulk["recipient"], bulk["body"], bulk["id"]), ("+1555", "+1666", "yo", "r1"))
         questblue = routes.normalize("questblue", {"from": "+1555", "to": "+1666", "msg": "hey"})
@@ -1068,22 +1078,43 @@ class TestThePackageIsPublishable(unittest.TestCase):
     page = ROOT / "npm" / "publish.md"
 
     def test_the_manifest_carries_the_fields_a_registry_reads(self):
-        self.assertEqual(self.manifest["license"], "MIT")
+        self.assertEqual(self.manifest["license"], "SEE LICENSE IN LICENSE",
+                         "a custom licence is named by pointer, not by an spdx id it does not have")
         self.assertIn("tinkrland", self.manifest["author"])
         self.assertEqual(self.manifest["scripts"]["prepublishOnly"], "npm test",
                          "a publish must run the suite, not hope")
         self.assertEqual(self.manifest["scripts"]["preflight"], "node scripts/preflight.js")
         self.assertNotIn("private", self.manifest)
 
-    def test_the_licence_exists_once_and_is_copied_rather_than_duplicated(self):
+    def test_the_licence_is_source_available_and_says_so_in_its_own_words(self):
         text = (ROOT / "LICENSE").read_text()
-        self.assertTrue(text.startswith("MIT License"))
-        self.assertIn("tinkrland", text.split("\n")[2])
+        self.assertTrue(text.startswith("heyphony source available license"))
+        for needle in ("not an open source one", "business source licence 1.1",
+                       "functional source licence", "elastic licence 2.0", "tinkrland",
+                       "competing use", "change date", "change licence", "mit licence"):
+            self.assertIn(needle, text, f"the licence lost {needle!r}")
+        self.assertNotIn("Permission is hereby granted, free of charge",
+                         text, "a permissive grant belongs to the change licence, not this one")
+
+    def test_every_released_version_has_a_change_date_table(self):
+        text = (ROOT / "LICENSE").read_text()
+        version = json.loads((ROOT / "npm/package.json").read_text())["version"]
+        self.assertIn(version, text, "the version being shipped is not dated in the licence")
+        rows = [line for line in text.splitlines() if line.strip().startswith(version)]
+        self.assertTrue(rows, "no change date row for the shipped version")
+        self.assertIn("MIT", rows[0])
+
+    def test_the_licence_is_copied_beside_the_package_rather_than_duplicated_in_git(self):
         bundle = (self.npm / "scripts" / "bundle.js").read_text()
         self.assertIn("copyFileSync(licenceSource", bundle)
         self.assertIn('path.join(pkgDir, "LICENSE")', bundle)
-        self.assertIn("npm/LICENSE", (ROOT / ".gitignore").read_text(),
-                      "the copy is generated, so it must not be committed twice")
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("no node on this machine")
+        subprocess.run([node, str(self.npm / "scripts" / "bundle.js"), "--clean"],
+                       capture_output=True, text=True, timeout=120, check=True)
+        self.assertFalse((self.npm / "LICENSE").exists(),
+                         "the copy is generated at pack time and cleaned by postpack")
 
     def test_the_maintainer_page_is_kept_out_of_the_tarball(self):
         files = self.manifest.get("files") or []
@@ -1108,6 +1139,53 @@ class TestThePackageIsPublishable(unittest.TestCase):
     def test_the_runbook_and_the_licence_have_no_em_dash(self):
         for page in (self.page, ROOT / "LICENSE"):
             self.assertNotIn("\u2014", page.read_text(), f"{page.name} has an em dash")
+
+
+class TestTheMarketArgumentAndTheProviderIndex(unittest.TestCase):
+    """the two pages that explain why the thing exists, rather than how to install it."""
+
+    readme = ROOT / "readme.md"
+    index = ROOT / "providers" / "readme.md"
+
+    def test_the_readme_names_the_decoupled_offer_and_why_it_fails(self):
+        text = self.readme.read_text()
+        for needle in ("the market splits the number in half", "voice first", "text first",
+                       "exposes the sip layer", "one number", "same number",
+                       "read the call log and the message thread as one context"):
+            self.assertIn(needle, text, f"the readme lost the market argument: {needle!r}")
+
+    def test_the_readme_says_the_hybrid_is_the_reason_for_a_client(self):
+        text = self.readme.read_text()
+        self.assertIn("a client and a cli rather than a subscription", text)
+        self.assertIn("charge you twice", text)
+
+    def test_the_provider_index_starts_with_the_workflow_not_the_vendor(self):
+        text = self.index.read_text()
+        table = text.split("| how heavy the workflow is |")[1].split("\n\n")[0]
+        for needle in ("heaviest", "heavy: receiving", "medium", "light", "none: codes"):
+            self.assertIn(needle, table, f"the heaviness table lost the {needle!r} row")
+        self.assertLess(text.index("how heavy the workflow is"), text.index("we are not affiliated"),
+                        "the page must ask what the workflow does before it lists anybody")
+
+    def test_the_provider_index_puts_the_messaging_app_case_in_the_uk_and_au(self):
+        text = self.index.read_text()
+        self.assertIn("virtual mobile number", text)
+        self.assertIn("united kingdom (+44) or australia (+61)", text)
+        self.assertIn("usa and canada mash cloud numbers", text)
+        self.assertIn("cannot be registered in baresip or linphone", text)
+
+    def test_the_provider_index_is_not_an_advertisement(self):
+        text = self.index.read_text()
+        for needle in ("we are not affiliated", "none of the vendors above pay for this",
+                       "nothing here is a referral", "unverified until somebody pays",
+                       "somebody else's computer"):
+            self.assertIn(needle, text, f"the non affiliation section lost {needle!r}")
+        self.assertNotIn("http", text.replace("https://github.com", ""), "no outbound vendor links")
+
+    def test_the_provider_index_does_not_claim_experience_it_has_not_had(self):
+        text = self.index.read_text().lower()
+        self.assertIn("documentation is not experience", text)
+        self.assertNotIn("we tested", text)
 
 
 if __name__ == "__main__":

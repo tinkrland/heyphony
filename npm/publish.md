@@ -26,7 +26,7 @@ a scoped name is a different package rather than a rename, so `npx heyphony` and
 
 ### the version, which lives in one place
 
-`__version__` in `heyphony/__init__.py` is the source of truth and `scripts/bundle.js` copies it into `package.json` at pack time. bump the python file, never the json, or the two disagree and the strict bundle refuses. `preflight` compares them and fails on a mismatch, because `npx heyphony@0.3.0` running 0.2.0 code is a lie about what executed.
+`__version__` in `src/__init__.py` is the source of truth and `scripts/bundle.js` copies it into `package.json` at pack time. bump the python file, never the json, or the two disagree and the strict bundle refuses. `preflight` compares them and fails on a mismatch, because `npx heyphony@0.3.0` running 0.2.0 code is a lie about what executed.
 
 ## the publish itself
 

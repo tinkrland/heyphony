@@ -35,7 +35,7 @@ there is no `heyphony install` command, and that is the honest state of it. the 
 | --- | --- | --- |
 | the shim in the repo | `/path/to/spawnables/bin/heyphony status` | zero install, works over ssh, keeps the clone as the source of truth |
 | a symlink on path | `ln -s /path/to/spawnables/bin/heyphony ~/.local/bin/heyphony` | the agent types `heyphony ...` like any other tool |
-| the module directly | `PYTHONPATH=/path/to/spawnables python3 -m heyphony.src.runner.cli status` | when there is no bin directory on path at all |
+| the module directly | `PYTHONPATH=/path/to/spawnables python3 -m src.runner.cli status` | when there is no bin directory on path at all |
 
 the shim sets `PYTHONPATH` to the clone and execs the module, so nothing is installed in the sense of copied elsewhere and nothing drifts out of date. two things are deliberately missing and should not be pretended into existence: a systemd unit for `serve` and `app`, and a pypi package. a unit is the right answer for a host that should answer texts after a reboot, and it is not written yet.
 

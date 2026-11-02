@@ -1,0 +1,47 @@
+# providers: the number comes before the vendor
+
+*the pages beside this one are per vendor notes. this page is the question that comes first: what your workflow actually does, and therefore which kind of number you can get.*
+
+a phone number is not a feature you buy, it is a classification somebody else applies. carriers and the services that verify numbers ask "what is this" and answer from the numbering plan of the country that issued it, so the same agent on the same stack gets accepted with one number and refused with another. that is why this page starts with the workflow and the region, and only then reaches the vendor list.
+
+## what kind of number each workflow needs
+
+### the table
+
+| how heavy the workflow is | what it is actually doing | the number it needs | where that number comes from | what gets refused |
+| --- | --- | --- | --- | --- |
+| heaviest: an identity on a messaging app | holding a whatsapp, signal or google account that verifies by sms, and keeping it | a number the app reads as a **mobile**, which in practice means a virtual mobile number rather than a did | united kingdom (+44) or australia (+61), where the regulator's numbering rules classify a virtual mobile number as an ordinary mobile number | +1 numbers. usa and canada mash cloud numbers, softphones and trunks into one bucket, and the large services read that bucket as voip and refuse it. the netherlands, sweden, lithuania and poland also behave, at european prices |
+| heavy: receiving most of the traffic | a number humans call and text, with an inbox an agent reads | any sms capable did, on a provider that will arm an sms webhook | the vendors on the pages beside this one: voip.ms, flowroute, anveo, signalwire, questblue, bulkvs | a number from a vendor that only does voice. a calls only number cannot receive a text, and no amount of cli fixes a webhook the carrier will not call |
+| medium: occasional outbound at human pace | one call or one message at a time, to somebody who expects it | the same did as above, ideally from a vendor that lets you set the caller id and read delivery reports | the same list | anything bulk. a2p consent, attested origination and a registered business are the real requirements, and this repo refuses that lane rather than pretending a cheap did solves it |
+| light: proving a lane works | one real call and one real text to confirm the setup | the number you already bought, or a vendor's test line | wherever you just signed up | nothing, but do not build a workflow on the trial |
+| none: codes and verification at volume | signing up for things by sms | none of these numbers. a did is voip, and voip is the classification that gets refused | nowhere | this whole repo. there is no otp story here and buying a number will not create one |
+
+### why the region decides more than the vendor
+
+**classification rides the numbering plan, not the marketing.** two vendors can sell you a number in the same country and it will be treated the same way, because the thing that answers the "what is this" question is the regulator and the carrier, not the invoice. that is also why moving up a page to a more expensive vendor does not change what your number is, and why the cheap option and the expensive option are often the same classification wearing different dashboards.
+
+for the messaging app case the ordering is roughly: uk and australia read as mobile for the large services, the netherlands, sweden, lithuania and poland are viable and cheaper to work with in different ways, and +1 is the one to avoid when the far end is a consumer service running a risk engine.
+
+### the two kinds of number, in one line each
+
+- **a did** is a number in the public telephone network that you register on a host you run. calls and texts both, over sip, and it is the only kind this repo registers.
+- **a virtual mobile number** is a number that lives inside a provider's web application and behaves like a mobile handset. it cannot be registered in baresip or linphone, so it is a different job from the one here: useful for holding an account, useless as a line an agent answers.
+
+mixing those two up is the most expensive mistake available on this page, because a virtual mobile number looks like a phone number and behaves nothing like a sip endpoint.
+
+## the vendors on the pages beside this one
+
+| vendor | what it is good at | the catch |
+| --- | --- | --- |
+| [voip.ms](voip.ms/readme.md) | cloud voicemail to email, sms to email, conditional forwarding, all of which work while the host is asleep | regional servers matter, and a wrong one is the classic silent registration failure |
+| [flowroute](flowroute/readme.md) | json webhooks for inbound texts, which arrive whether or not anything is awake | no carrier side voicemail fallback, so a missed call is just missed |
+
+the pages are notes from reading each vendor's own documentation, not reviews, and the honest state is one provider at a time.
+
+## we are not affiliated with any of them
+
+none of the vendors above pay for this, none of them are partners, and nothing here is a referral. no links carry an identifier, no prices are quoted on their behalf, and where a price appears it is the one the vendor published on the day it was read, which is a number that moves.
+
+the same applies to what the notes claim a vendor can do. a capability is written down because their own documentation says it, and the flags that matter stay unverified until somebody pays for a number and watches a message arrive. documentation is not experience, and a vendor can change a feature out from under a page like this one without telling anybody.
+
+if a vendor disappears, the lane closes and the number goes with it. the registration, the inbox and the call log are yours because they live on your host, and that is the part this repo can promise. the carrier is somebody else's computer, and it always was.

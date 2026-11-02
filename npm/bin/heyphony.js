@@ -20,7 +20,7 @@ const pythonTree = path.join(pkgDir, "python");
 
 function version() {
   try {
-    const text = fs.readFileSync(path.join(pythonTree, "heyphony", "__init__.py"), "utf8");
+    const text = fs.readFileSync(path.join(pythonTree, "src", "__init__.py"), "utf8");
     return (text.match(/__version__\s*=\s*["']([^"']+)["']/) || [])[1] || "unknown";
   } catch {
     return "unknown";
@@ -39,6 +39,8 @@ function trySpawn(candidate, argv, index) {
   const env = Object.assign({}, process.env, {
     PYTHONPATH: [pythonTree, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),
     PYTHONIOENCODING: process.env.PYTHONIOENCODING || "utf-8",
+    // the tree has no .gitignore to hide a stray __pycache__, so the shim does not write one
+    PYTHONDONTWRITEBYTECODE: "1",
   });
 
   const child = spawn(candidate.cmd, [...candidate.args, ...argv], { stdio: "inherit", env });
@@ -56,7 +58,7 @@ function trySpawn(candidate, argv, index) {
           "  windows  winget install Python.Python.3.12   (then re-run inside a new shell)",
           "",
           "already have it under another name? set HEYPHONY_PYTHON=/path/to/python3",
-          "this package ships the heyphony code itself; it is the interpreter that lives on your machine.",
+          "this package ships the code itself; it is the interpreter that lives on your machine.",
         ].join("\n")
       );
       process.exit(127);
@@ -85,7 +87,7 @@ if (argv[0] === "--version" || argv[0] === "-v") {
   process.exit(0);
 }
 
-if (!fs.existsSync(path.join(pythonTree, "heyphony", "src", "runner", "cli.py"))) {
+if (!fs.existsSync(path.join(pythonTree, "src", "runner", "cli.py"))) {
   console.error(
     [
       "heyphony: the python code is not in this copy of the package.",
@@ -97,4 +99,4 @@ if (!fs.existsSync(path.join(pythonTree, "heyphony", "src", "runner", "cli.py"))
   process.exit(1);
 }
 
-trySpawn(candidates()[0], ["-m", "heyphony.src.runner.cli", ...argv], 0);
+trySpawn(candidates()[0], ["-m", "src.runner.cli", ...argv], 0);

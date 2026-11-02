@@ -10,8 +10,8 @@ of blocking on a prompt. that is what makes setup operatable by an agent, not ju
 """
 import sys
 
-from heyphony.src import providers
-from heyphony.src.setup import routes
+from src import providers
+from src.setup import routes
 
 RAILS = {
     "sip": {

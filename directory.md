@@ -1,15 +1,21 @@
-# directory: how to read this folder
+# directory: how to read this repo
 
-this file exists because a person opened the repo, saw a flat pile of python files, and could not tell how any of it runs. that is a defect in the folder, not in the reader. so the folder is now two things side by side: prose that says what happens, and code that does it, in the same named place.
+this file exists because a person opened the repo, saw a flat pile of python files, and could not tell how any of it runs. that is a defect in the folder, not in the reader. so the repo is now two things side by side: prose that says what happens, and code that does it, in the same named place.
+
+**the repo root is the tree.** there is no `heyphony/` folder holding the code any more: `src/`, `journal/`, `providers/`, `theidea/`, `directory.md` and the readme sit at the top, and `bin/`, `npm/` and `tests/` are the packaging around them. that makes the import root the repo itself, so the module path is `src.runner.cli` rather than `heyphony.src.runner.cli`, and `bin/heyphony` puts this folder on `PYTHONPATH` before it runs.
 
 the rule that keeps them honest: **a folder with a readme is a description, a `.py` is the work.** if you can read `src/manage/turnedoff/readme.md` you know what happens when the host is asleep without opening a file that starts with `import`. if you are changing behaviour, the readme and the module move in the same commit, and a test fails when they drift.
 
 ## the shape
 
 ```
-heyphony/
+.
   directory.md                  this map
   readme.md                     what heyphony is, and why it is a workaround
+  LICENSE                       source available: bsl shaped, fsl and elv2 flavoured
+  bin/heyphony                  the shim a clone runs
+  npm/                          the installable: node shim, bundle step, url installer
+  tests/                        the suite that holds the prose to the code
   src/                          everything that runs
     providers.py                the vendor table: price, how texts arrive, what works while off
     runner/                     how a person or an agent reaches it

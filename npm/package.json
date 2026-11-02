@@ -11,7 +11,7 @@
     "sms",
     "cli"
   ],
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "author": "tinkrland (https://github.com/tinkrland)",
   "bin": {
     "heyphony": "bin/heyphony.js"
@@ -28,10 +28,10 @@
   "scripts": {
     "bundle": "node scripts/bundle.js",
     "prepack": "node scripts/bundle.js --strict",
-    "prepare": "node scripts/bundle.js",
+    "postpack": "node scripts/bundle.js --clean",
     "prepublishOnly": "npm test",
     "preflight": "node scripts/preflight.js",
-    "test": "node scripts/bundle.js --strict && node bin/heyphony.js --version"
+    "test": "node scripts/bundle.js --strict && node bin/heyphony.js --version && node scripts/bundle.js --clean"
   },
   "repository": {
     "type": "git",

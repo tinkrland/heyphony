@@ -50,7 +50,7 @@ const pythonVersion = (home) => {
 };
 
 const readVersion = () => {
-	const init = fs.readFileSync(path.join(repoRoot, "heyphony", "__init__.py"), "utf8");
+	const init = fs.readFileSync(path.join(repoRoot, "src", "__init__.py"), "utf8");
 	const found = init.match(/__version__\s*=\s*["']([^"']+)["']/);
 	return found ? found[1] : null;
 };
@@ -95,7 +95,7 @@ const newestTarball = (dir) => {
 
 	const source = readVersion();
 	record("version has one source", Boolean(source) && source === pkg.version,
-		source === pkg.version ? `both say ${pkg.version}` : `package.json says ${pkg.version}, heyphony/__init__.py says ${source}`);
+		source === pkg.version ? `both say ${pkg.version}` : `package.json says ${pkg.version}, src/__init__.py says ${source}`);
 
 	record("licence field", Boolean(pkg.license),
 		pkg.license ? pkg.license : "npm publishes without it, but it is the one field a lawyer reads");
@@ -104,7 +104,7 @@ const newestTarball = (dir) => {
 	record("LICENSE file", licence, licence ? "the text travels with the tarball" : "no LICENSE in the repo root");
 
 	const bundle = run(process.execPath, ["scripts/bundle.js", "--strict"]);
-	record("bundle is in sync", bundle.ok, bundle.ok ? "the python tree matches ../heyphony" : bundle.err.split("\n")[0]);
+	record("bundle is in sync", bundle.ok, bundle.ok ? "the python tree matches the repo root" : bundle.err.split("\n")[0]);
 
 	const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "heyphony-preflight-"));
 	let tarball = null;
@@ -165,7 +165,7 @@ const newestTarball = (dir) => {
 	}
 
 	console.log("ready. the ceremony, in this order:");
-	console.log("  1. bump __version__ in heyphony/__init__.py, not package.json (the bundle syncs it)");
+	console.log("  1. bump __version__ in src/__init__.py, not package.json (the bundle syncs it)");
 	console.log("  2. npm run preflight                     # this, again, on the bumped tree");
 	console.log("  3. npm publish                           # 2FA code goes here");
 	console.log("  4. npm view heyphony version dist-tags    # what the registry now holds");

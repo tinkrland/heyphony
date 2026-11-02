@@ -46,7 +46,7 @@ chmod +x "$HOME_DIR/app/bin/heyphony"
 mkdir -p "$BIN_DIR"
 ln -sf "$HOME_DIR/app/bin/heyphony" "$BIN_DIR/heyphony"
 
-version=$(PYTHONPATH="$HOME_DIR/app" python3 -c 'import heyphony; print(heyphony.__version__)' 2>/dev/null || echo unknown)
+version=$(PYTHONPATH="$HOME_DIR/app" python3 -c 'import src; print(src.__version__)' 2>/dev/null || echo unknown)
 
 say ""
 say "install: heyphony $version is in $HOME_DIR/app"

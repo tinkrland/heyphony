@@ -15,7 +15,7 @@ import time
 import urllib.parse
 import urllib.request
 
-from heyphony.src import providers
+from src import providers
 
 BASE = "https://<host>:8098"
 
@@ -268,7 +268,7 @@ def apply_hook(provider, base=BASE, did=None):
                 "why": "this provider's route is set by hand, or there is no route to set"}
     paste = paste_url(key, base)
     if apply.get("module") == "anveo":
-        from heyphony.src.setup import provision
+        from src.setup import provision
         if not did:
             return {"applied": False, "provider": key,
                     "why": "anveo arms one number at a time, so pass --did",

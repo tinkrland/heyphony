@@ -15,4 +15,7 @@ while [ -L "$self" ]; do
 done
 here=$(cd "$(dirname "$self")/.." && pwd)
 
-PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}" exec "${HEYPHONY_PYTHON:-python3}" -m heyphony.src.runner.cli "$@"
+# the code is the repo root, so the import root is $here and the module is src.runner.cli. no bytecode
+# is written: this tree has no .gitignore, so an import that leaves __pycache__ behind is a dirty tree.
+PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}" PYTHONDONTWRITEBYTECODE=1 \
+  exec "${HEYPHONY_PYTHON:-python3}" -m src.runner.cli "$@"

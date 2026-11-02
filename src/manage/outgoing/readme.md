@@ -12,7 +12,7 @@ that is deliberate. sending is the part of telephony where a mistake is not a bu
 
 **not imessage.** imessage and rcs live in the umbrella (`comms/imessage/`), because they are a different rail with a different free tier and a whitelist, and because a voip did cannot register imessage at all. heyphony owns the number, not the bubbles.
 
-**one message at a time, at human pace.** bulk outbound is refused, not because it cannot be typed but because a2p consent, attested origination and a registered business are the real requirements, and a self-hosted softphone behind a cheap did is the exact shape carriers block first. `heyphony/theidea/access.md` has the longer version.
+**one message at a time, at human pace.** bulk outbound is refused, not because it cannot be typed but because a2p consent, attested origination and a registered business are the real requirements, and a self-hosted softphone behind a cheap did is the exact shape carriers block first. `theidea/access.md` has the longer version.
 
 ## attachments
 
