@@ -6,6 +6,7 @@ packageable on its own.
 """
 import argparse
 import json
+import os
 import pathlib
 import sys
 
@@ -273,6 +274,21 @@ def cmd_get(args):
     _out(getters.run(args.name, path=args.path, dry=not args.run))
 
 
+def cmd_send(args):
+    """one outbound text, drafted by default and sent only when the gate and the flag both agree."""
+    from src.manage.outgoing import send as outbox
+    provider = args.provider or os.environ.get("HEYPHONY_SIP_PROVIDER") or "voip.ms"
+    from_number = args.sender or os.environ.get("HEYPHONY_SIP_DID")
+    if not from_number:
+        _out({"sent": False, "why": "no sender number",
+              "how": "pass --from +1... or set HEYPHONY_SIP_DID to the did this provider holds"})
+        return 1
+    answer = outbox.send(provider=provider, from_number=from_number, to=args.to, text=args.text,
+                         allow=bool(args.send), store=not args.no_store)
+    _out(answer)
+    return 0 if answer.get("sent") else 1
+
+
 def cmd_doctor(args):
     _out({"host_client": sip.host_client(), "rc_present": sip.rc_path().is_file(),
           "inbox": inbox.count(),
@@ -373,6 +389,15 @@ def build_parser():
     hk.add_argument("--did")
     hk.add_argument("--apply", action="store_true", help="set it over the provider's api, when that exists")
     hk.set_defaults(func=cmd_hooks)
+    s = sub.add_parser("send", help="one outbound text: drafted unless --send, gated by HEYPHONY_SEND")
+    s.add_argument("--to", required=True, help="one recipient in e164. a list is refused, on purpose")
+    s.add_argument("--text", required=True, help="the body. 1600 characters is the ceiling")
+    s.add_argument("--from", dest="sender", help="the did this provider holds (or HEYPHONY_SIP_DID)")
+    s.add_argument("--provider", help="defaults to HEYPHONY_SIP_PROVIDER, then voip.ms")
+    s.add_argument("--send", action="store_true",
+                   help="actually send, which also needs HEYPHONY_SEND=allowed in the environment")
+    s.add_argument("--no-store", action="store_true", help="do not record a sent message in the inbox")
+    s.set_defaults(func=cmd_send)
     d = sub.add_parser("doctor"); d.set_defaults(func=cmd_doctor)
     return p
 

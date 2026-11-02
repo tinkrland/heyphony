@@ -83,6 +83,10 @@ every menu is also a flag, and a run with no terminal returns `{needs, flag, opt
 
 signal wants a phone number before it will talk to you, so `heyphony get signal` is the whole install. telegram is the second ramp, in two flavours, because a bot and an account are different creatures wearing the same name.
 
+### an answer, one message at a time
+
+`heyphony send` exists, and it is the narrowest version of outbound that is still useful: one recipient, one body, drafted unless the gate is open and the call asks for it. a reply to somebody who wrote first is the case it was built for, and a loop over a list is the case it refuses.
+
 ### the number outlives the machine
 
 the honest shape of a phone number is that half of it is somebody else's computer, so the interesting question is what happens when the host sleeps.
@@ -109,36 +113,7 @@ an agent installing this should read [npm/agents.md](npm/agents.md) instead of t
 
 ## three places it can live
 
-the command is the same everywhere; what changes is which computer holds the registration, the secret and the catcher, and what happens to all three when that computer sleeps. there are three honest answers, and the `setup` branch of this repo is about the instructions for each: an agent on a local computer, where the answer depends on which computer, a computer of its own in a container or a cloud vm, and a spawnable guest from the spawnables line.
-
-## the tree
-
-the repo root is the tree, which is why the import path is `src.runner.cli` rather than something nested under a package folder.
-
-```
-src/          the code: providers, runner, linphone, setup, manage, onramp
-journal/      explainers and dated notes
-theidea/      the argument for the shape, including the limits
-providers/    per vendor notes
-directory.md  the map: setup and manage, drawn apart
-bin/heyphony  the shim a clone runs, and the one install.sh links onto your path
-npm/          the installable: package.json, the node shim, the bundle step, the url installer
-tests/        the suite that holds the prose to the code
-LICENSE       source available, bsl shaped
-```
-
-## this repo, and the rest of the lines
-
-`main` is this page, the code, and the packaging. only `main` exists today, and the rest of the split is laid out rather than implemented. the rule that decides where a thing goes is whether it is the number or the conversation: `main` holds the number and the rails a number unlocks, `comms` holds the rest of the stack, and nothing crosses back.
-
-| branch | what it is for |
-| --- | --- |
-| `main` | heyphony: the number, the inbox, the install |
-| `comms` | everything that is not heyphony: the umbrella and the rest of the stack (mail, imessage, whatsapp, signal, telegram, slack, discord) |
-| `omnimeetings` | the live half (google meet, zoom, teams), joining and speaking and sharing a screen |
-| `callheavy` | goal oriented calling, on our own client rather than a hosted dialler |
-
-a number is useful on its own, which is why it gets the first branch and the working code. the other three are places to put the rest when they arrive, and saying they are planned is more honest than a folder with a readme and no lane behind it.
+the command is the same everywhere; what changes is which computer holds the registration, the secret and the catcher, and what happens to all three when that computer sleeps. there are three honest answers, and the setup guide in this repo is about the instructions for each: an agent on a local computer, where the answer depends on which computer, a computer of its own in a container or a cloud vm, and a spawnable guest from the spawnables line.
 
 ## the licence, and why it is not mit
 
@@ -148,6 +123,27 @@ each version converts to mit two years after it is released, and the table in [L
 
 ## what it will not do
 
-outbound is a draft, kept and not sent, because one message at human pace is a lane and a campaign is a different product with different obligations. nothing here publishes: there is no stream to go live on and no account to create, only a number that can be reached. and the number is a voip number, which is the type of number that the flows most likely to ask for one refuse, so there is no verification story here and buying one is not something this repo will do for you.
+there is one claim this page could make that would sell better, and it is the one it is not making: that a number from here gets your agent through a verification code. it does not, reliably, and the reason has nothing to do with the quality of the setup.
 
-those are not gaps waiting for a sprint. they are the limit of what this kind of number can do, and [theidea/](theidea/) is where each one is argued rather than listed.
+### the 2fa claim, which we are not making
+
+almost every product that hands an agent a number does the same thing this repo does: it gives you voip over sip. that number is auto blocked by a growing list of banks and social media services, and there is no path around it, because what is being detected is the number type itself.
+
+the refusal is not a verdict on this package. it is adversarial detection aimed at sybil campaigns, which register voip numbers by the thousand, and the platforms answered that with outright prohibition rather than a risk score. the disparate impact lands on every legitimate sip number in existence, and it lands on yours here. so the page says what is true instead of what converts, and claims two things:
+
+- **we do not promise a 2fa path.** where a service accepts the number, that service has not closed the door yet, and nothing in this repo is defeating a check. if a workflow needs codes, it needs a handset, and it should not be built on this.
+- **we do not hold numbers in a pool.** there is no shared inventory here whose reputation could be tainted by somebody else's traffic. the number is bought in your name from a provider you chose, so its history is only the history it was given.
+
+### what outbound is, and what it is not
+
+`sms on this number, one message at a time.` the rail sends when the gate is open (`HEYPHONY_SEND=allowed`) and the call says so (`--send`), records the message in the same thread as what came in, and refuses a list, a loop and a schedule, because a campaign is a different product with consent, attested origination and a registered business behind it.
+
+provider terms, quiet hours, and what the recipient actually agreed to are yours. a tool that respects a gate cannot also audit a business, and pretending otherwise would be the dishonest version of a safety feature.
+
+### and nothing here publishes
+
+no stream, no account to create, no audience to grow: a number that can be reached.
+
+### the rest is in the argument
+
+those are not gaps waiting for a sprint. they are the limit of what a number of this type can do, and [theidea/](theidea/) is where each one is argued rather than listed.

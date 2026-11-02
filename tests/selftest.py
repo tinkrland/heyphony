@@ -95,8 +95,8 @@ class TestThePackageIsStandalone(unittest.TestCase):
 
     def test_no_import_reaches_outside_the_package_or_the_standard_library(self):
         allowed = {"argparse", "base64", "email", "hashlib", "hmac", "http", "json", "os",
-                   "contextlib", "pathlib", "re", "shutil", "sqlite3", "src", "subprocess", "sys", "termios",
-                   "time", "tty", "urllib", "xml"}
+                   "contextlib", "math", "pathlib", "re", "shlex", "shutil", "sqlite3", "src",
+                   "subprocess", "sys", "termios", "time", "tty", "urllib", "uuid", "xml"}
         for path in sorted((ROOT / "src").rglob("*.py")):
             for line in path.read_text().splitlines():
                 stripped = line.strip()
@@ -240,7 +240,8 @@ class TestThePagesSayHowToGetIt(unittest.TestCase):
         self.assertIn("three places it can live", text)
         for needle in ("local computer", "cloud vm", "spawnable"):
             self.assertIn(needle, text, f"the readme stopped naming {needle!r}")
-        self.assertIn("`setup` branch", text, "the instructions live on the setup branch, so say so")
+        self.assertIn("the setup guide in this repo", text,
+                      "the three modes still need a pointer to where the instructions are")
 
     def test_no_page_picked_up_an_em_dash(self):
         for page in [self.root_readme, self.npm_readme, self.agents]:
@@ -252,10 +253,13 @@ class TestThePagesSayHowToGetIt(unittest.TestCase):
         self.assertIn("this repo is the standalone package", text)
         self.assertIn("spawnables/tree/comms", text)
 
-    def test_the_planned_branches_are_named_as_planned(self):
+    def test_the_main_page_carries_no_repo_map_and_no_branch_table(self):
+        """the owner's call: the tree and the branch list are not the front page's job."""
         text = self.root_readme.read_text()
-        for needle in ("`comms`", "omnimeetings", "callheavy", "only `main` exists today"):
-            self.assertIn(needle, text, f"the branch table lost {needle!r}")
+        self.assertNotIn("## the tree", text)
+        self.assertNotIn("| branch | what it is for |", text)
+        for gone in ("omnimeetings", "`comms`", "bin/heyphony  the shim"):
+            self.assertNotIn(gone, text, f"the front page still carries {gone!r}")
 
 
 class TestLinphoneConfig(unittest.TestCase):
@@ -1202,6 +1206,208 @@ class TestTheInstalledCommandCanSayWhatItIs(unittest.TestCase):
         script = (ROOT / "npm/install.sh").read_text()
         self.assertIn('"$BIN_DIR/heyphony" --version', script,
                       "reading the version out of a file does not prove the shim runs")
+
+
+class TestTheOutboundRail(unittest.TestCase):
+    """sending exists now, and every reason it might not is a sentence rather than a stack trace."""
+
+    def setUp(self):
+        from src.manage.outgoing import send as outbox
+        self.outbox = outbox
+        self.saved = {k: os.environ.pop(k, None) for k in
+                      ("HEYPHONY_SEND", "VOIPMS_API_USER", "VOIPMS_API_PASS", "FLOWROUTE_API_KEY",
+                       "FLOWROUTE_API_SECRET", "SIGNALWIRE_SPACE", "SIGNALWIRE_PROJECT",
+                       "SIGNALWIRE_TOKEN", "HEYPHONY_SIP_DID", "HEYPHONY_SIP_PROVIDER")}
+
+    def tearDown(self):
+        for name, value in self.saved.items():
+            os.environ.pop(name, None)
+            if value is not None:
+                os.environ[name] = value
+
+    def voipms(self):
+        os.environ["VOIPMS_API_USER"] = "user"
+        os.environ["VOIPMS_API_PASS"] = "secret"
+
+    def test_a_body_costs_segments_and_says_which_encoding(self):
+        self.assertEqual(self.outbox.segments("hello")["segments"], 1)
+        self.assertEqual(self.outbox.segments("hello")["encoding"], "gsm7")
+        split = self.outbox.segments("x" * 161)
+        self.assertEqual((split["segments"], split["encoding"]), (2, "gsm7"))
+        accented = self.outbox.segments("héllo")
+        self.assertEqual((accented["encoding"], accented["bytes_max"]), ("ucs2", 70))
+        self.assertEqual(self.outbox.segments("é" * 71)["segments"], 2)
+
+    def test_one_recipient_means_one(self):
+        self.assertTrue(self.outbox.one_recipient("+15551234567"))
+        for bad in ("+15551234567,+15559998888", "+1 555 123 4567", "5551234567", "", None, "+12"):
+            self.assertFalse(self.outbox.one_recipient(bad), bad)
+
+    def test_each_provider_gets_the_request_its_docs_describe(self):
+        self.voipms()
+        request = self.outbox.request_for("voip.ms", "+15559990000", "+15551234567", "hi")
+        self.assertEqual(request["method"], "GET")
+        self.assertIn("method=sendSMS", request["url"])
+        self.assertIn("did=%2B15559990000", request["url"])
+        self.assertIn("dst=%2B15551234567", request["url"])
+
+        os.environ["FLOWROUTE_API_KEY"] = "key"
+        os.environ["FLOWROUTE_API_SECRET"] = "secret"
+        flow = self.outbox.request_for("flowroute", "+15559990000", "+15551234567", "hi")
+        self.assertEqual(flow["method"], "POST")
+        self.assertEqual(flow["url"], "https://api.flowroute.com/v2.2/messages")
+        self.assertTrue(flow["headers"]["Authorization"].startswith("Basic "))
+        body = json.loads(flow["body"])
+        self.assertEqual(body["data"]["type"], "message")
+        self.assertEqual(body["data"]["attributes"]["body"], "hi")
+
+        os.environ.update({"SIGNALWIRE_SPACE": "space", "SIGNALWIRE_PROJECT": "proj",
+                           "SIGNALWIRE_TOKEN": "token"})
+        sw = self.outbox.request_for("signalwire", "+15559990000", "+15551234567", "hi")
+        self.assertIn("space.signalwire.com", sw["url"])
+        self.assertIn("Accounts/proj/Messages.json", sw["url"])
+        self.assertIn("Body=hi", sw["body"])
+
+    def test_a_missing_credential_is_named_rather_than_half_configured(self):
+        with self.assertRaises(ValueError) as caught:
+            self.outbox.request_for("voip.ms", "+15559990000", "+15551234567", "hi")
+        self.assertIn("VOIPMS_API_USER", str(caught.exception))
+
+    def test_a_closed_gate_drafts_and_never_calls_out(self):
+        self.voipms()
+        calls = []
+
+        def explode(request):
+            calls.append(request)
+            raise AssertionError("the rail sent with the gate closed")
+
+        answer = self.outbox.send("voip.ms", "+15559990000", "+15551234567", "hi", allow=True,
+                                  opener=explode)
+        self.assertFalse(answer["sent"])
+        self.assertTrue(answer["drafted"])
+        self.assertIn("HEYPHONY_SEND", answer["why"])
+        self.assertTrue(answer["curl"].startswith("curl "))
+        self.assertNotIn("secret", answer["curl"], "a draft gets pasted; the password must not be in it")
+        self.assertEqual(calls, [])
+
+    def test_an_open_gate_still_needs_the_call_to_ask(self):
+        self.voipms()
+        os.environ["HEYPHONY_SEND"] = "allowed"
+        answer = self.outbox.send("voip.ms", "+15559990000", "+15551234567", "hi", allow=False)
+        self.assertFalse(answer["sent"])
+        self.assertTrue(answer["drafted"])
+        self.assertIn("did not ask", answer["why"])
+
+    def test_a_send_records_both_halves_of_the_thread(self):
+        self.voipms()
+        os.environ["HEYPHONY_SEND"] = "allowed"
+        seen = {}
+
+        def accept(request):
+            seen["request"] = request
+            return 200, '{"status":"success"}'
+
+        with tempfile.TemporaryDirectory() as room:
+            path = pathlib.Path(room) / "inbox.jsonl"
+            answer = self.outbox.send("voip.ms", "+15559990000", "+15551234567", "confirming tuesday",
+                                      allow=True, path=path, opener=accept)
+            self.assertTrue(answer["sent"], answer)
+            self.assertTrue(answer["stored"])
+            rows = inbox.read(path)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["direction"], "out")
+            self.assertEqual(rows[0]["recipient"], "+15551234567")
+            self.assertEqual(rows[0]["body"], "confirming tuesday")
+        self.assertIn("sendSMS", seen["request"]["url"])
+
+    def test_a_provider_that_cannot_send_names_the_ones_that_can(self):
+        os.environ["HEYPHONY_SEND"] = "allowed"
+        answer = self.outbox.send("anveo", "+15559990000", "+15551234567", "hi", allow=True)
+        self.assertFalse(answer["sent"])
+        self.assertEqual(answer["providers_with_a_send_path"],
+                         ["flowroute", "signalwire", "voip.ms"])
+
+    def test_a_list_and_a_wall_of_text_are_both_refused(self):
+        self.voipms()
+        os.environ["HEYPHONY_SEND"] = "allowed"
+        listed = self.outbox.send("voip.ms", "+15559990000", "+15551234567,+15559998888", "hi",
+                                  allow=True)
+        self.assertFalse(listed["sent"])
+        self.assertIn("one recipient", listed["why"])
+        wall = self.outbox.send("voip.ms", "+15559990000", "+15551234567", "x" * 1601, allow=True)
+        self.assertFalse(wall["sent"])
+        self.assertIn("1600", wall["why"])
+        empty = self.outbox.send("voip.ms", "+15559990000", "+15551234567", "   ", allow=True)
+        self.assertFalse(empty["sent"])
+
+    def test_a_rejected_send_says_what_the_provider_said(self):
+        self.voipms()
+        os.environ["HEYPHONY_SEND"] = "allowed"
+        answer = self.outbox.send("voip.ms", "+15559990000", "+15551234567", "hi", allow=True,
+                                  opener=lambda request: (400, '{"status":"invalid dst"}'))
+        self.assertFalse(answer["sent"])
+        self.assertEqual(answer["status"], 400)
+        self.assertIn("invalid dst", answer["body"])
+
+    def test_the_command_drafts_by_default_and_explains_a_missing_sender(self):
+        from src.runner import cli as telephony_cli
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = telephony_cli.main(["send", "--to", "+15551234567", "--text", "hi"])
+        self.assertEqual(code, 1)
+        self.assertIn("HEYPHONY_SIP_DID", buffer.getvalue())
+
+        self.voipms()
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = telephony_cli.main(["send", "--to", "+15551234567", "--text", "hi",
+                                       "--from", "+15559990000"])
+        answer = json.loads(buffer.getvalue())
+        self.assertEqual(code, 1)
+        self.assertFalse(answer["sent"])
+        self.assertTrue(answer["drafted"])
+
+
+class TestWhatThePageRefusesToClaim(unittest.TestCase):
+    """the owner's rule: no 2fa promise, and no pool whose reputation could be somebody else's."""
+
+    readme = ROOT / "readme.md"
+    outgoing = ROOT / "src/manage/outgoing/readme.md"
+
+    def test_the_page_names_the_2fa_claim_it_is_declining_to_make(self):
+        text = self.readme.read_text()
+        for needle in ("the 2fa claim, which we are not making", "we do not promise a 2fa path",
+                       "auto blocked", "banks and social media", "adversarial detection",
+                       "sybil", "outright prohibition", "disparate impact",
+                       "not a verdict on this package"):
+            self.assertIn(needle, text, f"the page lost {needle!r}")
+
+    def test_the_page_says_there_is_no_pool_and_no_shared_reputation(self):
+        text = self.readme.read_text()
+        for needle in ("we do not hold numbers in a pool", "no shared inventory",
+                       "bought in your name from a provider you chose"):
+            self.assertIn(needle, text, f"the pool claim lost {needle!r}")
+
+    def test_the_page_no_longer_claims_outbound_never_leaves(self):
+        text = self.readme.read_text()
+        self.assertNotIn("outbound is a draft", text)
+        self.assertIn("one message at a time", text)
+        self.assertIn("HEYPHONY_SEND=allowed", text)
+        self.assertIn("a campaign is a different product", text)
+
+    def test_the_outgoing_page_states_the_same_rules_the_code_enforces(self):
+        text = self.outgoing.read_text()
+        for needle in ("HEYPHONY_SEND=allowed", "one recipient", "no half configuration",
+                       "the terms are the operator's", "mms is refused", "verified: false",
+                       "direction: \"out\""):
+            self.assertIn(needle, text, f"the outgoing page lost {needle!r}")
+        self.assertNotIn("today, nothing leaves", text, "the lane sends now, so say so")
+
+    def test_neither_page_picked_up_an_em_dash_or_a_cloud_farm(self):
+        for page in (self.readme, self.outgoing):
+            text = page.read_text()
+            self.assertNotIn("\u2014", text, f"{page.parent.name} has an em dash")
+            self.assertNotIn("phone farm", text.lower())
 
 
 if __name__ == "__main__":
