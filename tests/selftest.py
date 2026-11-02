@@ -244,7 +244,7 @@ class TestThePagesSayHowToGetIt(unittest.TestCase):
 
     def test_the_planned_branches_are_named_as_planned(self):
         text = self.root_readme.read_text()
-        for needle in ("`comms`", "omnimeetings", "makeacall", "only `main` exists today"):
+        for needle in ("`comms`", "omnimeetings", "callheavy", "only `main` exists today"):
             self.assertIn(needle, text, f"the branch table lost {needle!r}")
 
 

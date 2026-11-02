@@ -50,7 +50,7 @@ the command is the same everywhere; what changes is which computer holds the reg
 | `main` | heyphony: the number, the inbox, the install |
 | `comms` | everything that is not heyphony: the umbrella and the rest of the stack (mail, imessage, whatsapp, signal, telegram, slack, discord) |
 | `omnimeetings` | the live half (google meet, zoom, teams), joining and speaking and sharing a screen |
-| `makeacall` | goal oriented calling, with [heycall-e](https://heycall-e.com) integrated |
+| `callheavy` | goal oriented calling, with [call-e](https://heycall-e.com) folded in |
 
 a number is useful on its own, which is why it gets the first branch and the working code. the other three are places to put the rest when they arrive, and saying they are planned is more honest than a folder with a readme and no lane behind it.
 
