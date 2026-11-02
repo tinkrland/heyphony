@@ -18,9 +18,13 @@ so this is not a node library, and calling it one would be a small lie that cost
 
 the url install is the one to reach for when the answer has to be a single line, because it is the only path that needs neither node nor git. it downloads the repo tarball into `~/.local/share/heyphony/app`, links one shim into `~/.local/bin`, checks the python version before it starts, and installs nothing into a system directory. re-running it is how you upgrade. `HEYPHONY_HOME`, `HEYPHONY_BIN` and `HEYPHONY_REF` move those three assumptions if they do not fit.
 
-### what is not true yet
+### what is true, and how it was proved
 
-honesty first, because an install page is where a person finds out the hard way. **nothing is published to the npm registry.** the name `heyphony` is unheld at the time of writing (the registry answers 404 for it), and `npm publish` from this folder is the whole ceremony when the owner wants it. until then `npm i -g heyphony` and `npx heyphony` are the two rows in that table that will 404, and the url, the clone and the tarball are the three that work today. when the publish does happen it is `npm run preflight` and then `npm publish`: the preflight packs a real tarball, installs it into a throwaway prefix and runs it before anything reaches a registry, and `npm/publish.md` is the whole runbook for the day, including the four things a publish makes permanent.
+`heyphony@0.2.0` is on the npm registry, published 2026-11-03. so `npm i -g heyphony` and `npx heyphony` are live routes rather than the two rows that 404. the proof was not the publish command returning zero: it was a clean prefix installing the tarball from the registry and the installed command answering 0.2.0, and `npx heyphony@latest --version` doing the same in an empty home.
+
+a first publish is not instant on npm. a brand new package name goes through staged publishing, which claims the name with a `0.0.0-stage` placeholder while the real tarball is scanned, and the version appears a couple of minutes later. `npm publish` run again during that window answers 409, which is the registry saying the version is already staged rather than lost. the whole sequence, and what the next release has to do differently, is in [publish.md](publish.md).
+
+what is still not true: this package ships the code and not the microphone, and nothing here has placed a real call yet. that has not changed.
 
 the other thing worth knowing: a github install such as `npm i -g github:tinkrland/heyphony` does not work, and it is not an oversight. that form wants `package.json` at the repo root, and this repo keeps the code at the root and the packaging in `npm/`, because the code is the point and the packaging is scaffolding around it. use the tarball or the url.
 

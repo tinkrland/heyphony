@@ -219,9 +219,11 @@ class TestThePagesSayHowToGetIt(unittest.TestCase):
 
     def test_the_page_does_not_claim_a_publish_that_has_not_happened(self):
         text = self.root_readme.read_text()
-        self.assertIn("nothing here is on the npm registry yet", text)
+        self.assertIn("the package is on the npm registry", text,
+                      "it is published, so the page says so and names the version")
+        self.assertIn("heyphony@0.2.0", text)
         npm_page = self.npm_readme.read_text()
-        self.assertIn("nothing is published to the npm registry", npm_page.lower(),
+        self.assertIn("is on the npm registry", npm_page.lower(),
                       "the install page must not imply `npm i -g heyphony` works today")
 
     def test_the_package_is_not_sold_as_a_library(self):

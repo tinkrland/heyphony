@@ -76,3 +76,24 @@ npm owner add <collaborator>            # if anyone else should be able to publi
 - **no CI publish.** automating it needs the granular token as a repository secret plus a workflow, and a token with publish rights sitting in a repo is a decision rather than a step. do it after the first manual publish proves the artifact.
 - **no provenance attestation.** `npm publish --provenance` ties a tarball to a public GitHub Actions run, which is the right thing eventually and needs the CI above.
 - **no automatic version bumping.** one file, bumped by hand, checked by a machine. for a package that ships 250 kB of python, that is the correct amount of ceremony.
+
+## what happened on 2026-11-03, recorded because it will happen again
+
+`heyphony@0.2.0` went out. `npm run preflight` was green and `npm publish` returned zero, and then the registry answered 404 for `heyphony@0.2.0` for two minutes while `npm view heyphony` showed a package called `0.0.0-stage` described as "Temporary package placeholder for staged publishing".
+
+that is staged publishing, npm's gate on a brand new package name: the placeholder claims the name publicly, the real tarball is scanned, and the version lands when the scan finishes. a second `npm publish` in that window answers `409 Cannot publish over previously staged version "0.2.0"`, which reads like a failure and is actually the registry saying the version is already queued. `npm stage list` showed nothing at any point, so the placeholder in `npm view` was the only signal, and the CLI at 10.x has no `npm stage` subcommand at all because the staging happens server side.
+
+what to do when it happens again: publish once, wait, and watch `npm view heyphony version`. do not re-run the publish. the version number is spent the moment it stages, so 0.2.0 can never be published again, only superseded.
+
+## the proof, and how to redo it
+
+the publish command returning zero is not proof. these four are:
+
+```
+npm view heyphony version dist-tags          # 0.2.0, latest: 0.2.0
+npm i -g --prefix /tmp/regiq heyphony@latest # one package, no errors
+/tmp/regiq/bin/heyphony --version            # 0.2.0
+npx heyphony@latest --version                # 0.2.0, in an empty home
+```
+
+the tag is the other half: `git tag v0.2.0 && git push origin v0.2.0`, so what is on the registry can be traced to a commit rather than to a working tree.
