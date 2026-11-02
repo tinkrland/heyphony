@@ -1,0 +1,41 @@
+{
+  "name": "heyphony",
+  "version": "0.2.0",
+  "description": "give your ai agent a phone number of its own: a sip did, an inbox that survives the machine sleeping, and the rails a number unlocks",
+  "keywords": [
+    "ai-agent",
+    "telephony",
+    "sip",
+    "did",
+    "voip",
+    "sms",
+    "cli"
+  ],
+  "bin": {
+    "heyphony": "bin/heyphony.js"
+  },
+  "files": [
+    "bin/",
+    "python/",
+    "readme.md",
+    "agents.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "bundle": "node scripts/bundle.js",
+    "prepack": "node scripts/bundle.js --strict",
+    "prepare": "node scripts/bundle.js",
+    "test": "node scripts/bundle.js --strict && node bin/heyphony.js --version"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tinkrland/heyphony.git",
+    "directory": "npm"
+  },
+  "homepage": "https://github.com/tinkrland/heyphony/tree/main/npm",
+  "bugs": {
+    "url": "https://github.com/tinkrland/heyphony/issues"
+  }
+}

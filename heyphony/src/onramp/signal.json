@@ -1,0 +1,99 @@
+{
+  "name": "signal",
+  "why": "signal wants one thing: a number. heyphony holds one and catches its texts, so the signup code that would normally need a phone in your hand arrives in an inbox an agent can read. that is the whole trick, and it is why this getter lives in the package with the number.",
+  "flow": [
+    "signup on a durable but idle android spawnable, with the did as the number",
+    "the sms code lands at heyphony instead of a handset, and the agent reads it on the desktop",
+    "the phone owns the account and can then be parked: it stays the identity, not a babysitter",
+    "the desktop links to it as a secondary device, so the agent's own machine is a signal endpoint"
+  ],
+  "needs": {
+    "provisioned_did": true,
+    "android_spawnable": true,
+    "docker": true,
+    "human_qr_scan": true
+  },
+  "paths": {
+    "phone-signup": {
+      "what": "the android spawnable becomes the phone of record, and heyphony reads the code",
+      "needs_number": true,
+      "router": "register-number",
+      "why_preferred": "a phone-shaped device doing the signup is the shape signal expects, and the device being durable-but-idle costs nothing: it holds the identity, it does not have to stay awake",
+      "steps": [
+        {
+          "about": "install signal on the spawnable and enter the did as the number",
+          "cmd": "adb install org.thoughtcrime.securesms  # or the app store, on the spawnable",
+          "human": false
+        },
+        {
+          "about": "signal texts a code to the did; it never reaches a handset, it reaches heyphony",
+          "cmd": "heyphony open messages --unread --since 0.05",
+          "human": false,
+          "note": "read the code from the inbox, not from a phone, because the phone is ours and idle"
+        },
+        {
+          "about": "type the code into the spawnable and finish signup",
+          "human": true,
+          "cmd": "adb shell input text <code>"
+        }
+      ]
+    },
+    "link-desktop": {
+      "what": "the agent's own desktop joins as a linked device, so it can send and read",
+      "needs_number": false,
+      "why_preferred": "linking keeps one identity: the phone stays primary and the desktop is a secondary device, which is exactly the relationship a person has with their laptop",
+      "steps": [
+        {
+          "about": "ask the bridge for a device qr, named for the machine it belongs to",
+          "cmd": "open $SIGNAL_CLI_URL/v1/qrcodelink?device_name=heyphony-desktop",
+          "human": false
+        },
+        {
+          "about": "scan it from the phone that owns the account",
+          "cmd": "signal > settings > linked devices > plus",
+          "human": true
+        }
+      ]
+    },
+    "register-number": {
+      "what": "register the did straight from signal-cli, with no phone of record at all",
+      "needs_number": true,
+      "gate_env": "HEYPHONY_SIP_DID",
+      "why_risky": "signal is notably less strict about voip numbers than whatsapp or google, so this can work, but there is no device of record behind it. expect a challenge, never a promise",
+      "steps": [
+        {
+          "about": "register, using the sms that heyphony catches",
+          "cmd": "curl -s -X POST $SIGNAL_CLI_URL/v1/register/$HEYPHONY_SIP_DID",
+          "note": "if a captcha appears it has to be solved in a browser; that is signal's call, not a bug here"
+        }
+      ]
+    }
+  },
+  "install": [
+    {
+      "about": "the unofficial bridge, as a container so a host needs no jre",
+      "cmd": "docker run -d --name signal-api --restart=always -p 8080:8080 -v $HOME/.local/share/signal-api:/home/.local/share/signal-cli -e 'MODE=native' bbernhard/signal-cli-rest-api",
+      "source": "verified from the image's own readme, nov 2026: MODE=native, /v1/qrcodelink, /v2/send"
+    }
+  ],
+  "env": {
+    "SIGNAL_CLI_URL": "http://127.0.0.1:8080"
+  },
+  "verify": [
+    {
+      "about": "the bridge answers and names the signal-cli it runs",
+      "cmd": "curl -s $SIGNAL_CLI_URL/v1/about"
+    },
+    {
+      "about": "one message from the phone's own chat list, read at the desktop",
+      "cmd": "heyphony open messages --since 1"
+    }
+  ],
+  "refused": {
+    "bot-api": "signal has no bot or app api. a getter that claims one is selling you a wrapper",
+    "bulk": "signal treats automation-heavy accounts as spam, so this rail is for people who talk to the agent",
+    "scraping-the-desktop-app": "driving the signal desktop binary is not a rail, it is a screenshot with extra steps"
+  },
+  "state": "designed",
+  "evidence": "install and link commands verified against the image's own readme; nothing has been linked on this host"
+}

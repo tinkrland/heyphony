@@ -1,0 +1,18 @@
+#!/bin/sh
+# heyphony, from a clone. this is the shim the repo ships and the one install.sh links into.
+#
+# it resolves symlinks because that is the install shape: ~/.local/bin/heyphony points here, and a
+# shim that trusts $0 would then look for the package in ~/.local instead of in the clone.
+set -eu
+
+self="$0"
+while [ -L "$self" ]; do
+  target=$(readlink "$self")
+  case "$target" in
+    /*) self="$target" ;;
+    *) self="$(cd "$(dirname "$self")" && pwd)/$target" ;;
+  esac
+done
+here=$(cd "$(dirname "$self")/.." && pwd)
+
+PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}" exec "${HEYPHONY_PYTHON:-python3}" -m heyphony.src.runner.cli "$@"

@@ -1,0 +1,91 @@
+{
+  "name": "telegram",
+  "why": "telegram is the one rail on the list that does not need a number at all, which is why it is second and why it is split in two. a bot is a token and a webhook; a user account is a person, and a person needs a number. the bot half belongs to the umbrella lane that already reads it, and the number half belongs here, because catching the signup code is the whole trick this package owns.",
+  "flow": [
+    "decide which rail you actually want: a bot that answers in groups and channels, or an account that reads and talks as a user",
+    "the bot rail is a token from botfather and a webhook with a secret, and needs no number",
+    "the user rail needs a number, and the sms code goes to heyphony instead of a handset",
+    "whoever signs up holds the identity: a user account is a person, and telegram treats it as one"
+  ],
+  "needs": {
+    "provisioned_did": false,
+    "bot_token": true,
+    "desktop_or_bridge": true,
+    "human_human_chat": true
+  },
+  "paths": {
+    "bot": {
+      "what": "a bot token, a webhook url and a secret header: no number, no phone, no sim",
+      "needs_number": false,
+      "gate_env": "TELEGRAM_BOT_TOKEN",
+      "why_preferred": "it is the rail telegram actually supports for programs. no number to burn, no account to lose, revocable with one command, and the umbrella lane already reads it",
+      "steps": [
+        {
+          "about": "create the bot with botfather and keep the token he hands back",
+          "cmd": "open https://t.me/BotFather  # /newbot, name it, paste the token into TELEGRAM_BOT_TOKEN",
+          "human": true,
+          "note": "the token is the credential, so it lives in the secret store, never in a readme or a shell history"
+        },
+        {
+          "about": "point telegram at the catcher, with a secret header the lane checks in constant time",
+          "cmd": "curl -s \"https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook\" -d \"url=https://<host>:8098/telegram\" -d \"secret_token=$TELEGRAM_WEBHOOK_SECRET\""
+        },
+        {
+          "about": "confirm what telegram thinks the webhook is",
+          "cmd": "curl -s \"https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo\""
+        }
+      ]
+    },
+    "user-account": {
+      "what": "a telegram account as a person, signed up on the did and read from a desktop session",
+      "needs_number": true,
+      "gate_env": "HEYPHONY_SIP_DID",
+      "why_risky": "telegram asks more of a number than signal does, and a voip did is a number it has seen before. expect a chat, a wait, or a refusal, and never treat the account as replaceable: losing it loses the contacts",
+      "steps": [
+        {
+          "about": "install the desktop app on the machine that will hold the session",
+          "cmd": "apt install telegram-desktop  # or the flatpak, on a host with a display"
+        },
+        {
+          "about": "enter the did as the number; the code goes to heyphony, not to a handset",
+          "cmd": "heyphony open messages --unread --since 0.05",
+          "note": "telegram sends the code in-app if another session is already signed in, and by sms only otherwise"
+        },
+        {
+          "about": "type the code, and the two step password if the account has one",
+          "human": true,
+          "cmd": "the app's own login screen"
+        }
+      ]
+    }
+  },
+  "install": [
+    {
+      "about": "the bot rail needs nothing installed: it is https calls to telegram's own api",
+      "cmd": "curl -s \"https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getMe\"",
+      "source": "telegram bot api: getMe, setWebhook with secret_token, getWebhookInfo"
+    }
+  ],
+  "env": {
+    "TELEGRAM_BOT_TOKEN": "",
+    "TELEGRAM_WEBHOOK_SECRET": ""
+  },
+  "verify": [
+    {
+      "about": "the token is real and names the bot it belongs to",
+      "cmd": "curl -s \"https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getMe\""
+    },
+    {
+      "about": "a message from a whitelisted chat arrives in the lane, not just in a curl answer",
+      "cmd": "comms watch telegram  # or: bin/comms inbox --channel telegram"
+    }
+  ],
+  "refused": {
+    "user-api-id-as-a-bot": "an mtproto api id is not a bot token: using one binds the account behind it to everything the client does",
+    "bulk-broadcast": "a bot that messages strangers is spam with a public api, and telegram blocks it faster than the carriers do",
+    "group-scraping": "reading every member of a group to find people to talk to is the same act as buying a list",
+    "second-account-after-a-ban": "a new number after a ban is the same person wearing a second face, which is not a workaround, it is a rerun"
+  },
+  "state": "designed",
+  "evidence": "method names and the secret_token argument are telegram's own bot api; nothing has been created or linked here, and the user account path has not been attempted with a voip did"
+}
