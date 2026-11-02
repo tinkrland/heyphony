@@ -1195,7 +1195,7 @@ class TestTheInstalledCommandCanSayWhatItIs(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         import src
         self.assertEqual(done.stdout.strip(), src.__version__)
-        self.assertIn('"version", action="version"', (ROOT / "src/runner/cli.py").read_text(),
+        self.assertIn('"--version", action="version"', (ROOT / "src/runner/cli.py").read_text(),
                       "argparse is what makes --version work with no terminal and no config")
 
     def test_the_installer_asks_the_command_it_installed(self):
