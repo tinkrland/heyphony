@@ -20,7 +20,7 @@ the url install is the one to reach for when the answer has to be a single line,
 
 ### what is not true yet
 
-honesty first, because an install page is where a person finds out the hard way. **nothing is published to the npm registry.** the name `heyphony` is unheld at the time of writing (the registry answers 404 for it), and `npm publish` from this folder is the whole ceremony when the owner wants it. until then `npm i -g heyphony` and `npx heyphony` are the two rows in that table that will 404, and the url, the clone and the tarball are the three that work today.
+honesty first, because an install page is where a person finds out the hard way. **nothing is published to the npm registry.** the name `heyphony` is unheld at the time of writing (the registry answers 404 for it), and `npm publish` from this folder is the whole ceremony when the owner wants it. until then `npm i -g heyphony` and `npx heyphony` are the two rows in that table that will 404, and the url, the clone and the tarball are the three that work today. when the publish does happen it is `npm run preflight` and then `npm publish`: the preflight packs a real tarball, installs it into a throwaway prefix and runs it before anything reaches a registry, and `npm/publish.md` is the whole runbook for the day, including the four things a publish makes permanent.
 
 the other thing worth knowing: a github install such as `npm i -g github:tinkrland/heyphony` does not work, and it is not an oversight. that form wants `package.json` at the repo root, and this repo keeps the code at the root and the packaging in `npm/`, because the code is the point and the packaging is scaffolding around it. use the tarball or the url.
 

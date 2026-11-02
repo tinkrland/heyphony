@@ -87,3 +87,18 @@ fs.rmSync(path.join(pkgDir, "python"), { recursive: true, force: true });
 copyTree(source, target);
 const files = countFiles(target);
 console.log(`bundle: ${files} files copied into python/heyphony, version ${pyVersion}`);
+
+// the licence travels with the tarball, and npm only looks inside the package folder for it. the repo
+// keeps the one copy at the root, so it is copied here for the same reason the python is: one source,
+// one direction. a missing licence is a warning rather than a stop, unless strict is on.
+const licenceSource = ["LICENSE", "LICENSE.md", "LICENCE"].map((name) => path.join(repoRoot, name))
+  .find((candidate) => fs.existsSync(candidate));
+if (licenceSource) {
+  fs.copyFileSync(licenceSource, path.join(pkgDir, "LICENSE"));
+  console.log(`bundle: ${path.basename(licenceSource)} copied beside the package`);
+} else {
+  fail(
+    "no LICENSE at the repo root, so the tarball ships without one",
+    "npm publishes happily without a licence field and it is the one field a lawyer reads first"
+  );
+}

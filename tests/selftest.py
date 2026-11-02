@@ -1060,6 +1060,56 @@ class TestTheGuidedSetup(unittest.TestCase):
         self.assertIn("lanes", json.loads(text))
 
 
+class TestThePackageIsPublishable(unittest.TestCase):
+    """what a registry publish needs, checked as data so the runbook cannot drift from the tree."""
+
+    npm = ROOT / "npm"
+    manifest = json.loads((ROOT / "npm" / "package.json").read_text())
+    page = ROOT / "npm" / "publish.md"
+
+    def test_the_manifest_carries_the_fields_a_registry_reads(self):
+        self.assertEqual(self.manifest["license"], "MIT")
+        self.assertIn("tinkrland", self.manifest["author"])
+        self.assertEqual(self.manifest["scripts"]["prepublishOnly"], "npm test",
+                         "a publish must run the suite, not hope")
+        self.assertEqual(self.manifest["scripts"]["preflight"], "node scripts/preflight.js")
+        self.assertNotIn("private", self.manifest)
+
+    def test_the_licence_exists_once_and_is_copied_rather_than_duplicated(self):
+        text = (ROOT / "LICENSE").read_text()
+        self.assertTrue(text.startswith("MIT License"))
+        self.assertIn("tinkrland", text.split("\n")[2])
+        bundle = (self.npm / "scripts" / "bundle.js").read_text()
+        self.assertIn("copyFileSync(licenceSource", bundle)
+        self.assertIn('path.join(pkgDir, "LICENSE")', bundle)
+        self.assertIn("npm/LICENSE", (ROOT / ".gitignore").read_text(),
+                      "the copy is generated, so it must not be committed twice")
+
+    def test_the_maintainer_page_is_kept_out_of_the_tarball(self):
+        files = self.manifest.get("files") or []
+        self.assertNotIn("publish.md", files)
+        self.assertNotIn("scripts/", files)
+        self.assertIn("stays out of the tarball", self.page.read_text())
+
+    def test_the_runbook_names_the_ceremony_and_the_permanent_parts(self):
+        text = self.page.read_text()
+        for needle in ("npm run preflight", "npm publish", "npm login --auth-type=web",
+                       "granular access token", "72 hour", "npm deprecate", "--access public",
+                       "cannot be reused", "npm/readme.md", "npx heyphony@latest"):
+            self.assertIn(needle, text, f"the runbook lost {needle!r}")
+
+    def test_the_preflight_checks_the_thing_that_actually_ships(self):
+        script = (self.npm / "scripts" / "preflight.js").read_text()
+        for needle in ('["pack"', '"install"', '"-g"', '"--prefix"', '"whoami"',
+                       "registry.npmjs.org", "404", '"--version"', '"status"'):
+            self.assertIn(needle, script, f"preflight stopped checking {needle!r}")
+        self.assertIn("temp", script.lower(), "the install check must not touch the real prefix")
+
+    def test_the_runbook_and_the_licence_have_no_em_dash(self):
+        for page in (self.page, ROOT / "LICENSE"):
+            self.assertNotIn("\u2014", page.read_text(), f"{page.name} has an em dash")
+
+
 if __name__ == "__main__":
     suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])
     result = unittest.TextTestRunner(verbosity=0).run(suite)
