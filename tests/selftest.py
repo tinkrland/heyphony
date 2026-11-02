@@ -1410,6 +1410,62 @@ class TestWhatThePageRefusesToClaim(unittest.TestCase):
             self.assertNotIn("phone farm", text.lower())
 
 
+class TestTheOutboundPathIndex(unittest.TestCase):
+    """every provider the repo lists has an outbound answer, even when the answer is no."""
+
+    def setUp(self):
+        from src.manage.outgoing import send as outbox
+        from src import providers
+        self.out = outbox
+        self.providers = providers
+
+    def test_the_index_covers_every_provider_the_repo_knows(self):
+        self.assertEqual(set(self.out.path_index()), set(self.providers.PROVIDERS),
+                         "a provider in the table with no outbound row is the silent gap")
+
+    def test_every_row_names_a_state_and_a_docs_link(self):
+        for name, row in self.out.path_index().items():
+            self.assertIn(row["state"], {"wired", "gateway not wired", "no http path",
+                                         "no outbound sms claim"}, name)
+            self.assertTrue(row["docs"].startswith("http"), f"{name} has no docs link")
+            self.assertTrue(row["why"].strip(), f"{name} has no reason")
+
+    def test_three_are_wired_and_the_rest_say_why_not(self):
+        wired = sorted(n for n, r in self.out.path_index().items() if r["state"] == "wired")
+        self.assertEqual(wired, ["flowroute", "signalwire", "voip.ms"])
+        self.assertEqual(self.out.path_index()["jmp.chat"]["state"], "no http path")
+        for name in ("anveo", "questblue", "bulkvs"):
+            self.assertEqual(self.out.path_index()[name]["state"], "gateway not wired")
+        for name in ("voyced", "voxacall", "bitcall"):
+            self.assertEqual(self.out.path_index()[name]["state"], "no outbound sms claim")
+
+    def test_a_refusal_carries_the_state_and_the_docs(self):
+        answer = self.out.send("anveo", "+15551234567", "+15559998888", "hello")
+        self.assertFalse(answer["sent"])
+        self.assertEqual(answer["state"], "gateway not wired")
+        self.assertIn("anveo.com", answer["docs"])
+        self.assertIn("guessing them", answer["why"])
+
+    def test_an_unknown_provider_is_named_as_unknown(self):
+        answer = self.out.send("nonesuch", "+15551234567", "+15559998888", "hello")
+        self.assertEqual(answer["state"], "unknown")
+        self.assertFalse(answer["sent"])
+
+    def test_the_cli_lists_the_paths(self):
+        done = subprocess.run([str(ROOT / "bin" / "heyphony"), "send", "--paths"],
+                              capture_output=True, text=True, timeout=90)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        listed = json.loads(done.stdout)
+        self.assertEqual(len(listed), len(self.providers.PROVIDERS))
+
+    def test_the_page_names_the_software_it_owes_nothing_to(self):
+        text = (ROOT / "providers/readme.md").read_text()
+        for needle in ("belledonne communications sarl", "linphone", "baresip",
+                       "not a partnership", "`heyphony send --paths`"):
+            self.assertIn(needle, text, f"the affiliation section lost {needle!r}")
+
+
+
 if __name__ == "__main__":
     suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])
     result = unittest.TextTestRunner(verbosity=0).run(suite)

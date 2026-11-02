@@ -40,7 +40,14 @@ the pages are notes from reading each vendor's own documentation, not reviews, a
 
 ## we are not affiliated with any of them
 
-none of the vendors above pay for this, none of them are partners, and nothing here is a referral. no links carry an identifier, no prices are quoted on their behalf, and where a price appears it is the one the vendor published on the day it was read, which is a number that moves.
+none of the vendors above pay for this, none of them are partners, and nothing here is a referral. the same is true of every piece of software this repo leans on, which is worth saying out loud because a page that names a client as often as this one does can start to look like a partnership:
+
+- **linphone**, by belledonne communications sarl, is the softphone whose config format this repo writes. the authors have never heard of this repo and owe it nothing. the rail works because their format is documented, not because of an arrangement.
+- **baresip**, by its own authors, is the host client the call lane drives over a json socket. same relationship: a documented protocol and a licence we read, nothing more.
+- **the carriers themselves**, voip.ms, flowroute, anveo, signalwire, questblue, bulkvs, jmp.chat, voyced, voxacall and bitcall, are rows in a table. naming a vendor is a description of their published api, not a partnership, an endorsement or a reseller agreement.
+- **the platforms the number then gets used on** are not involved at all. an agent texting a signal contact or reaching a zoom invite is using software nobody in this repo represents.
+
+the send rail follows the same rule. three providers are wired to the api call their own docs describe, and the seven that are not say so in `heyphony send --paths` with the reason and the docs link, because a page that lists ten vendors should not imply ten doors are open. no links carry an identifier, no prices are quoted on their behalf, and where a price appears it is the one the vendor published on the day it was read, which is a number that moves.
 
 the same applies to what the notes claim a vendor can do. a capability is written down because their own documentation says it, and the flags that matter stay unverified until somebody pays for a number and watches a message arrive. documentation is not experience, and a vendor can change a feature out from under a page like this one without telling anybody.
 

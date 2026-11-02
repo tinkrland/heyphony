@@ -157,6 +157,50 @@ def as_curl(request):
     return " ".join(parts)
 
 
+# the ten providers the repo knows about, and what each one's outbound story actually is. three are
+# wired above; the rest are named here rather than left to a generic refusal, because "that provider
+# does not work" and "the parameter names for that gateway are behind a portal" are different
+# sentences and only one of them is a bug.
+PATHS = {
+    "voip.ms": {"state": "wired", "docs": "https://voip.ms/m/api.php",
+                "why": "rest.php with method=sendSMS, one call per message"},
+    "flowroute": {"state": "wired", "docs": "https://developer.flowroute.com",
+                  "why": "POST /v2.2/messages, json api envelope, basic auth"},
+    "signalwire": {"state": "wired", "docs": "https://signalwire.com/docs",
+                   "why": "laml Messages.json per space, form body, basic auth"},
+    "anveo": {"state": "gateway not wired", "docs": "https://www.anveo.com/api.asp",
+              "why": "anveo publishes an sms http gateway and the parameter names sit behind their "
+                     "api portal, so guessing them is the one thing this repo refuses to do. paste "
+                     "the gateway url from the account page and it is a ten line addition"},
+    "questblue": {"state": "gateway not wired", "docs": "https://docs.questblue.com",
+                  "why": "smsv2 is documented for inbound delivery, and the outbound call lives in "
+                         "their portal docs rather than on a page this repo could read"},
+    "bulkvs": {"state": "gateway not wired",
+               "docs": "https://portal.bulkvs.com/api/v1.0/documentation",
+               "why": "their api reference renders behind a login, so the message fields are unread "
+                      "from here"},
+    "jmp.chat": {"state": "no http path", "docs": "https://jmp.chat",
+                 "why": "texts travel as xmpp messages to your jid, so there is no http send to call "
+                        "and no sip to register. it is a real lane, and not this one"},
+    "voyced": {"state": "no outbound sms claim", "docs": "https://voyced.eu",
+               "why": "their api is in controlled testing and no outbound sms is claimed"},
+    "voxacall": {"state": "no outbound sms claim", "docs": "https://voxacall.me",
+                 "why": "sip trunking with no public sms api"},
+    "bitcall": {"state": "no outbound sms claim", "docs": "https://docs.bitcall.io",
+                "why": "their api is otp, esim and hlr lookups, and inbound dids are still coming soon"},
+}
+
+
+def path_index():
+    """every provider this repo knows, with its outbound state, so nothing is silently unsupported."""
+    return {name: dict(row) for name, row in PATHS.items()}
+
+
+def path_state(provider):
+    """what this provider's outbound story is, or None for a name the repo has never heard of."""
+    return PATHS.get(provider)
+
+
 def _http(request):
     """the only place a request actually leaves. returns (status, body text)."""
     data = request["body"].encode() if request.get("body") else None
@@ -193,11 +237,14 @@ def send(provider, from_number, to, text, allow=False, store=True, path=None, op
         return {"sent": False, "why": "one recipient, in e164, per call",
                 "got": to, "rule": "this rail has no way to send a list, on purpose"}
     if sender(provider) is None:
+        known = path_state(provider)
         return {"sent": False, "provider": provider,
-                "why": "no documented outbound path here",
+                "why": (known["why"] if known else "not a provider this repo knows"),
+                "state": (known["state"] if known else "unknown"),
+                "docs": (known["docs"] if known else None),
                 "providers_with_a_send_path": sorted(SENDERS),
                 "note": "a provider can receive and still have no send rail wired; that is a refusal, "
-                        "not a bug to route around"}
+                        "not a bug to route around. `heyphony send --paths` lists all of them"}
     if len(text) > MAX_CHARS:
         return {"sent": False, "why": f"over {MAX_CHARS} characters is not a text to a person",
                 "chars": len(text)}

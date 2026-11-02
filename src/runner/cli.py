@@ -276,6 +276,14 @@ def cmd_get(args):
 
 def cmd_send(args):
     """one outbound text, drafted by default and sent only when the gate and the flag both agree."""
+    if args.paths:
+        from src.manage.outgoing import send as outbox
+        _out(outbox.path_index())
+        return 0
+    if not args.to or not args.text:
+        _out({"sent": False, "why": "send needs --to and --text, or --paths to list the providers",
+              "usage": 'heyphony send --to +15551234567 --text "on my way" --send'})
+        return 1
     from src.manage.outgoing import send as outbox
     provider = args.provider or os.environ.get("HEYPHONY_SIP_PROVIDER") or "voip.ms"
     from_number = args.sender or os.environ.get("HEYPHONY_SIP_DID")
@@ -390,10 +398,12 @@ def build_parser():
     hk.add_argument("--apply", action="store_true", help="set it over the provider's api, when that exists")
     hk.set_defaults(func=cmd_hooks)
     s = sub.add_parser("send", help="one outbound text: drafted unless --send, gated by HEYPHONY_SEND")
-    s.add_argument("--to", required=True, help="one recipient in e164. a list is refused, on purpose")
-    s.add_argument("--text", required=True, help="the body. 1600 characters is the ceiling")
+    s.add_argument("--to", help="one recipient in e164. a list is refused, on purpose")
+    s.add_argument("--text", help="the body. 1600 characters is the ceiling")
     s.add_argument("--from", dest="sender", help="the did this provider holds (or HEYPHONY_SIP_DID)")
     s.add_argument("--provider", help="defaults to HEYPHONY_SIP_PROVIDER, then voip.ms")
+    s.add_argument("--paths", action="store_true",
+                   help="list every provider and what its outbound story is, then stop")
     s.add_argument("--send", action="store_true",
                    help="actually send, which also needs HEYPHONY_SEND=allowed in the environment")
     s.add_argument("--no-store", action="store_true", help="do not record a sent message in the inbox")
