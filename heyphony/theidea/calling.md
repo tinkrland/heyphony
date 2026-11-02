@@ -16,7 +16,7 @@ the first two are solved by the sip client on the host, and they are what `heyph
 
 - **livekit** is the rail for a call that is really a room: two-way audio with room semantics, participants, tracks, and the same stack the meetings lane uses. it is apache-2.0, it runs where you point it, and it is the right answer when the agent is joining something rather than answering a phone. publish the tts track as a participant and the "agent is on the call" problem becomes a participant problem, which livekit already solves.
 
-- **call-e** ([heycall-e.com](https://heycall-e.com)) is the rail we would reach for when the call should be a *conversation* rather than a stream: a hosted voice agent that handles the conversational loop. it is **planned, and parked for v3**, because it is the one rail here that asks you to hand a third party the audio and the reasoning, and that trade should be made deliberately rather than by convenience. nothing is wired to it.
+- **call-e** ([heycall-e.com](https://heycall-e.com)) is the one that made *goal oriented calling* a shape rather than a slogan: a goal goes out, and a transcript plus a structured result comes back. the useful part of that is the task, not the transport, so the idea is borrowed on the `callheavy` branch and the hosted dialler is not: our own client places the call, our own model reads the transcript, and the answer is validated against the schema before anybody trusts it. **this package is not wired to it, and no vendor key is read anywhere.**
 
 ## what exists today, and what does not
 

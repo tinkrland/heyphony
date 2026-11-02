@@ -1,0 +1,16 @@
+#!/bin/sh
+# callheavy, from a clone. the same shim shape as bin/heyphony, and the same reason for resolving
+# symlinks: an install may link this into ~/.local/bin rather than calling it in place.
+set -eu
+
+self="$0"
+while [ -L "$self" ]; do
+  target=$(readlink "$self")
+  case "$target" in
+    /*) self="$target" ;;
+    *) self="$(cd "$(dirname "$self")" && pwd)/$target" ;;
+  esac
+done
+here=$(cd "$(dirname "$self")/.." && pwd)
+
+PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}" exec "${HEYPHONY_PYTHON:-python3}" -m callheavy.src.cli "$@"

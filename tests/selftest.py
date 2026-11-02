@@ -1060,6 +1060,453 @@ class TestTheGuidedSetup(unittest.TestCase):
         self.assertIn("lanes", json.loads(text))
 
 
+class _FakeTransport:
+    """stands in for the socket, so the driver is proven without baresip installed anywhere."""
+
+    def __init__(self, steps):
+        self.steps = list(steps)
+        self.sent = []
+        self.closed = False
+
+    def send(self, message):
+        self.sent.append(message)
+        return message
+
+    def recv(self, timeout=None):
+        if not self.steps:
+            self.closed = True
+            return []
+        step = self.steps.pop(0)
+        return step(self) if callable(step) else step
+
+    def close(self):
+        self.closed = True
+
+
+def _response(ok=True, data=""):
+    def step(fake):
+        return [{"response": True, "ok": ok, "data": data, "token": fake.sent[-1]["token"]}]
+    return step
+
+
+def _events(*types, param=None):
+    return [{"event": "true", "class": "call", "type": name, "param": param} for name in types]
+
+
+class TestTheTaskShape(unittest.TestCase):
+    """the part a hosted tool genuinely did better, implemented here against our own client."""
+
+    def setUp(self):
+        from callheavy.src import task
+        self.t = task
+        self.schema = {"type": "object", "additionalProperties": False,
+                       "required": ["tuesday_confirmed"],
+                       "properties": {"tuesday_confirmed": {"type": "string",
+                                                           "enum": ["yes", "no", "unknown"],
+                                                           "description": "yes when tuesday is held"},
+                                      "callback_needed": {"type": "boolean"}}}
+
+    def test_a_task_says_a_goal_and_the_fields_to_bring_back(self):
+        item = self.t.task("confirm the tuesday cleaning", self.schema, "a yes or a no")
+        self.assertEqual(item["goal"], "confirm the tuesday cleaning")
+        self.assertEqual(item["must_collect"], self.schema)
+        self.assertEqual(item["success"], "a yes or a no")
+
+    def test_an_underdescribed_task_is_told_exactly_what_is_missing(self):
+        missing = self.t.clarifications(self.t.task(""), None)
+        self.assertEqual([entry["needs"] for entry in missing],
+                         ["goal", "phone", "must_collect", "success"])
+        for entry in missing:
+            self.assertIn("flag", entry)
+            self.assertIn("why", entry)
+        self.assertEqual(self.t.clarifications(self.t.task("ask about lunch", self.schema, "a yes"), "+1555"), [])
+
+    def test_an_unsupported_schema_feature_is_refused_before_the_call(self):
+        schema = {"type": "object", "properties": {"when": {"oneOf": [{"type": "string"}]}}}
+        problems = self.t.schema_problems(schema)
+        self.assertEqual(problems[0]["unsupported"], "oneOf")
+        self.assertIn("before", "before the call")
+        self.assertEqual(self.t.schema_problems({"type": "string"})[0]["unsupported"], "root")
+
+    def test_the_validator_accepts_a_good_answer_and_names_a_bad_one(self):
+        self.assertEqual(self.t.validate({"tuesday_confirmed": "yes", "callback_needed": False}, self.schema), [])
+        problems = self.t.validate({"tuesday_confirmed": "maybe", "callback_needed": "yes",
+                                    "invented": 1}, self.schema)
+        seen = {(entry["path"], entry["problem"]) for entry in problems}
+        self.assertIn(("$.tuesday_confirmed", "enum"), seen)
+        self.assertIn(("$.callback_needed", "type"), seen)
+        self.assertIn(("$.invented", "additional"), seen)
+        self.assertIn(("$.tuesday_confirmed", "required"),
+                      {(entry["path"], entry["problem"]) for entry in self.t.validate({}, self.schema)})
+
+    def test_nested_fields_are_validated_where_they_are(self):
+        schema = {"type": "object", "properties": {"slots": {"type": "array", "items": {
+            "type": "object", "required": ["day"], "properties": {"day": {"type": "string"}}}}}}
+        problems = self.t.validate({"slots": [{"day": "tuesday"}, {}]}, schema)
+        self.assertEqual([(p["path"], p["problem"]) for p in problems], [("$.slots[1].day", "required")])
+
+    def test_a_bool_is_not_an_integer_and_an_int_is_not_a_bool(self):
+        self.assertTrue(self.t.validate(True, {"type": "integer"}))
+        self.assertTrue(self.t.validate(1, {"type": "boolean"}))
+
+    def test_the_envelope_has_four_states_and_only_one_of_them_is_an_answer(self):
+        good = self.t.envelope({"tuesday_confirmed": "yes"}, self.schema, transcript=[{"speaker": "bot"}],
+                               outcome="completed")
+        self.assertEqual(good["result_status"], "available")
+        self.assertIsNone(good["error"])
+        self.assertEqual(good["call_outcome"], "completed")
+
+        invalid = self.t.envelope({"tuesday_confirmed": "maybe"}, self.schema)
+        self.assertEqual(invalid["result_status"], "unavailable")
+        self.assertEqual(invalid["error"]["code"], "result_invalid")
+        self.assertIsNone(invalid["result"], "an invalid answer is not handed on as an answer")
+
+        absent = self.t.envelope(None, self.schema)
+        self.assertEqual(absent["error"]["code"], "result_failed")
+
+        broken = self.t.envelope(None, self.schema, error="call_failed", outcome="busy")
+        self.assertEqual(broken["result_status"], "not_applicable")
+        self.assertEqual(broken["call_outcome"], "busy")
+
+    def test_an_invented_call_outcome_is_dropped_rather_than_passed_on(self):
+        self.assertIsNone(self.t.envelope(None, None, outcome="vibes")["call_outcome"])
+
+    def test_the_prompt_is_text_a_person_can_read_and_a_test_can_pin(self):
+        item = self.t.task("confirm the tuesday cleaning", self.schema, "a yes or a no")
+        prompt = self.t.extract_prompt(item, [{"offset": 0, "speaker": "bot", "text": "hello"},
+                                             {"offset": 3, "speaker": "user", "text": "tuesday is fine"}])
+        self.assertIn("confirm the tuesday cleaning", prompt)
+        self.assertIn("tuesday_confirmed", prompt)
+        self.assertIn("yes when tuesday is held", prompt)
+        self.assertIn("unknown", prompt)
+        self.assertIn("reply with one json object", prompt)
+        self.assertIn("[3] user: tuesday is fine", prompt)
+        self.assertNotIn("openai", prompt.lower())
+        self.assertNotIn("api", prompt.lower())
+
+
+class TestTheHostConfig(unittest.TestCase):
+    """the two lines that decide whether a socket can do anything at all."""
+
+    def setUp(self):
+        from callheavy.src import host
+        self.host = host
+
+    def test_the_config_loads_the_modules_a_dial_needs(self):
+        text = self.host.config_text("linux")
+        modules = self.host.loaded_modules(text)
+        for needed in ("menu.so", "ctrl_tcp.so", "alsa.so", "g711.so", "account.so"):
+            self.assertIn(needed, modules, f"the config does not load {needed}")
+
+    def test_the_control_socket_listens_on_loopback_and_not_on_the_wifi(self):
+        text = self.host.config_text("linux")
+        self.assertIn("ctrl_tcp_listen\t\t127.0.0.1:4444", text)
+        self.assertNotIn("0.0.0.0:4444", text)
+
+    def test_every_host_row_names_its_audio_driver_and_admits_what_is_unverified(self):
+        linux = self.host.host_row("linux")
+        macos = self.host.host_row("macos")
+        self.assertTrue(linux["verified"], "the linux row is the one that has been run here")
+        self.assertFalse(macos["verified"], "the mac row is not verified and says so in its own data")
+        self.assertIn("coreaudio", macos["device"])
+        self.assertIn("coreaudio.so", self.host.config_text("macos"))
+
+    def test_the_accounts_line_is_refused_when_the_host_is_a_sentence(self):
+        with self.assertRaises(ValueError):
+            self.host.accounts_text("+15551234567", "u", "p", "regional: atlanta, chicago")
+        line = self.host.accounts_text("+15551234567", "u", "p", "atlanta.voip.ms")
+        self.assertIn("<sip:u@atlanta.voip.ms>", line)
+        self.assertIn("auth_pass=p", line)
+        self.assertIn('"+15551234567"', line)
+
+    def test_both_files_are_written_0600_and_a_dry_run_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as home:
+            dry = self.host.write("+15551234567", "u", "p", "atlanta.voip.ms", home=home, dry=True)
+            self.assertTrue(dry["dry"])
+            self.assertFalse((pathlib.Path(home) / "config").exists(), "a dry run wrote a file")
+            written = self.host.write("+15551234567", "u", "p", "atlanta.voip.ms", home=home)
+            for key in ("config", "accounts"):
+                mode = os.stat(written["paths"][key]).st_mode & 0o777
+                self.assertEqual(mode, 0o600, f"{key} holds a password or a secret and is not 0600")
+            self.assertEqual(len(list(pathlib.Path(home).glob("*"))), 2)
+
+
+class TestTheSocketProtocol(unittest.TestCase):
+    """spoken the way ctrl_tcp's own source documents it, including where it contradicts itself."""
+
+    def setUp(self):
+        from callheavy.src import dial
+        self.dial = dial
+
+    def test_a_command_is_a_string_params_and_a_token(self):
+        message = self.dial.command("dial", "sip:+15551234567")
+        self.assertEqual(message["command"], "dial")
+        self.assertIsInstance(message["params"], str)
+        self.assertIn("token", message)
+
+    def test_a_netstring_round_trips(self):
+        wire = self.dial.encode({"command": "dial", "params": "sip:alice@atlanta.com"})
+        self.assertTrue(wire[:1].isdigit(), "a netstring starts with its length")
+        self.assertTrue(wire.endswith(b","))
+        messages, rest = self.dial.decode(wire)
+        self.assertEqual(messages, [{"command": "dial", "params": "sip:alice@atlanta.com"}])
+        self.assertEqual(rest, b"")
+
+    def test_two_messages_in_one_read_both_come_out_and_a_partial_one_waits(self):
+        first = self.dial.encode({"response": True, "ok": True})
+        second = self.dial.encode({"event": "true", "type": "CALL_RINGING"})
+        messages, rest = self.dial.decode(first + second + b"12:{\"event\"")
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[1]["type"], "CALL_RINGING")
+        self.assertTrue(rest.startswith(b"12:"), "the incomplete tail is kept for the next read")
+
+    def test_a_bare_json_message_parses_too(self):
+        messages, rest = self.dial.decode(b'{"response": true, "ok": true}')
+        self.assertEqual(messages, [{"response": True, "ok": True}])
+        self.assertEqual(rest, b"")
+
+    def test_the_modules_own_examples_are_the_contract(self):
+        response = {"response": True, "ok": True, "data": "", "token": "qwerasdf"}
+        event = {"event": "true", "class": "call", "type": "CALL_CLOSED", "param": "Connection reset",
+                 "accountaor": "sip:alice@atlanta.com", "direction": "incoming",
+                 "peeruri": "sip:bob@biloxy.com", "id": "73a12546589651f8"}
+        self.assertEqual(self.dial.classify(response)[0], "response")
+        self.assertEqual(self.dial.classify(event)[0], "event")
+        self.assertEqual(self.dial.classify({"event": True, "type": "CALL_RINGING"})[0], "event")
+        self.assertEqual(self.dial.classify({"nonsense": 1})[0], "noise")
+
+    def test_a_call_is_reported_as_four_separate_facts(self):
+        fake = _FakeTransport([_response(True), _events("CALL_RINGING"), _events("CALL_ESTABLISHED"),
+                               _events("CALL_CLOSED", param="normal clearing")])
+        result = self.dial.dial("sip:+15551234567", transport=fake, settle=5)
+        self.assertTrue(result["accepted"])
+        self.assertEqual(result["stopped"], "closed")
+        self.assertIsNotNone(result["ringing"])
+        self.assertIsNotNone(result["established"])
+        self.assertEqual(result["call_outcome"], "completed")
+        self.assertIn("carrier", result["note"])
+
+    def test_a_call_nobody_answered_is_not_reported_as_a_failure(self):
+        fake = _FakeTransport([_response(True), _events("CALL_RINGING"),
+                               _events("CALL_CLOSED", param="Request Timeout")])
+        result = self.dial.dial("sip:+15551234567", transport=fake, settle=5)
+        self.assertIsNone(result["established"])
+        self.assertEqual(result["call_outcome"], "no_answer")
+
+    def test_a_refused_dial_is_a_refusal_and_not_a_call(self):
+        fake = _FakeTransport([_response(False, data="command not found")])
+        result = self.dial.dial("sip:+15551234567", transport=fake, settle=5)
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["stopped"], "refused")
+        self.assertIn("command not found", result["error"])
+
+    def test_a_deadline_says_deadline_and_does_not_hang(self):
+        class Silent(_FakeTransport):
+            """accepts the dial, then never says anything and never hangs up: the ringing phone."""
+            def recv(self, timeout=None):
+                return [] if self.sent else None
+
+        fake = Silent([_response(True)])
+        started = time.monotonic()
+        result = self.dial.dial("sip:+15551234567", transport=fake, settle=0.4)
+        self.assertEqual(result["stopped"], "deadline")
+        self.assertLess(time.monotonic() - started, 5, "the driver overran its own deadline")
+
+    def test_no_socket_names_the_module_instead_of_raising(self):
+        class Broken:
+            closed = False
+            def send(self, message):
+                raise OSError("connection refused")
+            def close(self):
+                pass
+        result = self.dial.dial("sip:+15551234567", transport=Broken(), settle=1)
+        self.assertEqual(result["stopped"], "no-socket")
+        self.assertIn("ctrl_tcp", result["why"])
+        self.assertIn("baresip", result["why"])
+
+
+class TestTheAudioRails(unittest.TestCase):
+    """where the agent's voice enters, and the one link that is not free."""
+
+    def setUp(self):
+        from callheavy.src import audio
+        self.audio = audio
+
+    def test_linux_gets_a_virtual_mic_from_pactl(self):
+        row = self.audio.virtual_mic("linux")
+        self.assertEqual(len(row["commands"]), 2)
+        self.assertIn("module-null-sink", row["commands"][0])
+        self.assertIn("module-remap-source", row["commands"][1])
+        self.assertEqual(row["client_device"], "agent-mic")
+        self.assertTrue(row["oss"])
+        self.assertTrue(row["verified"])
+
+    def test_macos_names_the_reboot_and_windows_names_the_non_oss_link(self):
+        macos = self.audio.virtual_mic("macos")
+        self.assertEqual(macos["commands"], [], "blackhole is an install, not a command")
+        self.assertIn("GPL-3.0", macos["license"])
+        self.assertFalse(macos["verified"])
+        windows = self.audio.virtual_mic("windows")
+        self.assertFalse(windows["oss"])
+        self.assertIn("NOT oss", windows["license"])
+
+    def test_a_wav_can_be_a_browser_microphone(self):
+        flags = self.audio.browser_mic("/tmp/voice.wav")["args"]
+        self.assertTrue(any("--use-fake-device-for-media-stream" in flag for flag in flags))
+        self.assertTrue(any("/tmp/voice.wav" in flag for flag in flags))
+
+    def test_the_room_gate_is_closed_until_all_three_names_exist(self):
+        saved = {name: os.environ.pop(name, None) for name in self.audio.LIVEKIT_ENV}
+        try:
+            state = self.audio.room_state()
+            self.assertTrue(state["closed"])
+            self.assertEqual(sorted(state["missing"]), sorted(self.audio.LIVEKIT_ENV))
+            refuse = self.audio.publish()
+            self.assertFalse(refuse["ok"])
+            self.assertEqual(sorted(refuse["missing"]), sorted(self.audio.LIVEKIT_ENV))
+            os.environ["LIVEKIT_URL"] = "wss://example.invalid"
+            self.assertIn("LIVEKIT_API_KEY", self.audio.room_state()["missing"])
+        finally:
+            for name, value in saved.items():
+                os.environ.pop(name, None)
+                if value is not None:
+                    os.environ[name] = value
+
+    def test_a_publish_without_the_sdk_names_the_install_line(self):
+        saved = {name: os.environ.get(name) for name in self.audio.LIVEKIT_ENV}
+        for name in self.audio.LIVEKIT_ENV:
+            os.environ[name] = "set-for-this-test"
+        try:
+            answer = self.audio.publish()
+        finally:
+            for name, value in saved.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+        if answer["ok"]:
+            self.skipTest("the livekit sdk happens to be installed on this machine")
+        self.assertEqual(answer["missing"], ["livekit"])
+        self.assertIn("pip install livekit", answer["install"])
+
+    def test_the_bridge_is_named_as_not_shipped(self):
+        plan = self.audio.bridge_plan()
+        self.assertFalse(plan["shipped"])
+        self.assertIn("participant", plan["what_it_would_be"])
+        self.assertIn("not a helper", plan["why_not_shipped"])
+        self.assertEqual(self.audio.readiness("linux")["bridge"], "not shipped")
+
+
+class TestTheCallHeavyCli(unittest.TestCase):
+    def setUp(self):
+        from callheavy.src import cli
+        self.cli = cli
+
+    def run_cli(self, argv):
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = self.cli.main(argv)
+        return code, json.loads(buffer.getvalue())
+
+    def test_a_dial_is_a_plan_until_run_and_needs_a_named_authoriser(self):
+        with tempfile.TemporaryDirectory() as room:
+            schema = pathlib.Path(room) / "want.json"
+            schema.write_text(json.dumps({"type": "object", "required": ["ok"],
+                                          "properties": {"ok": {"type": "string"}}}))
+            code, plan = self.run_cli(["dial", "--goal", "ask about tuesday", "--to", "+15551234567",
+                                       "--schema", str(schema), "--success", "a yes"])
+            self.assertEqual(code, 1)
+            self.assertEqual(plan["problems"][0]["needs"], "authorized")
+
+            code, plan = self.run_cli(["dial", "--goal", "ask about tuesday", "--to", "+15551234567",
+                                       "--schema", str(schema), "--success", "a yes",
+                                       "--authorized", "filmosophy"])
+            self.assertEqual(code, 0)
+            self.assertFalse(plan["sending"], "a dial without --run must not dial")
+            self.assertEqual(plan["dial"], "sip:+15551234567")
+
+    def test_a_plan_with_no_schema_is_refused_with_the_flag_to_fix(self):
+        code, answer = self.run_cli(["plan", "--goal", "ask about tuesday", "--to", "+15551234567"])
+        self.assertEqual(code, 1)
+        self.assertEqual(answer["problems"][0]["flag"], "--schema")
+
+
+class TestTheCallHeavyPage(unittest.TestCase):
+    page = ROOT / "callheavy" / "readme.md"
+
+    def test_the_page_is_our_own_calls_and_not_a_hosted_rail(self):
+        text = self.page.read_text()
+        self.assertIn("our own stack", text)
+        self.assertIn("their dialler is not in this path", text)
+        self.assertIn("no hosted dialler", text)
+        self.assertNotIn("CALLE_API_KEY", text)
+
+    def test_the_page_keeps_the_credit_and_the_distinction(self):
+        text = self.page.read_text()
+        self.assertIn("call-e", text)
+        self.assertIn("MIT", text)
+        self.assertIn("borrowed", text)
+
+    def test_the_page_names_the_two_modules_and_the_loopback_bind(self):
+        text = self.page.read_text()
+        self.assertIn("commented out", text)
+        self.assertIn("menu.so", text)
+        self.assertIn("loopback", text)
+        self.assertIn("127.0.0.1:4444", text)
+
+    def test_the_page_says_what_is_refused_and_what_is_unproven(self):
+        text = self.page.read_text()
+        for needle in ("no otp", "no lists", "no live call has been placed", "verified: false",
+                       "not shipped"):
+            self.assertIn(needle, text, f"the page lost {needle!r}")
+
+    def test_the_page_has_no_em_dash(self):
+        self.assertNotIn("\u2014", self.page.read_text())
+
+
+class TestTheFoldInTouchesOnlyItsOwnFolder(unittest.TestCase):
+    def test_the_package_is_edited_in_exactly_one_place(self):
+        """a fold-in that starts rewriting the package is a merge problem wearing a feature's clothes."""
+        git = shutil.which("git")
+        if not git:
+            self.skipTest("no git on this machine")
+        done, base = None, None
+        for candidate in ("main", "origin/main"):
+            attempt = subprocess.run([git, "-C", str(ROOT), "diff", "--name-only", candidate,
+                                      "--", "heyphony"], capture_output=True, text=True, timeout=60)
+            if attempt.returncode == 0:
+                done, base = attempt, candidate
+                break
+        if done is None:
+            self.skipTest("no main or origin/main to compare against in this clone")
+        self.assertIn(base, ("main", "origin/main"))
+        changed = [line for line in done.stdout.split() if line]
+        self.assertEqual(changed, ["heyphony/theidea/calling.md"],
+                         f"the fold-in edited the package: {changed}")
+
+    def test_the_lane_lives_outside_the_package(self):
+        self.assertTrue((ROOT / "callheavy" / "src" / "dial.py").is_file())
+        self.assertTrue((ROOT / "bin" / "callheavy").is_file())
+        self.assertEqual(list((ROOT / "heyphony").rglob("dial.py")), [])
+
+    def test_nothing_in_the_package_imports_the_lane(self):
+        for path in sorted((ROOT / "heyphony").rglob("*.py")):
+            for line in path.read_text().splitlines():
+                stripped = line.strip()
+                if stripped.startswith(("import ", "from ")):
+                    self.assertNotIn("callheavy", stripped, f"{path.name} imports the optional lane")
+
+    def test_the_lane_imports_nothing_but_the_standard_library(self):
+        allowed = {"argparse", "json", "os", "pathlib", "socket", "sys", "time", "uuid",
+                   "callheavy", "livekit"}
+        for path in sorted((ROOT / "callheavy").rglob("*.py")):
+            for line in path.read_text().splitlines():
+                stripped = line.strip()
+                if stripped.startswith(("import ", "from ")):
+                    self.assertIn(stripped.split()[1].split(".")[0], allowed,
+                                  f"{path.name} imports something outside the standard library")
+
+
 if __name__ == "__main__":
     suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])
     result = unittest.TextTestRunner(verbosity=0).run(suite)
