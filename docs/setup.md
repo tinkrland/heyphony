@@ -9,6 +9,12 @@ bin/heyphony --setup            # telephony: the number, the client, the proof
 bin/comms --setup               # every lane, its gate, its honest state
 ```
 
+the number is not in this tree, so the lanes work without it and the store does not. point the path at a heyphony checkout when a message has to land, and the shim extends the path rather than replacing it:
+
+```
+PYTHONPATH=/path/to/heyphony bin/comms inbox
+```
+
 ## telephony first
 
 a number is the lane that unlocks the others: signal needs one to register, and a meetings lane is more useful when people can also call.
