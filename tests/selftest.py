@@ -1467,6 +1467,47 @@ class TestTheOutboundPathIndex(unittest.TestCase):
             self.assertIn(needle, text, f"the affiliation section lost {needle!r}")
 
 
+class TestEveryProviderHasAPage(unittest.TestCase):
+    """the gap that prompted this: ten vendors in the data, two pages in the folder."""
+
+    def providers_dir(self):
+        return ROOT / "providers"
+
+    def test_one_folder_per_provider_and_no_orphans(self):
+        from src import providers
+        folders = {p.name for p in self.providers_dir().iterdir()
+                   if p.is_dir() and (p / "readme.md").is_file()}
+        self.assertEqual(folders, set(providers.PROVIDERS),
+                         "the vendor table and the folder must name the same ten")
+
+    def test_every_page_says_how_texts_arrive_and_where_outbound_stands(self):
+        from src.manage.outgoing import send
+        for name, row in send.path_index().items():
+            page = (self.providers_dir() / name / "readme.md").read_text().lower()
+            self.assertIn("## outbound", page, f"{name} never says where sending stands")
+            self.assertIn(row["state"], page,
+                          f"{name} states {row['state']!r} in the code and not on its page")
+            self.assertGreater(len(page), 900, f"{name} is a stub, not a page")
+
+    def test_a_page_claims_nothing_verified(self):
+        for path in sorted(self.providers_dir().glob("*/readme.md")):
+            text = path.read_text().lower()
+            for shot in ("verified:", '"verified": true', "proven to work today"):
+                self.assertNotIn(shot, text, f"{path.parent.name} claims a proof it does not have")
+
+    def test_no_page_calls_the_old_binary(self):
+        """the two inherited pages said `telephony connect linphone`, which stopped existing."""
+        for path in sorted(self.providers_dir().glob("*/readme.md")):
+            text = path.read_text()
+            self.assertNotIn("`telephony ", text, f"{path.parent.name} names the retired shim")
+            self.assertNotIn("connect linphone", text, f"{path.parent.name} names the retired command")
+
+    def test_the_index_links_every_page(self):
+        from src import providers
+        index = (self.providers_dir() / "readme.md").read_text()
+        for name in providers.PROVIDERS:
+            self.assertIn(f"({name}/readme.md)", index, f"the index does not link {name}")
+
 
 if __name__ == "__main__":
     suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])

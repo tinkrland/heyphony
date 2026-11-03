@@ -35,8 +35,16 @@ mixing those two up is the most expensive mistake available on this page, becaus
 | --- | --- | --- |
 | [voip.ms](voip.ms/readme.md) | cloud voicemail to email, sms to email, conditional forwarding, all of which work while the host is asleep | regional servers matter, and a wrong one is the classic silent registration failure |
 | [flowroute](flowroute/readme.md) | json webhooks for inbound texts, which arrive whether or not anything is awake | no carrier side voicemail fallback, so a missed call is just missed |
+| [anveo](anveo/readme.md) | the only vendor whose whole chain has a documented api: order, arm the hook, list | the send gateway's parameter names are inside their account portal |
+| [signalwire](signalwire/readme.md) | the cheapest number here, a clean json payload, a wired send path | inbound texts are billed, at a fraction of a cent each |
+| [questblue](questblue/readme.md) | a url post for inbound, documented and armable by one call | a trunk rather than a registration, and three credentials rather than two |
+| [bulkvs](bulkvs/readme.md) | six cents a month, with an openapi document sitting next to the docs | carrier shaped documentation, and your first number is not a product walkthrough |
+| [jmp.chat](jmp.chat/readme.md) | mms and transcribed voicemail arriving in a chat client, no webhook needed | the chat client is the receiver, so the inbox depends on a client staying up |
+| [voyced](voyced/readme.md) | european geographic numbers billed per minute inbound | no sms claim, and their own docs call the api unfinished |
+| [voxacall](voxacall/readme.md) | a sip trunk bought with crypto and no identity paperwork | no public sms documentation, so there is nothing to build against |
+| [bitcall](bitcall/readme.md) | otp and hlr lookups, which is a different job from being reachable | it is not a number you can be texted on, and their dids are still "coming soon" |
 
-the pages are notes from reading each vendor's own documentation, not reviews, and the honest state is one provider at a time.
+a page per vendor, because a table with ten rows and two pages was hiding eight of them. the pages are notes from reading each vendor's own documentation, not reviews, and the honest state is one provider at a time.
 
 ## we are not affiliated with any of them
 

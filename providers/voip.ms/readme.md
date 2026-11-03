@@ -15,10 +15,14 @@ calls themselves are still sip: no registration, no ring, unless conditional for
 1. order a did, confirm it is sms-capable for the sub-account you will use
 2. enable voicemail to email and sms to email, then confirm with a test message *before* trusting the card
 3. set conditional forwarding: registration alive -> sip; otherwise -> voicemail (or another number)
-4. `telephony connect linphone --voipms --did ... --username <subaccount> --password ... --server <your server, e.g. atlanta.voip.ms>`
+4. `heyphony connect sip --provider voip.ms --did ... --username <subaccount> --password ... --server <your server, e.g. atlanta.voip.ms>`
 
-the server matters: voip.ms is regional (`atlanta`, `chicago`, `toronto`, ...) and a wrong server is the classic silent registration failure. `telephony doctor` prints the one you configured so the card can show it.
+the server matters: voip.ms is regional (`atlanta`, `chicago`, `toronto`, ...) and a wrong server is the classic silent registration failure. `heyphony doctor` prints the one you configured so the card can show it.
+
+## outbound
+
+**wired.** `heyphony send --provider voip.ms --to +1... --text "..." --send` builds their documented `rest.php` call with `method=sendSMS`, so the message goes out on the number you already own rather than through a second vendor. environment: `VOIPMS_API_USER` and `VOIPMS_API_PASS`, and the did has to be sms capable on the sub account that holds the key, or the api accepts the call and the carrier drops the message.
 
 ## the honest limit
 
-voicemail-to-email and sms-to-email are *carrier* features on the owner's account. nothing in this repo can verify they are switched on, so `telephony status` reports them as `unverified` until a message actually arrives. a phone number that has never received a message is not proven to work.
+voicemail-to-email and sms-to-email are *carrier* features on the owner's account. nothing in this repo can verify they are switched on, so `heyphony status` reports them as `unverified` until a message actually arrives. a phone number that has never received a message is not proven to work.
