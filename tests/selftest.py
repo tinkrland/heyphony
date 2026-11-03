@@ -1907,7 +1907,7 @@ class TestTheLookupFlagAnswersBothShapes(unittest.TestCase):
         code, answer = self._run("--lookup", "+15252627527", "support")
         self.assertEqual(code, 0)
         names = [r["service"] for r in answer["services"]]
-        self.assertEqual(names, ["sms", "imessage", "signal", "whatsapp"])
+        self.assertEqual(names, ["sms", "rcs", "imessage", "signal", "whatsapp"])
         self.assertTrue(all(r["verdict"] for r in answer["services"]))
 
     def test_the_subcommand_is_the_same_answer_as_the_flag(self):
@@ -2414,6 +2414,91 @@ class TestACapabilityIsABooleanAndExistenceIsNot(unittest.TestCase):
         for needle in ("a boolean for the capability and a verdict for this one",
                        "imessage: true signal: false",
                        "Both lines are in the same output"):
+            self.assertIn(needle, page)
+
+
+class TestTheLadderWhenOneRailIsNotThere(unittest.TestCase):
+    """an address holds imessage whatever it is, and a line climbs to rcs when apple is not there."""
+
+    def setUp(self):
+        from src.lookup import support
+        self.s = support
+
+    def test_any_address_holds_imessage_and_not_only_an_apple_one(self):
+        for address in ("dana@proton.me", "dana@outlook.com", "dana@yahoo.co.uk",
+                        "dana@somewhere-unheard-of.example", "dana@mailinator.com",
+                        "support@acme.co.uk"):
+            matrix = self.s.support(address)["matrix"]
+            self.assertTrue(matrix["imessage"], address)
+
+    def test_every_address_gets_the_same_capability_and_a_different_verdict(self):
+        consumer = self.s.support("dana@outlook.com")
+        apple = self.s.support("dana@icloud.com")
+        self.assertEqual(consumer["matrix"], apple["matrix"])
+        self.assertEqual(consumer["address"]["imessage"], "unknown")
+        self.assertEqual(apple["address"]["imessage"], "possible")
+
+    def test_rcs_is_in_the_matrix_and_follows_the_text_evidence(self):
+        mobile = self.s.support("+12125551234")["matrix"]
+        toll_free = self.s.support("+18005551234")["matrix"]
+        landline = self.s.support("+441234567890")["matrix"]
+        self.assertTrue(mobile["rcs"])
+        self.assertFalse(toll_free["rcs"])
+        self.assertFalse(landline["rcs"])
+        for matrix in (mobile, toll_free, landline):
+            self.assertEqual(matrix["rcs"], matrix["sms"], matrix)
+
+    def test_an_address_and_a_handle_cannot_hold_rcs_because_it_verifies_by_number(self):
+        self.assertFalse(self.s.support("dana@proton.me")["matrix"]["rcs"])
+        self.assertFalse(self.s.support("alice.42")["matrix"]["rcs"])
+
+    def test_a_line_climbs_apple_then_carrier_then_text(self):
+        ladder = self.s.support("+12125551234")["fallback"]
+        self.assertEqual(ladder["order"], ["imessage", "rcs", "sms"])
+        self.assertEqual(ladder["reaches"], "rcs")
+        self.assertEqual(ladder["unknown"], ["imessage"])
+        self.assertIsNone(ladder["stops_because"])
+
+    def test_a_ladder_that_reaches_nothing_says_no_client_will_fix_it(self):
+        ladder = self.s.support("+18005551234")["fallback"]
+        self.assertIsNone(ladder["reaches"])
+        self.assertIn("will not change the answer", ladder["stops_because"])
+
+    def test_an_address_climbs_one_rung_and_a_handle_climbs_its_own(self):
+        self.assertEqual(self.s.support("dana@proton.me")["fallback"]["order"], ["imessage"])
+        self.assertEqual(self.s.support("dana@proton.me")["fallback"]["reaches"], "imessage")
+        self.assertEqual(self.s.support("alice.42")["fallback"]["order"], ["signal"])
+        self.assertEqual(self.s.support("alice.42")["fallback"]["reaches"], "signal")
+        self.assertEqual(self.s.support("alice")["fallback"]["reaches"], "whatsapp")
+
+    def test_the_ladder_never_promises_a_rail_its_matrix_denies(self):
+        for value in ("+12125551234", "+18005551234", "dana@proton.me", "alice.42", "alice"):
+            answer = self.s.support(value)
+            matrix, ladder = answer["matrix"], answer["fallback"]
+            for rail in ladder["rails"]:
+                self.assertEqual(rail["holds"], matrix[rail["service"]], (value, rail["service"]))
+            self.assertEqual(ladder["reaches"],
+                             next((r["service"] for r in ladder["rails"] if r["holds"] is True), None))
+
+    def test_the_ladder_keeps_the_person_out_of_the_boolean(self):
+        ladder = self.s.support("+12125551234")["fallback"]
+        self.assertIn("does not replace asking them", ladder["means"])
+        self.assertIn("does not say which one somebody's messaging app will pick", ladder["means"])
+
+    def test_the_cli_fallback_mode_answers_the_question_on_its_own(self):
+        sys.path.insert(0, str(ROOT))
+        from src.runner import cli
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = cli.cmd_lookup({"number": "+12125551234", "mode": "fallback", "platform": None})
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(buffer.getvalue())["fallback"]["reaches"], "rcs")
+
+    def test_the_page_names_the_ladder_and_rcs_as_its_own_rung(self):
+        page = " ".join((ROOT / "src" / "lookup" / "readme.md").read_text().split())
+        for needle in ("## the ladder when one rail is not there", "### rcs is the rung the matrix was missing",
+                       "### an address holds iMessage whatever the address is",
+                       "reaches: rcs", "no universal profile to answer on"):
             self.assertIn(needle, page)
 
 

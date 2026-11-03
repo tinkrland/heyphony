@@ -288,7 +288,7 @@ def cmd_get(args):
     _out(getters.run(args.name, path=args.path, dry=not args.run))
 
 
-LOOKUP_MODES = ("line", "support", "probes")
+LOOKUP_MODES = ("line", "support", "probes", "fallback")
 
 # a number is read as a line, an address as an address, a username as a handle. the key says which,
 # because printing an email under a key called "line" is the kind of small wrongness that teaches
@@ -348,6 +348,11 @@ def cmd_lookup(args):
         single = classify.classify(number, platform)
         answer = {"ok": True, "all": answer,
                   SUBJECT_KEYS.get(single.get("kind") or "number", "line"): single}
+    elif mode == "fallback":
+        single = support.support(number, platform)["fallback"]
+        single["subject"] = number
+        _out({"ok": True, "fallback": single})
+        return 0
     elif mode == "probes":
         answer = support.probe_plan(number)
         _out(answer)

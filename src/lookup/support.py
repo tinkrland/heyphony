@@ -52,6 +52,12 @@ SERVICES = {
                   "consequence": "the supported path sends an sms to that handset, so a stranger's "
                                  "phone buzzes for a check nobody there asked for",
                   "wired": False}},
+    "rcs": {
+        "verifies_by": ["nothing: rcs is the carrier's universal profile, issued with the text service"],
+        "needs_text": True,
+        "why_seen": "rcs arrives where the plain text does, so it follows the same evidence the sms "
+                    "row does and needs the same client on the other end",
+        "probe": None},
     "sms": {
         "verifies_by": ["nothing: plain sms is the carrier, not a service"],
         "needs_text": True,
@@ -72,7 +78,7 @@ def _verdict(service, line):
         return UNKNOWN, "the line type is unknown, so nothing follows about this service"
     if rank == 0:
         return UNLIKELY, f"a {line['type']} cannot receive a code, and every one of these verifies by code"
-    if service == "sms":
+    if service in ("sms", "rcs"):
         return (POSSIBLE if line.get("receive_text") is True else UNLIKELY,
                 line.get("why") or "from the range's own class")
     if rank >= 3:
@@ -122,6 +128,9 @@ def _holds(name, line):
         return name == line.get("platform")
     if name == "sms":
         return bool(line.get("receive_text"))
+    if name == "rcs":
+        # the carrier issues rcs alongside the plain text, so one cannot hold it and the other not
+        return None if line.get("receive_text") is None else bool(line.get("receive_text"))
     cls = (line.get("type") or "").lower()
     if cls in ("service range", "pager", "premium rate", "toll-free", "freephone"):
         return False
@@ -129,7 +138,76 @@ def _holds(name, line):
 
 
 def _matrix(line):
-    return {name: _holds(name, line) for name in ("imessage", "signal", "whatsapp", "sms")}
+    return {name: _holds(name, line) for name in ("imessage", "rcs", "signal", "whatsapp", "sms")}
+
+
+# the ladder a message climbs when the rail above it is not there. rcs rides the same carrier
+# messaging service the plain text does, so a line that can carry a text can carry rcs in practice,
+# and a line that cannot carry a text cannot carry either
+LADDER = ("imessage", "rcs", "sms")
+
+LADDER_MEANS = ("the ladder stops at the first rail that holds, and it says which rails this kind of "
+                "thing can ride. it does not say which one somebody's messaging app will pick, and it "
+                "does not replace asking them")
+
+
+def _ladder_for(line):
+    """a line climbs apple then the carrier then the plain text. an address and a handle do not climb,
+    because neither of them is a number for a carrier to serve."""
+    kind = line.get("kind")
+    if kind == "email":
+        return ("imessage",)
+    if kind == "username":
+        return (line.get("platform") or "signal",)
+    return LADDER
+
+
+def fallback(line):
+    """the rails a message would climb, best first, and where the climb stops."""
+    matrix = _matrix(line)
+    order = _ladder_for(line)
+    rails = []
+    for name in order:
+        holds = matrix[name]
+        rails.append({"service": name, "holds": holds, "why": _ladder_why(name, line, holds)})
+    reached = next((row["service"] for row in rails if row["holds"] is True), None)
+    return {"order": list(order), "rails": rails, "reaches": reached,
+            "stops_because": None if reached else
+            "no rail on this ladder holds, so a different app or client will not change the answer",
+            "means": LADDER_MEANS,
+            "unknown": [row["service"] for row in rails if row["holds"] is None]}
+
+
+def _ladder_why(name, line, holds):
+    """one sentence per rail, because the ladder is only useful if each rung explains itself."""
+    kind = line.get("kind")
+    if kind == "username":
+        return (f"the handle is a name on {name} itself, so {name} is the rail it holds and the "
+                f"others route by number")
+    if name == "imessage":
+        if kind == "email":
+            return "an apple account is an address, so imessage is the rail an address can ride"
+        if holds is None:
+            return ("imessage is on when an apple account is signed in to this line, which is a "
+                    "question for the account rather than for the plan")
+        return "a line that carries no text carries no imessage registration code either"
+    if name == "rcs":
+        if kind in ("email", "username"):
+            return ("rcs is a carrier messaging service, so it verifies by a number and an address or "
+                    "a handle cannot hold it")
+        if holds is None:
+            return ("rcs is issued by the carrier and the client rather than the plan, so it follows "
+                    "the same evidence the plain text does")
+        if holds:
+            return ("rcs rides the carrier messaging service the plain text does, so a line that "
+                    "carries a text carries rcs in practice once the carrier and the client both "
+                    "support it")
+        return "a line with no messaging service has no universal profile to answer on"
+    if holds is False:
+        return "a line that carries no text cannot carry the plain text either"
+    if holds is None:
+        return "whether a text arrives on this line is a question for the carrier"
+    return "the plan issues a line that can receive a text"
 
 
 def _handle_matrix(answer):
@@ -171,11 +249,12 @@ def support(number, platform=None):
                 "address" if line["kind"] == "email" else "handle": line,
                 "services": _handle_matrix(line), "note": NOTE, "verified": False,
                 "matrix": _matrix(line), "matrix_means": MATRIX_MEANS,
+                "fallback": fallback(line),
                 "partial": False,
                 "limits": {"services": "a handle answers for the platform it belongs to and for "
                                        "nothing else"}}
     services = []
-    for name in ("sms", "imessage", "signal", "whatsapp"):
+    for name in ("sms", "rcs", "imessage", "signal", "whatsapp"):
         verdict, why = _verdict(name, line)
         row = {"service": name, "verdict": verdict, "why": why,
                "basis": "numbering plan" if name == "sms" else "line class"}
@@ -186,6 +265,7 @@ def support(number, platform=None):
                                        ("valid", "market", "type", "receive_text", "region", "why")},
             "services": services, "note": NOTE, "verified": False,
             "matrix": _matrix(dict(line, kind="number")), "matrix_means": MATRIX_MEANS,
+            "fallback": fallback(dict(line, kind="number")),
             "partial": bool(line.get("partial")),
             "limits": line.get("limits") or {"partial": "a partial lookup answers geography only"}}
 

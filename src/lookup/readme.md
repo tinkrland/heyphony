@@ -124,6 +124,48 @@ need a request and this reader makes none. The `probes` list names what would an
 lookup for deliverability, and an smtp `RCPT` for existence, the second of which the domain owner can
 see happen. Neither is wired, and the page says so rather than implying a check that did not run.
 
+## the ladder when one rail is not there
+
+A line that shows `imessage: unknown` is not a dead end, and printing a lone false or a lone null
+leaves the caller to guess what comes next. So every answer also carries a `fallback` ladder: the rails
+a message would climb, best first, with the reason each one holds or does not, and where the climb stops.
+
+```
+$ heyphony --lookup +12125551234 fallback
+imessage  unknown   on when an apple account is signed in to this line
+rcs       true      rides the carrier messaging service the plain text does
+sms       true      the plan issues a line that can receive a text
+reaches: rcs
+```
+
+### rcs is the rung the matrix was missing
+
+`rcs` is in the `matrix` beside the other four now, and it follows the text evidence rather than
+adding a new source: RCS is the carrier's universal profile, issued with the plain text service, so a
+line that carries a text carries RCS in practice once the carrier and the client both support it, and a
+line with no messaging service has no universal profile to answer on. That is why a mobile reads
+`rcs: true`, a toll-free or a landline reads `rcs: false`, and the ladder on a mobile stops at RCS
+instead of shrugging at the iMessage question.
+
+### an address holds iMessage whatever the address is
+
+Any address, not only an Apple one: an Apple account is an address, so `dana@proton.me`,
+`dana@outlook.com` and `dana@somewhere-unheard-of.example` all read `imessage: true` in the matrix, and
+their ladder is the single rung `imessage`. What changes between them is the verdict on that particular
+address, which stays `unknown` for a consumer mailbox and `possible` for one Apple issues. The capability
+belongs to the kind of thing, the verdict belongs to the one you asked about.
+
+### the ladder says what a client will not fix
+
+`reaches` is the first rail that holds, and when nothing holds, `stops_because` says so in words nobody
+can misread: no different app changes the answer. A toll-free number, a service range and a landline all
+reach nothing, because there is no messaging service under any of them to climb from.
+
+The limit is in the block rather than the small print too. It says which rails this kind of thing can
+ride, not which one somebody's messaging app will pick, and it does not replace asking them. A person who
+has RCS available may still answer on iMessage, and a person whose line is a mobile may have every
+messaging app turned off.
+
 ## a handle, which is where a number is not needed
 
 `--lookup alice.42` and `--lookup alice` read a username. This is the one address form this package
