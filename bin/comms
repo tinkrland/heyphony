@@ -1,3 +1,8 @@
 #!/bin/sh
+# comms, from a clone. the module is the thing you can read, so this stays a shim over it.
+#
+# the existing PYTHONPATH is kept rather than replaced, because that is how the number is found: this
+# branch imports the inbox it does not contain, and pointing the path at a heyphony checkout is the
+# supported way to run a lane that stores a message.
 here=$(cd "$(dirname "$0")/.." && pwd)
-PYTHONPATH="$here" exec python3 -m comms.cli "$@"
+PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}" PYTHONDONTWRITEBYTECODE=1 exec python3 -m comms.cli "$@"

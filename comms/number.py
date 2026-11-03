@@ -15,10 +15,10 @@ rather than at import time, when nothing has been asked for yet.
 def inbox():
     """the number's inbox module, or an error naming the two ways to make it reachable."""
     try:
-        from heyphony.src import manage as module      # the package tree, installed or on pythonpath
+        from heyphony.src.manage import inbox as module    # the package tree, installed or on pythonpath
     except ImportError:
         try:
-            from src import manage as module           # this branch inside a heyphony checkout
+            from src.manage import inbox as module         # this branch inside a heyphony checkout
         except ImportError as exc:
             raise ImportError(
                 "the number is not on the path: put a heyphony checkout (or its python/ tree) on "

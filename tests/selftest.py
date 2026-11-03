@@ -31,6 +31,21 @@ from comms import catcher, envelope, gates, registry
 from comms import cli as comms_cli
 from comms.recognica import cards as recognica_cards, roles as recognica_roles
 
+
+def number_reachable():
+    """whether the number is on the path, which is the one thing this branch does not contain."""
+    try:
+        from comms import number
+        number.inbox()
+        return True
+    except Exception:
+        return False
+
+
+HAVE_NUMBER = number_reachable()
+
+
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
@@ -406,6 +421,11 @@ class TestTheOneCommand(unittest.TestCase):
         self.assertTrue(os.access(shim, os.X_OK), "bin/comms has to be executable")
         self.assertIn("python3 -m comms.cli", shim.read_text())
 
+    def test_the_shim_keeps_the_path_it_was_given(self):
+        shim = (ROOT / "bin" / "comms").read_text()
+        self.assertIn("${PYTHONPATH:+:$PYTHONPATH}", shim,
+                      "the shim must not drop the path the number was found on")
+
     def test_status_closes_every_lane_when_the_environment_is_empty(self):
         import unittest.mock as mock
         with mock.patch.dict(os.environ, {}, clear=True):
@@ -518,6 +538,20 @@ class TestTheCatcherStoresWhatItVerifies(unittest.TestCase):
             payload = json.loads(answer.read())
         self.assertIn("lanes", payload)
         self.assertEqual(set(payload["lanes"]), set(registry.folders()))
+
+
+class TestTheNumberIsReachedByName(unittest.TestCase):
+    """the one import this branch makes into the other half: it has to name the inbox module, not
+    the folder that holds it, because an empty __init__ is not an inbox."""
+
+    @unittest.skipUnless(HAVE_NUMBER, "the number is not on the path, so there is nothing to resolve")
+    def test_the_resolution_lands_on_something_that_can_store_and_read(self):
+        from comms import number
+        module = number.inbox()
+        self.assertTrue(hasattr(module, "append"), "the inbox module stores nothing")
+        self.assertTrue(hasattr(module, "read"), "the inbox module reads nothing")
+        self.assertNotEqual(getattr(module, "__name__", "").split(".")[-1], "manage",
+                            "this resolved to the package folder rather than the inbox module")
 
 
 class TestTheReadmesCannotDrift(unittest.TestCase):
