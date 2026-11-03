@@ -6,7 +6,7 @@ there is no product that sells a phone number to a program. there are products t
 
 that is the whole pitch, and it is smaller than it sounds. your agent ends up with a **phone number of its own**, in the same network as every other number, dialable and textable from the phone already in somebody's pocket. everything below is the argument for the shape and the way to get it.
 
-> **this repo is the standalone package.** these pages were written beside the umbrella, so a few of them name sibling lanes (signal, email, meetings, the contact book) that live in [spawnables on the comms branch](https://github.com/tinkrland/spawnables/tree/comms) rather than here. the argument holds and the code runs without them: what leaves this repo is the number and the rails a number unlocks, and nothing here imports the umbrella. the dependency runs one way and stays that way.
+this is not the number for the other kind of company. if the job is bulk outbound calling driven by a model, marketing campaigns, or a sales dialer working a list, that is a different product with consent, attested origination and a registered business behind it, and there are already enough companies selling it well that the honest advice is to go and look at them. what is here is deliberately the opposite shape: one number, one agent, one message at a time, at the pace a person would keep.
 
 if you opened this repo and could not tell how it runs, that is what [directory.md](directory.md) is for: the tree, the setup flow and the manage flow drawn separately, and where each command sits.
 
@@ -172,3 +172,5 @@ no stream, no account to create, no audience to grow: a number that can be reach
 ### the rest is in the argument
 
 those are not gaps waiting for a sprint. they are the limit of what a number of this type can do, and [theidea/](theidea/) is where each one is argued rather than listed.
+
+and for the record, since the pages here name lanes that are not in this repo: this is the standalone package, written beside the umbrella, so a few of them point at sibling lanes (signal, email, meetings, the contact book) that live in [spawnables on the comms branch](https://github.com/tinkrland/spawnables/tree/comms). the code runs without them, what leaves this repo is the number and the rails a number unlocks, and the dependency runs one way.

@@ -278,8 +278,18 @@ class TestThePagesSayHowToGetIt(unittest.TestCase):
     def test_the_package_page_admits_it_came_from_the_umbrella(self):
         """the prose names sibling lanes that live elsewhere, so the page has to say so."""
         text = (ROOT / "readme.md").read_text()
-        self.assertIn("this repo is the standalone package", text)
+        self.assertIn("this is the standalone package", text)
         self.assertIn("spawnables/tree/comms", text)
+
+    def test_the_opening_says_who_this_number_is_not_for(self):
+        """the owner's call: the scope boundary belongs in the opening, where the pitch is."""
+        text = (ROOT / "readme.md").read_text()
+        opening = text.split("## telecom was built for people")[0]
+        for needle in ("bulk outbound calling", "marketing campaigns", "a sales dialer",
+                       "there are already enough companies selling it well"):
+            self.assertIn(needle, opening, f"the opening stopped saying {needle!r}")
+        self.assertNotIn("> **", opening,
+                         "the stand-alone note was a blockquote in the opening; it is prose elsewhere now")
 
     def test_the_main_page_carries_no_repo_map_and_no_branch_table(self):
         """the owner's call: the tree and the branch list are not the front page's job."""
