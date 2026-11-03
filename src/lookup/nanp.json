@@ -1,0 +1,2382 @@
+{
+ "_generated": {
+  "by": "tools/generate_nanp.py",
+  "from": "libphonenumber 9.0.42",
+  "at": "2026-11-03",
+  "what": "area code -> country/territory, place name and area code class. line type is not in this table because the plan does not encode it."
+ },
+ "countries": {
+  "AG": "Antigua and Barbuda",
+  "AI": "Anguilla",
+  "AS": "American Samoa",
+  "BB": "Barbados",
+  "BM": "Bermuda",
+  "BS": "Bahamas",
+  "CA": "Canada",
+  "DM": "Dominica",
+  "DO": "Dominican Republic",
+  "GD": "Grenada",
+  "GU": "Guam",
+  "JM": "Jamaica",
+  "KN": "Saint Kitts and Nevis",
+  "KY": "Cayman Islands",
+  "LC": "Saint Lucia",
+  "MP": "Northern Mariana Islands",
+  "MS": "Montserrat",
+  "PR": "Puerto Rico",
+  "SX": "Sint Maarten",
+  "TC": "Turks and Caicos Islands",
+  "TT": "Trinidad and Tobago",
+  "US": "United States",
+  "VC": "Saint Vincent and the Grenadines",
+  "VG": "British Virgin Islands",
+  "VI": "U.S. Virgin Islands"
+ },
+ "area_codes": {
+  "201": {
+   "iso": "US",
+   "place": "Jersey City, NJ",
+   "class": "geographic"
+  },
+  "202": {
+   "iso": "US",
+   "place": "Washington D.C.",
+   "class": "geographic"
+  },
+  "203": {
+   "iso": "US",
+   "place": "Connecticut",
+   "class": "geographic"
+  },
+  "204": {
+   "iso": "CA",
+   "place": "Manitoba",
+   "class": "geographic"
+  },
+  "205": {
+   "iso": "US",
+   "place": "Alabama",
+   "class": "geographic"
+  },
+  "206": {
+   "iso": "US",
+   "place": "Washington State",
+   "class": "geographic"
+  },
+  "207": {
+   "iso": "US",
+   "place": "Maine",
+   "class": "geographic"
+  },
+  "208": {
+   "iso": "US",
+   "place": "Idaho",
+   "class": "geographic"
+  },
+  "209": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "210": {
+   "iso": "US",
+   "place": "San Antonio, TX",
+   "class": "geographic"
+  },
+  "212": {
+   "iso": "US",
+   "place": "New York, NY",
+   "class": "geographic"
+  },
+  "213": {
+   "iso": "US",
+   "place": "Los Angeles, CA",
+   "class": "geographic"
+  },
+  "214": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "215": {
+   "iso": "US",
+   "place": "Pennsylvania",
+   "class": "geographic"
+  },
+  "216": {
+   "iso": "US",
+   "place": "Ohio",
+   "class": "geographic"
+  },
+  "217": {
+   "iso": "US",
+   "place": "Illinois",
+   "class": "geographic"
+  },
+  "218": {
+   "iso": "US",
+   "place": "Minnesota",
+   "class": "geographic"
+  },
+  "219": {
+   "iso": "US",
+   "place": "Indiana",
+   "class": "geographic"
+  },
+  "220": {
+   "iso": "US",
+   "place": "Ohio",
+   "class": "geographic"
+  },
+  "223": {
+   "iso": "US",
+   "place": "Pennsylvania",
+   "class": "geographic"
+  },
+  "224": {
+   "iso": "US",
+   "place": "Illinois",
+   "class": "geographic"
+  },
+  "225": {
+   "iso": "US",
+   "place": "Louisiana",
+   "class": "geographic"
+  },
+  "226": {
+   "iso": "CA",
+   "place": "Ontario",
+   "class": "geographic"
+  },
+  "227": {
+   "iso": "US",
+   "place": "Maryland",
+   "class": "geographic"
+  },
+  "228": {
+   "iso": "US",
+   "place": "Mississippi",
+   "class": "geographic"
+  },
+  "229": {
+   "iso": "US",
+   "place": "Georgia",
+   "class": "geographic"
+  },
+  "231": {
+   "iso": "US",
+   "place": "Michigan",
+   "class": "geographic"
+  },
+  "234": {
+   "iso": "US",
+   "place": "Ohio",
+   "class": "geographic"
+  },
+  "235": {
+   "iso": "US",
+   "place": "Missouri",
+   "class": "geographic"
+  },
+  "236": {
+   "iso": "CA",
+   "place": "British Columbia",
+   "class": "geographic"
+  },
+  "239": {
+   "iso": "US",
+   "place": "Naples, FL",
+   "class": "geographic"
+  },
+  "240": {
+   "iso": "US",
+   "place": "Maryland",
+   "class": "geographic"
+  },
+  "242": {
+   "iso": "BS",
+   "place": "Bahamas",
+   "class": "geographic"
+  },
+  "246": {
+   "iso": "BB",
+   "place": "Barbados",
+   "class": "geographic"
+  },
+  "248": {
+   "iso": "US",
+   "place": "Michigan",
+   "class": "geographic"
+  },
+  "249": {
+   "iso": "CA",
+   "place": "Ontario",
+   "class": "geographic"
+  },
+  "250": {
+   "iso": "CA",
+   "place": "British Columbia",
+   "class": "geographic"
+  },
+  "251": {
+   "iso": "US",
+   "place": "Alabama",
+   "class": "geographic"
+  },
+  "252": {
+   "iso": "US",
+   "place": "North Carolina",
+   "class": "geographic"
+  },
+  "253": {
+   "iso": "US",
+   "place": "Puyallup, WA",
+   "class": "geographic"
+  },
+  "254": {
+   "iso": "US",
+   "place": "Killeen, TX",
+   "class": "geographic"
+  },
+  "256": {
+   "iso": "US",
+   "place": "Alabama",
+   "class": "geographic"
+  },
+  "257": {
+   "iso": "CA",
+   "place": "British Colombia",
+   "class": "geographic"
+  },
+  "260": {
+   "iso": "US",
+   "place": "Indiana",
+   "class": "geographic"
+  },
+  "262": {
+   "iso": "US",
+   "place": "Wisconsin",
+   "class": "geographic"
+  },
+  "263": {
+   "iso": "CA",
+   "place": "Montreal, QC",
+   "class": "geographic"
+  },
+  "264": {
+   "iso": "AI",
+   "place": "Anguilla",
+   "class": "geographic"
+  },
+  "267": {
+   "iso": "US",
+   "place": "Pennsylvania",
+   "class": "geographic"
+  },
+  "268": {
+   "iso": "AG",
+   "place": "Antigua and Barbuda",
+   "class": "geographic"
+  },
+  "269": {
+   "iso": "US",
+   "place": "Michigan",
+   "class": "geographic"
+  },
+  "270": {
+   "iso": "US",
+   "place": "Kentucky",
+   "class": "geographic"
+  },
+  "272": {
+   "iso": "US",
+   "place": "Pennsylvania",
+   "class": "geographic"
+  },
+  "273": {
+   "iso": "CA",
+   "place": "Quebec",
+   "class": "geographic"
+  },
+  "274": {
+   "iso": "US",
+   "place": "Wisconsin",
+   "class": "geographic"
+  },
+  "276": {
+   "iso": "US",
+   "place": "Virginia",
+   "class": "geographic"
+  },
+  "279": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "281": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "283": {
+   "iso": "US",
+   "place": "Ohio",
+   "class": "geographic"
+  },
+  "284": {
+   "iso": "VG",
+   "place": "British Virgin Islands",
+   "class": "geographic"
+  },
+  "289": {
+   "iso": "CA",
+   "place": "Ontario",
+   "class": "geographic"
+  },
+  "301": {
+   "iso": "US",
+   "place": "Maryland",
+   "class": "geographic"
+  },
+  "302": {
+   "iso": "US",
+   "place": "Delaware",
+   "class": "geographic"
+  },
+  "303": {
+   "iso": "US",
+   "place": "Colorado",
+   "class": "geographic"
+  },
+  "304": {
+   "iso": "US",
+   "place": "West Virginia",
+   "class": "geographic"
+  },
+  "305": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "306": {
+   "iso": "CA",
+   "place": "Saskatchewan",
+   "class": "geographic"
+  },
+  "307": {
+   "iso": "US",
+   "place": "Wyoming",
+   "class": "geographic"
+  },
+  "308": {
+   "iso": "US",
+   "place": "Nebraska",
+   "class": "geographic"
+  },
+  "309": {
+   "iso": "US",
+   "place": "Illinois",
+   "class": "geographic"
+  },
+  "310": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "312": {
+   "iso": "US",
+   "place": "Chicago, IL",
+   "class": "geographic"
+  },
+  "313": {
+   "iso": "US",
+   "place": "Michigan",
+   "class": "geographic"
+  },
+  "314": {
+   "iso": "US",
+   "place": "Missouri",
+   "class": "geographic"
+  },
+  "315": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "316": {
+   "iso": "US",
+   "place": "Kansas",
+   "class": "geographic"
+  },
+  "317": {
+   "iso": "US",
+   "place": "Indiana",
+   "class": "geographic"
+  },
+  "318": {
+   "iso": "US",
+   "place": "Louisiana",
+   "class": "geographic"
+  },
+  "319": {
+   "iso": "US",
+   "place": "Iowa",
+   "class": "geographic"
+  },
+  "320": {
+   "iso": "US",
+   "place": "Minnesota",
+   "class": "geographic"
+  },
+  "321": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "323": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "324": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "325": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "326": {
+   "iso": "US",
+   "place": "Ohio",
+   "class": "geographic"
+  },
+  "327": {
+   "iso": "US",
+   "place": "Arkansas",
+   "class": "geographic"
+  },
+  "329": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "330": {
+   "iso": "US",
+   "place": "Ohio",
+   "class": "geographic"
+  },
+  "331": {
+   "iso": "US",
+   "place": "Illinois",
+   "class": "geographic"
+  },
+  "332": {
+   "iso": "US",
+   "place": "New York, NY",
+   "class": "geographic"
+  },
+  "334": {
+   "iso": "US",
+   "place": "Alabama",
+   "class": "geographic"
+  },
+  "336": {
+   "iso": "US",
+   "place": "North Carolina",
+   "class": "geographic"
+  },
+  "337": {
+   "iso": "US",
+   "place": "Louisiana",
+   "class": "geographic"
+  },
+  "339": {
+   "iso": "US",
+   "place": "Massachusetts",
+   "class": "geographic"
+  },
+  "340": {
+   "iso": "VI",
+   "place": "U.S. Virgin Islands",
+   "class": "geographic"
+  },
+  "341": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "343": {
+   "iso": "CA",
+   "place": "Ontario",
+   "class": "geographic"
+  },
+  "345": {
+   "iso": "KY",
+   "place": "Cayman Islands",
+   "class": "geographic"
+  },
+  "346": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "347": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "350": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "351": {
+   "iso": "US",
+   "place": "Massachusetts",
+   "class": "geographic"
+  },
+  "352": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "353": {
+   "iso": "US",
+   "place": "Wisconsin",
+   "class": "geographic"
+  },
+  "354": {
+   "iso": "CA",
+   "place": "Quebec",
+   "class": "geographic"
+  },
+  "360": {
+   "iso": "US",
+   "place": "Washington State",
+   "class": "geographic"
+  },
+  "361": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "363": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "364": {
+   "iso": "US",
+   "place": "Kentucky",
+   "class": "geographic"
+  },
+  "365": {
+   "iso": "CA",
+   "place": "Ontario",
+   "class": "geographic"
+  },
+  "367": {
+   "iso": "CA",
+   "place": "Quebec",
+   "class": "geographic"
+  },
+  "368": {
+   "iso": "CA",
+   "place": "Alberta",
+   "class": "geographic"
+  },
+  "369": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "380": {
+   "iso": "US",
+   "place": "Ohio",
+   "class": "geographic"
+  },
+  "382": {
+   "iso": "CA",
+   "place": "Ontario",
+   "class": "geographic"
+  },
+  "385": {
+   "iso": "US",
+   "place": "Utah",
+   "class": "geographic"
+  },
+  "386": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "401": {
+   "iso": "US",
+   "place": "Rhode Island",
+   "class": "geographic"
+  },
+  "402": {
+   "iso": "US",
+   "place": "Nebraska",
+   "class": "geographic"
+  },
+  "403": {
+   "iso": "CA",
+   "place": "Calgary, AB",
+   "class": "geographic"
+  },
+  "404": {
+   "iso": "US",
+   "place": "Georgia",
+   "class": "geographic"
+  },
+  "405": {
+   "iso": "US",
+   "place": "Oklahoma",
+   "class": "geographic"
+  },
+  "406": {
+   "iso": "US",
+   "place": "Montana",
+   "class": "geographic"
+  },
+  "407": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "408": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "409": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "410": {
+   "iso": "US",
+   "place": "Maryland",
+   "class": "geographic"
+  },
+  "412": {
+   "iso": "US",
+   "place": "Pennsylvania",
+   "class": "geographic"
+  },
+  "413": {
+   "iso": "US",
+   "place": "Massachusetts",
+   "class": "geographic"
+  },
+  "414": {
+   "iso": "US",
+   "place": "Wisconsin",
+   "class": "geographic"
+  },
+  "415": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "416": {
+   "iso": "CA",
+   "place": "Ontario",
+   "class": "geographic"
+  },
+  "417": {
+   "iso": "US",
+   "place": "Missouri",
+   "class": "geographic"
+  },
+  "418": {
+   "iso": "CA",
+   "place": "Quebec",
+   "class": "geographic"
+  },
+  "419": {
+   "iso": "US",
+   "place": "Ohio",
+   "class": "geographic"
+  },
+  "423": {
+   "iso": "US",
+   "place": "Tennessee",
+   "class": "geographic"
+  },
+  "424": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "425": {
+   "iso": "US",
+   "place": "Washington State",
+   "class": "geographic"
+  },
+  "428": {
+   "iso": "CA",
+   "place": "New Brunswick",
+   "class": "geographic"
+  },
+  "430": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "431": {
+   "iso": "CA",
+   "place": "Manitoba",
+   "class": "geographic"
+  },
+  "432": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "434": {
+   "iso": "US",
+   "place": "Lynchburg, VA",
+   "class": "geographic"
+  },
+  "435": {
+   "iso": "US",
+   "place": "Utah",
+   "class": "geographic"
+  },
+  "437": {
+   "iso": "CA",
+   "place": "Toronto, ON",
+   "class": "geographic"
+  },
+  "438": {
+   "iso": "CA",
+   "place": "Quebec",
+   "class": "geographic"
+  },
+  "440": {
+   "iso": "US",
+   "place": "Ohio",
+   "class": "geographic"
+  },
+  "441": {
+   "iso": "BM",
+   "place": "Bermuda",
+   "class": "geographic"
+  },
+  "442": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "443": {
+   "iso": "US",
+   "place": "Maryland",
+   "class": "geographic"
+  },
+  "445": {
+   "iso": "US",
+   "place": "Philadelphia, PA",
+   "class": "geographic"
+  },
+  "447": {
+   "iso": "US",
+   "place": "Illinois",
+   "class": "geographic"
+  },
+  "448": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "450": {
+   "iso": "CA",
+   "place": "Quebec",
+   "class": "geographic"
+  },
+  "458": {
+   "iso": "US",
+   "place": "Oregon",
+   "class": "geographic"
+  },
+  "463": {
+   "iso": "US",
+   "place": "Indiana",
+   "class": "geographic"
+  },
+  "464": {
+   "iso": "US",
+   "place": "Illinois",
+   "class": "geographic"
+  },
+  "468": {
+   "iso": "CA",
+   "place": "Quebec",
+   "class": "geographic"
+  },
+  "469": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "470": {
+   "iso": "US",
+   "place": "Georgia",
+   "class": "geographic"
+  },
+  "472": {
+   "iso": "US",
+   "place": "North Carolina",
+   "class": "geographic"
+  },
+  "473": {
+   "iso": "GD",
+   "place": "Grenada",
+   "class": "geographic"
+  },
+  "474": {
+   "iso": "CA",
+   "place": "Saskatchewan",
+   "class": "geographic"
+  },
+  "475": {
+   "iso": "US",
+   "place": "Connecticut",
+   "class": "geographic"
+  },
+  "478": {
+   "iso": "US",
+   "place": "Georgia",
+   "class": "geographic"
+  },
+  "479": {
+   "iso": "US",
+   "place": "Arkansas",
+   "class": "geographic"
+  },
+  "480": {
+   "iso": "US",
+   "place": "Arizona",
+   "class": "geographic"
+  },
+  "484": {
+   "iso": "US",
+   "place": "Pennsylvania",
+   "class": "geographic"
+  },
+  "500": {
+   "iso": "US",
+   "place": "United States",
+   "class": "personal numbering"
+  },
+  "501": {
+   "iso": "US",
+   "place": "Arkansas",
+   "class": "geographic"
+  },
+  "502": {
+   "iso": "US",
+   "place": "Kentucky",
+   "class": "geographic"
+  },
+  "503": {
+   "iso": "US",
+   "place": "Portland, OR",
+   "class": "geographic"
+  },
+  "504": {
+   "iso": "US",
+   "place": "Louisiana",
+   "class": "geographic"
+  },
+  "505": {
+   "iso": "US",
+   "place": "New Mexico",
+   "class": "geographic"
+  },
+  "506": {
+   "iso": "CA",
+   "place": "New Brunswick",
+   "class": "geographic"
+  },
+  "507": {
+   "iso": "US",
+   "place": "Minnesota",
+   "class": "geographic"
+  },
+  "508": {
+   "iso": "US",
+   "place": "Massachusetts",
+   "class": "geographic"
+  },
+  "509": {
+   "iso": "US",
+   "place": "Washington State",
+   "class": "geographic"
+  },
+  "510": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "512": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "513": {
+   "iso": "US",
+   "place": "Ohio",
+   "class": "geographic"
+  },
+  "514": {
+   "iso": "CA",
+   "place": "Quebec",
+   "class": "geographic"
+  },
+  "515": {
+   "iso": "US",
+   "place": "Iowa",
+   "class": "geographic"
+  },
+  "516": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "517": {
+   "iso": "US",
+   "place": "Michigan",
+   "class": "geographic"
+  },
+  "518": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "519": {
+   "iso": "CA",
+   "place": "Ontario",
+   "class": "geographic"
+  },
+  "520": {
+   "iso": "US",
+   "place": "Arizona",
+   "class": "geographic"
+  },
+  "521": {
+   "iso": "US",
+   "place": "United States",
+   "class": "non-geographic"
+  },
+  "522": {
+   "iso": "US",
+   "place": "United States",
+   "class": "personal numbering"
+  },
+  "523": {
+   "iso": "US",
+   "place": "United States",
+   "class": "non-geographic"
+  },
+  "524": {
+   "iso": "US",
+   "place": "United States",
+   "class": "non-geographic"
+  },
+  "525": {
+   "iso": "US",
+   "place": "United States",
+   "class": "non-geographic"
+  },
+  "526": {
+   "iso": "US",
+   "place": "United States",
+   "class": "non-geographic"
+  },
+  "527": {
+   "iso": "US",
+   "place": "United States",
+   "class": "non-geographic"
+  },
+  "528": {
+   "iso": "US",
+   "place": "United States",
+   "class": "non-geographic"
+  },
+  "529": {
+   "iso": "US",
+   "place": "United States",
+   "class": "non-geographic"
+  },
+  "530": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "531": {
+   "iso": "US",
+   "place": "Nebraska",
+   "class": "geographic"
+  },
+  "532": {
+   "iso": "US",
+   "place": "United States",
+   "class": "non-geographic"
+  },
+  "533": {
+   "iso": "US",
+   "place": "United States",
+   "class": "personal numbering"
+  },
+  "534": {
+   "iso": "US",
+   "place": "Wisconsin",
+   "class": "geographic"
+  },
+  "539": {
+   "iso": "US",
+   "place": "Oklahoma",
+   "class": "geographic"
+  },
+  "540": {
+   "iso": "US",
+   "place": "Virginia",
+   "class": "geographic"
+  },
+  "541": {
+   "iso": "US",
+   "place": "Oregon",
+   "class": "geographic"
+  },
+  "544": {
+   "iso": "US",
+   "place": "United States",
+   "class": "personal numbering"
+  },
+  "548": {
+   "iso": "CA",
+   "place": "Ontario",
+   "class": "geographic"
+  },
+  "551": {
+   "iso": "US",
+   "place": "New Jersey",
+   "class": "geographic"
+  },
+  "557": {
+   "iso": "US",
+   "place": "Missouri",
+   "class": "geographic"
+  },
+  "559": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "561": {
+   "iso": "US",
+   "place": "Boynton Beach, FL",
+   "class": "geographic"
+  },
+  "562": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "563": {
+   "iso": "US",
+   "place": "Iowa",
+   "class": "geographic"
+  },
+  "564": {
+   "iso": "US",
+   "place": "Washington State",
+   "class": "geographic"
+  },
+  "566": {
+   "iso": "US",
+   "place": "United States",
+   "class": "personal numbering"
+  },
+  "567": {
+   "iso": "US",
+   "place": "Ohio",
+   "class": "geographic"
+  },
+  "570": {
+   "iso": "US",
+   "place": "Pennsylvania",
+   "class": "geographic"
+  },
+  "571": {
+   "iso": "US",
+   "place": "Virginia",
+   "class": "geographic"
+  },
+  "572": {
+   "iso": "US",
+   "place": "Oklahoma",
+   "class": "geographic"
+  },
+  "573": {
+   "iso": "US",
+   "place": "Missouri",
+   "class": "geographic"
+  },
+  "574": {
+   "iso": "US",
+   "place": "Indiana",
+   "class": "geographic"
+  },
+  "575": {
+   "iso": "US",
+   "place": "New Mexico",
+   "class": "geographic"
+  },
+  "577": {
+   "iso": "US",
+   "place": "United States",
+   "class": "personal numbering"
+  },
+  "579": {
+   "iso": "CA",
+   "place": "Quebec",
+   "class": "geographic"
+  },
+  "580": {
+   "iso": "US",
+   "place": "Oklahoma",
+   "class": "geographic"
+  },
+  "581": {
+   "iso": "CA",
+   "place": "Quebec",
+   "class": "geographic"
+  },
+  "582": {
+   "iso": "US",
+   "place": "Pennsylvania",
+   "class": "geographic"
+  },
+  "584": {
+   "iso": "CA",
+   "place": "Manitoba",
+   "class": "geographic"
+  },
+  "585": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "586": {
+   "iso": "US",
+   "place": "Michigan",
+   "class": "geographic"
+  },
+  "587": {
+   "iso": "CA",
+   "place": "Alberta",
+   "class": "geographic"
+  },
+  "588": {
+   "iso": "US",
+   "place": "United States",
+   "class": "personal numbering"
+  },
+  "600": {
+   "iso": "CA",
+   "place": "Canada",
+   "class": "non-geographic"
+  },
+  "601": {
+   "iso": "US",
+   "place": "Jackson, MS",
+   "class": "geographic"
+  },
+  "602": {
+   "iso": "US",
+   "place": "Phoenix, AZ",
+   "class": "geographic"
+  },
+  "603": {
+   "iso": "US",
+   "place": "New Hampshire",
+   "class": "geographic"
+  },
+  "604": {
+   "iso": "CA",
+   "place": "British Columbia",
+   "class": "geographic"
+  },
+  "605": {
+   "iso": "US",
+   "place": "South Dakota",
+   "class": "geographic"
+  },
+  "606": {
+   "iso": "US",
+   "place": "Kentucky",
+   "class": "geographic"
+  },
+  "607": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "608": {
+   "iso": "US",
+   "place": "Wisconsin",
+   "class": "geographic"
+  },
+  "609": {
+   "iso": "US",
+   "place": "New Jersey",
+   "class": "geographic"
+  },
+  "610": {
+   "iso": "US",
+   "place": "Pennsylvania",
+   "class": "geographic"
+  },
+  "612": {
+   "iso": "US",
+   "place": "Minnesota",
+   "class": "geographic"
+  },
+  "613": {
+   "iso": "CA",
+   "place": "Ontario",
+   "class": "geographic"
+  },
+  "614": {
+   "iso": "US",
+   "place": "Ohio",
+   "class": "geographic"
+  },
+  "615": {
+   "iso": "US",
+   "place": "Tennessee",
+   "class": "geographic"
+  },
+  "616": {
+   "iso": "US",
+   "place": "Michigan",
+   "class": "geographic"
+  },
+  "617": {
+   "iso": "US",
+   "place": "Massachusetts",
+   "class": "geographic"
+  },
+  "618": {
+   "iso": "US",
+   "place": "Illinois",
+   "class": "geographic"
+  },
+  "619": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "620": {
+   "iso": "US",
+   "place": "Kansas",
+   "class": "geographic"
+  },
+  "622": {
+   "iso": "CA",
+   "place": "Canada",
+   "class": "non-geographic"
+  },
+  "623": {
+   "iso": "US",
+   "place": "Arizona",
+   "class": "geographic"
+  },
+  "626": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "628": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "629": {
+   "iso": "US",
+   "place": "Tennessee",
+   "class": "geographic"
+  },
+  "630": {
+   "iso": "US",
+   "place": "Illinois",
+   "class": "geographic"
+  },
+  "631": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "633": {
+   "iso": "CA",
+   "place": "Canada",
+   "class": "non-geographic"
+  },
+  "636": {
+   "iso": "US",
+   "place": "Missouri",
+   "class": "geographic"
+  },
+  "639": {
+   "iso": "CA",
+   "place": "Saskatchewan",
+   "class": "geographic"
+  },
+  "640": {
+   "iso": "US",
+   "place": "New Jersey",
+   "class": "geographic"
+  },
+  "641": {
+   "iso": "US",
+   "place": "Iowa",
+   "class": "geographic"
+  },
+  "645": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "646": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "647": {
+   "iso": "CA",
+   "place": "Ontario",
+   "class": "geographic"
+  },
+  "649": {
+   "iso": "TC",
+   "place": "Turks and Caicos Islands",
+   "class": "geographic"
+  },
+  "650": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "651": {
+   "iso": "US",
+   "place": "Minnesota",
+   "class": "geographic"
+  },
+  "656": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "657": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "658": {
+   "iso": "JM",
+   "place": "Jamaica",
+   "class": "geographic"
+  },
+  "659": {
+   "iso": "US",
+   "place": "Lincoln, AL",
+   "class": "geographic"
+  },
+  "660": {
+   "iso": "US",
+   "place": "Missouri",
+   "class": "geographic"
+  },
+  "661": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "662": {
+   "iso": "US",
+   "place": "Mississippi",
+   "class": "geographic"
+  },
+  "664": {
+   "iso": "MS",
+   "place": "Montserrat",
+   "class": "geographic"
+  },
+  "667": {
+   "iso": "US",
+   "place": "Maryland",
+   "class": "geographic"
+  },
+  "669": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "670": {
+   "iso": "MP",
+   "place": "Northern Mariana Islands",
+   "class": "geographic"
+  },
+  "671": {
+   "iso": "GU",
+   "place": "Guam",
+   "class": "geographic"
+  },
+  "672": {
+   "iso": "CA",
+   "place": "British Columbia",
+   "class": "geographic"
+  },
+  "678": {
+   "iso": "US",
+   "place": "Georgia",
+   "class": "geographic"
+  },
+  "680": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "681": {
+   "iso": "US",
+   "place": "West Virginia",
+   "class": "geographic"
+  },
+  "682": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "683": {
+   "iso": "CA",
+   "place": "Ontario",
+   "class": "geographic"
+  },
+  "684": {
+   "iso": "AS",
+   "place": "American Samoa",
+   "class": "geographic"
+  },
+  "686": {
+   "iso": "US",
+   "place": "Virginia",
+   "class": "geographic"
+  },
+  "689": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "701": {
+   "iso": "US",
+   "place": "North Dakota",
+   "class": "geographic"
+  },
+  "702": {
+   "iso": "US",
+   "place": "Nevada",
+   "class": "geographic"
+  },
+  "703": {
+   "iso": "US",
+   "place": "Virginia",
+   "class": "geographic"
+  },
+  "704": {
+   "iso": "US",
+   "place": "North Carolina",
+   "class": "geographic"
+  },
+  "705": {
+   "iso": "CA",
+   "place": "Ontario",
+   "class": "geographic"
+  },
+  "706": {
+   "iso": "US",
+   "place": "Georgia",
+   "class": "geographic"
+  },
+  "707": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "708": {
+   "iso": "US",
+   "place": "Illinois",
+   "class": "geographic"
+  },
+  "709": {
+   "iso": "CA",
+   "place": "Newfoundland and Labrador",
+   "class": "geographic"
+  },
+  "712": {
+   "iso": "US",
+   "place": "Iowa",
+   "class": "geographic"
+  },
+  "713": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "714": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "715": {
+   "iso": "US",
+   "place": "Wisconsin",
+   "class": "geographic"
+  },
+  "716": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "717": {
+   "iso": "US",
+   "place": "Pennsylvania",
+   "class": "geographic"
+  },
+  "718": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "719": {
+   "iso": "US",
+   "place": "Colorado",
+   "class": "geographic"
+  },
+  "720": {
+   "iso": "US",
+   "place": "Colorado",
+   "class": "geographic"
+  },
+  "721": {
+   "iso": "SX",
+   "place": "Sint Maarten",
+   "class": "geographic"
+  },
+  "724": {
+   "iso": "US",
+   "place": "Pennsylvania",
+   "class": "geographic"
+  },
+  "725": {
+   "iso": "US",
+   "place": "Nevada",
+   "class": "geographic"
+  },
+  "726": {
+   "iso": "US",
+   "place": "San Antonio, TX",
+   "class": "geographic"
+  },
+  "727": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "728": {
+   "iso": "US",
+   "place": "Palm Beach, FL",
+   "class": "geographic"
+  },
+  "730": {
+   "iso": "US",
+   "place": "Illinois",
+   "class": "geographic"
+  },
+  "731": {
+   "iso": "US",
+   "place": "Tennessee",
+   "class": "geographic"
+  },
+  "732": {
+   "iso": "US",
+   "place": "New Jersey",
+   "class": "geographic"
+  },
+  "734": {
+   "iso": "US",
+   "place": "Michigan",
+   "class": "geographic"
+  },
+  "737": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "738": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "740": {
+   "iso": "US",
+   "place": "Ohio",
+   "class": "geographic"
+  },
+  "742": {
+   "iso": "CA",
+   "place": "Ontario",
+   "class": "geographic"
+  },
+  "743": {
+   "iso": "US",
+   "place": "North Carolina",
+   "class": "geographic"
+  },
+  "747": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "748": {
+   "iso": "US",
+   "place": "Colorado",
+   "class": "geographic"
+  },
+  "753": {
+   "iso": "CA",
+   "place": "Ontario",
+   "class": "geographic"
+  },
+  "754": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "757": {
+   "iso": "US",
+   "place": "Virginia",
+   "class": "geographic"
+  },
+  "758": {
+   "iso": "LC",
+   "place": "Saint Lucia",
+   "class": "geographic"
+  },
+  "760": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "762": {
+   "iso": "US",
+   "place": "Georgia",
+   "class": "geographic"
+  },
+  "763": {
+   "iso": "US",
+   "place": "Minnesota",
+   "class": "geographic"
+  },
+  "765": {
+   "iso": "US",
+   "place": "Indiana",
+   "class": "geographic"
+  },
+  "767": {
+   "iso": "DM",
+   "place": "Dominica",
+   "class": "geographic"
+  },
+  "769": {
+   "iso": "US",
+   "place": "Mississippi",
+   "class": "geographic"
+  },
+  "770": {
+   "iso": "US",
+   "place": "Georgia",
+   "class": "geographic"
+  },
+  "771": {
+   "iso": "US",
+   "place": "Washington D.C.",
+   "class": "geographic"
+  },
+  "772": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "773": {
+   "iso": "US",
+   "place": "Chicago, IL",
+   "class": "geographic"
+  },
+  "774": {
+   "iso": "US",
+   "place": "Massachusetts",
+   "class": "geographic"
+  },
+  "775": {
+   "iso": "US",
+   "place": "Nevada",
+   "class": "geographic"
+  },
+  "778": {
+   "iso": "CA",
+   "place": "British Columbia",
+   "class": "geographic"
+  },
+  "779": {
+   "iso": "US",
+   "place": "Illinois",
+   "class": "geographic"
+  },
+  "780": {
+   "iso": "CA",
+   "place": "Alberta",
+   "class": "geographic"
+  },
+  "781": {
+   "iso": "US",
+   "place": "Massachusetts",
+   "class": "geographic"
+  },
+  "782": {
+   "iso": "CA",
+   "place": "Nova Scotia/Prince Edward Island",
+   "class": "geographic"
+  },
+  "784": {
+   "iso": "VC",
+   "place": "Saint Vincent and the Grenadines",
+   "class": "geographic"
+  },
+  "785": {
+   "iso": "US",
+   "place": "Kansas",
+   "class": "geographic"
+  },
+  "786": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "787": {
+   "iso": "PR",
+   "place": "Puerto Rico",
+   "class": "geographic"
+  },
+  "800": {
+   "iso": "US",
+   "place": "United States",
+   "class": "toll-free"
+  },
+  "801": {
+   "iso": "US",
+   "place": "Utah",
+   "class": "geographic"
+  },
+  "802": {
+   "iso": "US",
+   "place": "Vermont",
+   "class": "geographic"
+  },
+  "803": {
+   "iso": "US",
+   "place": "South Carolina",
+   "class": "geographic"
+  },
+  "804": {
+   "iso": "US",
+   "place": "Virginia",
+   "class": "geographic"
+  },
+  "805": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "806": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "807": {
+   "iso": "CA",
+   "place": "Ontario",
+   "class": "geographic"
+  },
+  "808": {
+   "iso": "US",
+   "place": "Hawaii",
+   "class": "geographic"
+  },
+  "809": {
+   "iso": "DO",
+   "place": "Dominican Republic",
+   "class": "geographic"
+  },
+  "810": {
+   "iso": "US",
+   "place": "Michigan",
+   "class": "geographic"
+  },
+  "812": {
+   "iso": "US",
+   "place": "Indiana",
+   "class": "geographic"
+  },
+  "813": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "814": {
+   "iso": "US",
+   "place": "Pennsylvania",
+   "class": "geographic"
+  },
+  "815": {
+   "iso": "US",
+   "place": "Illinois",
+   "class": "geographic"
+  },
+  "816": {
+   "iso": "US",
+   "place": "Missouri",
+   "class": "geographic"
+  },
+  "817": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "818": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "819": {
+   "iso": "CA",
+   "place": "Quebec",
+   "class": "geographic"
+  },
+  "820": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "821": {
+   "iso": "US",
+   "place": "South Carolina",
+   "class": "geographic"
+  },
+  "825": {
+   "iso": "CA",
+   "place": "Alberta",
+   "class": "geographic"
+  },
+  "826": {
+   "iso": "US",
+   "place": "Virginia",
+   "class": "geographic"
+  },
+  "828": {
+   "iso": "US",
+   "place": "North Carolina",
+   "class": "geographic"
+  },
+  "829": {
+   "iso": "DO",
+   "place": "Dominican Republic",
+   "class": "geographic"
+  },
+  "830": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "831": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "832": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "833": {
+   "iso": "US",
+   "place": "United States",
+   "class": "toll-free"
+  },
+  "835": {
+   "iso": "US",
+   "place": "Pennsylvania",
+   "class": "geographic"
+  },
+  "838": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "839": {
+   "iso": "US",
+   "place": "South Carolina",
+   "class": "geographic"
+  },
+  "840": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "843": {
+   "iso": "US",
+   "place": "South Carolina",
+   "class": "geographic"
+  },
+  "844": {
+   "iso": "US",
+   "place": "United States",
+   "class": "toll-free"
+  },
+  "845": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "847": {
+   "iso": "US",
+   "place": "Illinois",
+   "class": "geographic"
+  },
+  "848": {
+   "iso": "US",
+   "place": "New Jersey",
+   "class": "geographic"
+  },
+  "849": {
+   "iso": "DO",
+   "place": "Dominican Republic",
+   "class": "geographic"
+  },
+  "850": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "854": {
+   "iso": "US",
+   "place": "South Carolina",
+   "class": "geographic"
+  },
+  "855": {
+   "iso": "US",
+   "place": "United States",
+   "class": "toll-free"
+  },
+  "856": {
+   "iso": "US",
+   "place": "New Jersey",
+   "class": "geographic"
+  },
+  "857": {
+   "iso": "US",
+   "place": "Massachusetts",
+   "class": "geographic"
+  },
+  "858": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "859": {
+   "iso": "US",
+   "place": "Kentucky",
+   "class": "geographic"
+  },
+  "860": {
+   "iso": "US",
+   "place": "Connecticut",
+   "class": "geographic"
+  },
+  "862": {
+   "iso": "US",
+   "place": "New Jersey",
+   "class": "geographic"
+  },
+  "863": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "864": {
+   "iso": "US",
+   "place": "South Carolina",
+   "class": "geographic"
+  },
+  "865": {
+   "iso": "US",
+   "place": "Knoxville, TN",
+   "class": "geographic"
+  },
+  "866": {
+   "iso": "US",
+   "place": "United States",
+   "class": "toll-free"
+  },
+  "867": {
+   "iso": "CA",
+   "place": "Northwest Territories/Nunavut/Yukon",
+   "class": "geographic"
+  },
+  "868": {
+   "iso": "TT",
+   "place": "Trinidad and Tobago",
+   "class": "geographic"
+  },
+  "869": {
+   "iso": "KN",
+   "place": "Saint Kitts and Nevis",
+   "class": "geographic"
+  },
+  "870": {
+   "iso": "US",
+   "place": "Arkansas",
+   "class": "geographic"
+  },
+  "872": {
+   "iso": "US",
+   "place": "Chicago, IL",
+   "class": "geographic"
+  },
+  "873": {
+   "iso": "CA",
+   "place": "Quebec",
+   "class": "geographic"
+  },
+  "876": {
+   "iso": "JM",
+   "place": "Jamaica",
+   "class": "geographic"
+  },
+  "877": {
+   "iso": "US",
+   "place": "United States",
+   "class": "toll-free"
+  },
+  "878": {
+   "iso": "US",
+   "place": "Pennsylvania",
+   "class": "geographic"
+  },
+  "879": {
+   "iso": "CA",
+   "place": "Newfoundland and Labrador",
+   "class": "geographic"
+  },
+  "888": {
+   "iso": "US",
+   "place": "United States",
+   "class": "toll-free"
+  },
+  "900": {
+   "iso": "US",
+   "place": "United States",
+   "class": "premium"
+  },
+  "901": {
+   "iso": "US",
+   "place": "Tennessee",
+   "class": "geographic"
+  },
+  "902": {
+   "iso": "CA",
+   "place": "Nova Scotia/Prince Edward Island",
+   "class": "geographic"
+  },
+  "903": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "904": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "905": {
+   "iso": "CA",
+   "place": "Ontario",
+   "class": "geographic"
+  },
+  "906": {
+   "iso": "US",
+   "place": "Michigan",
+   "class": "geographic"
+  },
+  "907": {
+   "iso": "US",
+   "place": "Alaska",
+   "class": "geographic"
+  },
+  "908": {
+   "iso": "US",
+   "place": "New Jersey",
+   "class": "geographic"
+  },
+  "909": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "910": {
+   "iso": "US",
+   "place": "North Carolina",
+   "class": "geographic"
+  },
+  "912": {
+   "iso": "US",
+   "place": "Georgia",
+   "class": "geographic"
+  },
+  "913": {
+   "iso": "US",
+   "place": "Kansas",
+   "class": "geographic"
+  },
+  "914": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "915": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "916": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "917": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "918": {
+   "iso": "US",
+   "place": "Oklahoma",
+   "class": "geographic"
+  },
+  "919": {
+   "iso": "US",
+   "place": "North Carolina",
+   "class": "geographic"
+  },
+  "920": {
+   "iso": "US",
+   "place": "Wisconsin",
+   "class": "geographic"
+  },
+  "925": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "928": {
+   "iso": "US",
+   "place": "Arizona",
+   "class": "geographic"
+  },
+  "929": {
+   "iso": "US",
+   "place": "New York",
+   "class": "geographic"
+  },
+  "930": {
+   "iso": "US",
+   "place": "Indiana",
+   "class": "geographic"
+  },
+  "931": {
+   "iso": "US",
+   "place": "Tennessee",
+   "class": "geographic"
+  },
+  "934": {
+   "iso": "US",
+   "place": "New York, NY",
+   "class": "geographic"
+  },
+  "936": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "937": {
+   "iso": "US",
+   "place": "Ohio",
+   "class": "geographic"
+  },
+  "938": {
+   "iso": "US",
+   "place": "Alabama",
+   "class": "geographic"
+  },
+  "939": {
+   "iso": "PR",
+   "place": "Puerto Rico",
+   "class": "geographic"
+  },
+  "940": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "941": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "942": {
+   "iso": "CA",
+   "place": "Toronto, ON",
+   "class": "geographic"
+  },
+  "943": {
+   "iso": "US",
+   "place": "Georgia",
+   "class": "geographic"
+  },
+  "945": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "947": {
+   "iso": "US",
+   "place": "Michigan",
+   "class": "geographic"
+  },
+  "948": {
+   "iso": "US",
+   "place": "Virginia",
+   "class": "geographic"
+  },
+  "949": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "951": {
+   "iso": "US",
+   "place": "California",
+   "class": "geographic"
+  },
+  "952": {
+   "iso": "US",
+   "place": "Minnesota",
+   "class": "geographic"
+  },
+  "954": {
+   "iso": "US",
+   "place": "Florida",
+   "class": "geographic"
+  },
+  "956": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "959": {
+   "iso": "US",
+   "place": "Connecticut",
+   "class": "geographic"
+  },
+  "970": {
+   "iso": "US",
+   "place": "Colorado",
+   "class": "geographic"
+  },
+  "971": {
+   "iso": "US",
+   "place": "Oregon",
+   "class": "geographic"
+  },
+  "972": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "973": {
+   "iso": "US",
+   "place": "New Jersey",
+   "class": "geographic"
+  },
+  "975": {
+   "iso": "US",
+   "place": "Missouri",
+   "class": "geographic"
+  },
+  "978": {
+   "iso": "US",
+   "place": "Massachusetts",
+   "class": "geographic"
+  },
+  "979": {
+   "iso": "US",
+   "place": "Texas",
+   "class": "geographic"
+  },
+  "980": {
+   "iso": "US",
+   "place": "North Carolina",
+   "class": "geographic"
+  },
+  "983": {
+   "iso": "US",
+   "place": "Colorado",
+   "class": "geographic"
+  },
+  "984": {
+   "iso": "US",
+   "place": "North Carolina",
+   "class": "geographic"
+  },
+  "985": {
+   "iso": "US",
+   "place": "Louisiana",
+   "class": "geographic"
+  },
+  "986": {
+   "iso": "US",
+   "place": "Idaho",
+   "class": "geographic"
+  },
+  "989": {
+   "iso": "US",
+   "place": "Michigan",
+   "class": "geographic"
+  }
+ }
+}

@@ -124,7 +124,8 @@ that thread key is the only piece of identity this package owns. anything wider,
 | `src/setup/` | how does a number come to exist and start answering | `flow.py`, `provision.py`, `routes.py` |
 | `src/manage/` | what happened while i was not looking | `inbox.py`, `views.py`, `catcher.py`, `mailparse.py` |
 | `src/onramp/` | which rails open once a number exists | `flow.py`, `signal.json` |
-| `src/lookup/` | what a number is, before anybody spends money on it | `classify.py`, `support.py` |
+| `src/lookup/` | what a number is, before anybody spends money on it | `classify.py`, `support.py`, `evalrun.py`, `nanp.json` |
+| `tools/` | the build scripts that need a package installed, and stay out of the runtime | `generate_nanp.py` |
 | `src/providers.py` | which vendor, at what price, routing where | data, no logic worth the name |
 
 ## what is not here

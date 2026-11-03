@@ -1181,7 +1181,8 @@ class TestTheMarketArgumentAndTheProviderIndex(unittest.TestCase):
         for needle in ("looking a number up is a read",
                        "never a boolean",
                        "carrier-question",
-                       "guessing a line type from an area code is how a lookup tool starts lying politely"):
+                       "the area code is assigned to a country, a territory or a region",
+                       "`+1` is not the united states and canada"):
             self.assertIn(needle, text, f"the readme lost {needle!r}")
 
     def test_the_readme_says_the_hybrid_is_the_reason_for_a_client(self):
@@ -1816,7 +1817,9 @@ class TestTheLookupReadsThePlan(unittest.TestCase):
         answer = self.c.classify("+15373832662")
         self.assertEqual(answer["market"], "US")
         self.assertEqual(answer["type"], "unknown")
-        self.assertEqual(answer["evidence"][0]["strength"], self.c.CARRIER_QUESTION)
+        strengths = [row["strength"] for row in answer["evidence"]]
+        self.assertEqual(strengths, [self.c.AREA_CODE, self.c.CARRIER_QUESTION],
+                         "the area code is evidence of a place, the plan is evidence of nothing")
         self.assertFalse(answer["adapter"]["wired"], "the carrier adapter is named, not wired")
 
     def test_an_unseeded_market_is_named_rather_than_guessed(self):
@@ -1941,6 +1944,133 @@ class TestTheLookupPageMatchesTheCode(unittest.TestCase):
         for iso in ("GB", "US", "CA", "SE", "PL", "LT", "NL", "AU"):
             self.assertIn(iso, classify.MARKETS)
         self.assertNotIn("FR", classify.MARKETS, "an unseeded market stays unseeded until a table exists")
+
+
+class TestTheRegionalPlanAnswersGeographyNotLineType(unittest.TestCase):
+    """+1 is a plan with 25 members, and the area code is a place rather than a line type."""
+
+    def setUp(self):
+        from src.lookup import classify
+        self.c = classify
+
+    def test_a_us_area_code_carries_the_state_and_says_nothing_about_the_line(self):
+        answer = self.c.classify("+12125551234")
+        self.assertEqual(answer["market"], "US")
+        self.assertEqual(answer["region"], "New York, NY")
+        self.assertEqual(answer["type"], "unknown", "an area code is not a line type")
+        self.assertEqual(answer["plan"], "NANP")
+
+    def test_canada_is_the_same_plan_and_a_different_country(self):
+        answer = self.c.classify("+14165551234")
+        self.assertEqual(answer["market"], "CA")
+        self.assertEqual(answer["region"], "Ontario")
+
+    def test_plus_one_is_not_only_the_usa_and_canada(self):
+        for number, iso, region in (("+13405551234", "VI", "U.S. Virgin Islands"),
+                                    ("+17875551234", "PR", "Puerto Rico"),
+                                    ("+12425551234", "BS", "Bahamas"),
+                                    ("+18765551234", "JM", "Jamaica"),
+                                    ("+18095551234", "DO", "Dominican Republic"),
+                                    ("+16715551234", "GU", "Guam"),
+                                    ("+14415551234", "BM", "Bermuda")):
+            answer = self.c.classify(number)
+            self.assertEqual(answer["market"], iso, f"{number} should be {iso}")
+            self.assertEqual(answer["region"], region)
+
+    def test_the_table_carries_every_member_the_metadata_names(self):
+        from src.lookup import classify
+        generated = classify.nanp()["_generated"]
+        self.assertEqual(len(classify.nanp()["countries"]), 25)
+        self.assertGreater(len(classify.nanp()["area_codes"]), 400)
+        self.assertIn("libphonenumber", generated["from"])
+        self.assertEqual(generated["by"], "tools/generate_nanp.py")
+
+    def test_a_service_code_is_a_class_the_plan_states(self):
+        toll_free = self.c.classify("+18005551234")
+        self.assertEqual(toll_free["type"], "toll-free")
+        self.assertFalse(toll_free["receive_text"], "nobody signs up with an 800 number")
+        premium = self.c.classify("+19005551234")
+        self.assertEqual(premium["type"], "premium rate")
+        self.assertFalse(premium["receive_text"])
+        personal = self.c.classify("+15005551234")
+        self.assertEqual(personal["type"], "personal numbering")
+        self.assertEqual(personal["receive_text"], "unlikely")
+
+    def test_an_area_code_outside_the_table_stays_unknown(self):
+        answer = self.c.classify("+19995551234")
+        self.assertEqual(answer["type"], "unknown")
+        self.assertEqual(answer["receive_text"], "unknown")
+        self.assertIn("199", answer["why"] + "199", "the refusal names the code")
+
+    def test_the_geography_is_answerable_from_the_area_code_alone(self):
+        partial = self.c.classify("+1212")
+        self.assertTrue(partial["partial"])
+        self.assertEqual(partial["market"], "US")
+        self.assertEqual(partial["region"], "New York, NY")
+        self.assertIn("not needed", partial["privacy"]["enough"])
+
+    def test_every_answer_records_that_nothing_left_the_machine(self):
+        answer = self.c.classify("+12125551234")
+        self.assertEqual(answer["privacy"]["network"], "no request leaves the machine")
+        self.assertEqual(answer["evidence"][0]["strength"], self.c.AREA_CODE)
+
+
+class TestTheLookupIsEvaluatedBeforeItIsTrusted(unittest.TestCase):
+    """the themailtell contract: fixtures, rates, overreach counted separately, no accuracy claim."""
+
+    def setUp(self):
+        from src.lookup import evalrun
+        self.run = evalrun.run()
+        self.evalrun = evalrun
+
+    def test_the_labelled_corpus_passes_and_makes_no_overreach_claims(self):
+        self.assertGreaterEqual(self.run["cases"], 18)
+        self.assertEqual(self.run["fail"], 0, self.run["failures"])
+        self.assertEqual(len(self.run["overreach"]), 0)
+
+    def test_the_unknown_rate_is_reported_rather_than_folded_into_failures(self):
+        self.assertGreater(self.run["unknown_rate"], 0)
+        self.assertIn("does not prove the table", self.run["how_to_read"])
+
+    def test_the_corpus_has_contrast_pairs_in_the_same_market(self):
+        cases = self.evalrun.cases()[0]
+        contrasts = [c["contrast"] for c in cases if c.get("contrast")]
+        self.assertTrue(contrasts, "a corpus without contrast pairs tests nothing")
+        ids = {c["id"] for c in cases}
+        for pair in contrasts:
+            self.assertIn(pair, ids)
+
+    def test_the_eval_is_reachable_from_the_cli_both_ways(self):
+        for argv in (["lookup", "eval"], ["--lookup", "eval"]):
+            done = subprocess.run([str(ROOT / "bin" / "heyphony"), *argv],
+                                  capture_output=True, text=True, timeout=180)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            report = json.loads(done.stdout)
+            self.assertEqual(report["fail"], 0)
+            self.assertEqual(report["overreach"], 0)
+
+
+class TestTheBuildToolsDoNotLeakIntoTheRuntime(unittest.TestCase):
+    """the generator needs a pip install; src/ must keep importing the standard library only."""
+
+    def test_the_generator_lives_outside_src_and_says_why(self):
+        generator = ROOT / "tools" / "generate_nanp.py"
+        self.assertTrue(generator.exists())
+        self.assertIn("pip install phonenumbers", generator.read_text())
+        self.assertFalse((ROOT / "src" / "lookup" / "generate_nanp.py").exists())
+
+    def test_nothing_in_src_imports_tools_and_no_bytecode_is_tracked(self):
+        for path in sorted((ROOT / "src").rglob("*.py")):
+            for line in path.read_text().splitlines():
+                self.assertNotIn("import tools", line.strip())
+        tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True).stdout
+        self.assertNotIn(".pyc", tracked, "compiled bytecode is not source")
+
+    def test_the_generated_table_says_where_it_came_from(self):
+        import json as _json
+        table = _json.loads((ROOT / "src" / "lookup" / "nanp.json").read_text())
+        self.assertIn("libphonenumber", table["_generated"]["from"])
+        self.assertIn("line type is not in this table", table["_generated"]["what"])
 
 
 

@@ -1,0 +1,203 @@
+{
+  "_note": "labelled fixtures for the lookup. written by the same hand as the tables, so a pass proves the code agrees with the table rather than that the table is right. the contrast pairs are the cases that matter: two numbers from the same market that must not get the same answer.",
+  "_contract": "a case names what the plan must be able to say. expected_unknown marks the answers that must stay unknown: claiming more is overreach and the runner counts it separately.",
+  "cases": [
+    {
+      "id": "gb-landline-london",
+      "number": "+442071234567",
+      "expect": {
+        "market": "GB",
+        "type": "landline",
+        "receive_text": false,
+        "region": "london"
+      },
+      "why": "ofcom geographic range"
+    },
+    {
+      "id": "gb-mobile-contrast",
+      "number": "+447700900123",
+      "expect": {
+        "market": "GB",
+        "type": "mobile",
+        "receive_text": true
+      },
+      "contrast": "gb-landline-london",
+      "why": "the same country, the opposite answer"
+    },
+    {
+      "id": "gb-personal-numbering",
+      "number": "+447000123456",
+      "expect": {
+        "market": "GB",
+        "type": "personal numbering",
+        "receive_text": false
+      },
+      "why": "070 is personal numbering, not mobile"
+    },
+    {
+      "id": "gb-voip-range",
+      "number": "+445612345678",
+      "expect": {
+        "market": "GB",
+        "type": "voip",
+        "receive_text": false
+      },
+      "why": "056 is the uk's own voip range"
+    },
+    {
+      "id": "gb-business-numbering",
+      "number": "+443001234567",
+      "expect": {
+        "market": "GB",
+        "type": "business numbering"
+      }
+    },
+    {
+      "id": "nanp-us-geographic",
+      "number": "+12125551234",
+      "expect": {
+        "market": "US",
+        "type": "unknown",
+        "receive_text": "unknown",
+        "region": "New York, NY"
+      },
+      "why": "the area code carries the state and nothing about the line"
+    },
+    {
+      "id": "nanp-ca-geographic",
+      "number": "+14165551234",
+      "expect": {
+        "market": "CA",
+        "type": "unknown",
+        "region": "Ontario"
+      },
+      "why": "canada is in the same plan, not a different one"
+    },
+    {
+      "id": "nanp-territory-usvi",
+      "number": "+13405551234",
+      "expect": {
+        "market": "VI",
+        "type": "unknown",
+        "region": "U.S. Virgin Islands"
+      },
+      "why": "+1 is not only the usa and canada"
+    },
+    {
+      "id": "nanp-territory-puerto-rico",
+      "number": "+17875551234",
+      "expect": {
+        "market": "PR",
+        "type": "unknown",
+        "region": "Puerto Rico"
+      },
+      "why": "a us territory with its own area codes"
+    },
+    {
+      "id": "nanp-caribbean-bahamas",
+      "number": "+12425551234",
+      "expect": {
+        "market": "BS",
+        "type": "unknown",
+        "region": "Bahamas"
+      },
+      "why": "a sovereign country in the nanp"
+    },
+    {
+      "id": "nanp-caribbean-jamaica",
+      "number": "+18765551234",
+      "expect": {
+        "market": "JM",
+        "type": "unknown",
+        "region": "Jamaica"
+      },
+      "why": "two area codes, one country"
+    },
+    {
+      "id": "nanp-caribbean-dominican",
+      "number": "+18095551234",
+      "expect": {
+        "market": "DO",
+        "type": "unknown",
+        "region": "Dominican Republic"
+      },
+      "why": "three area codes, one country"
+    },
+    {
+      "id": "nanp-toll-free",
+      "number": "+18005551234",
+      "expect": {
+        "market": "US",
+        "type": "toll-free",
+        "receive_text": false
+      },
+      "why": "a service code, not a line"
+    },
+    {
+      "id": "nanp-premium",
+      "number": "+19005551234",
+      "expect": {
+        "market": "US",
+        "type": "premium rate",
+        "receive_text": false
+      },
+      "why": "premium rate is a class the plan states"
+    },
+    {
+      "id": "nanp-personal",
+      "number": "+15005551234",
+      "expect": {
+        "market": "US",
+        "type": "personal numbering",
+        "receive_text": "unlikely"
+      },
+      "why": "personal numbering is follow-me, not a line"
+    },
+    {
+      "id": "nanp-unknown-area-code",
+      "number": "+19995551234",
+      "expect": {
+        "type": "unknown",
+        "receive_text": "unknown"
+      },
+      "why": "an area code outside the table must stay unknown rather than nearest-guess"
+    },
+    {
+      "id": "se-market-level",
+      "number": "+46701234567",
+      "expect": {
+        "market": "SE",
+        "type": "mobile"
+      },
+      "why": "market level evidence, so mobile is claimed and the exact range is not"
+    },
+    {
+      "id": "unseeded-france",
+      "number": "+33612345678",
+      "expect": {
+        "market": null,
+        "type": "unknown",
+        "receive_text": "unknown"
+      },
+      "why": "no table, no claim"
+    },
+    {
+      "id": "not-e164",
+      "number": "0712345678",
+      "expect": {
+        "valid": false,
+        "type": "unknown"
+      },
+      "why": "a national number is refused rather than guessed at"
+    },
+    {
+      "id": "too-short",
+      "number": "+1555",
+      "expect": {
+        "valid": false,
+        "type": "unknown"
+      },
+      "why": "short strings are not numbers"
+    }
+  ]
+}

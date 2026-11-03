@@ -112,7 +112,11 @@ and the thing people assume wrong, so it is in the command output as well as her
 
 `heyphony --lookup +1555... support` answers per service instead, and this is where the tool refuses to be clever. a numbering plan can say whether a range can receive a code at all. it cannot say whether this particular number already has a whatsapp account, because that is a fact held by whatsapp and nobody else. so the verdicts are `possible`, `unlikely` and `unknown`, never a boolean, and `heyphony --lookup +1555... probes` prints the exact probe each service would need along with what running it would do: one of them sends an sms to that handset, and two of them lean on undocumented endpoints.
 
-`unknown` is a real answer rather than a failure. the north american numbering plan does not encode line type at all, so every +1 number comes back `type: unknown` with `carrier-question` as its evidence, and with the carrier-lookup adapter named and marked unwired. guessing a line type from an area code is how a lookup tool starts lying politely.
+`+1` is where the two kinds of evidence separate cleanly. the north american plan encodes no **line type**, so a +1 number comes back `type: unknown` with `carrier-question` as its evidence and the carrier-lookup adapter named and marked unwired. it encodes a great deal of **geography**: the area code is assigned to a country, a territory or a region, so `heyphony --lookup +13405551234` answers `VI`, `U.S. Virgin Islands` and, for a geographic code, a place like `New York, NY` or `Ontario`. `+1` is not the united states and canada: the plan is shared by 25 countries and territories, from puerto rico and the us virgin islands to jamaica, bermuda and trinidad, and the area code also says whether the number is geographic, non-geographic, toll-free, premium or a personal follow-me number.
+
+a whole number is not always needed either. the geography sits in the first three digits, so `heyphony --lookup +1212` answers from the area code alone and says the subscriber digits were not needed, which is this half's version of preferring a domain to a local part.
+
+`heyphony lookup eval` runs a labelled fixture corpus and counts a claim beyond the evidence as overreach, separately from a wrong answer: 20 cases, 20 passing, 0 overreach. the fixtures and the tables share an author, so a pass proves the code agrees with the table and not that the table is right, which is the same contract as themailtell and the reason the numbers are printed with that sentence attached.
 
 ### the number outlives the machine
 

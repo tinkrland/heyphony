@@ -294,6 +294,8 @@ LOOKUP_MODES = ("line", "support", "probes")
 def _lookup_args(rest):
     """`--lookup <number> [mode]`, with the mode optional because the number is the point."""
     parsed = {"number": None, "mode": "all"}
+    if rest and rest[0] == "eval":
+        return {"number": None, "mode": "eval"}
     for word in rest:
         if word.startswith("-"):
             continue
@@ -308,9 +310,18 @@ def _lookup_args(rest):
 
 def cmd_lookup(args):
     """what a number is, from the plan that issues it, and the probe that would go further."""
-    from src.lookup import classify, support
+    from src.lookup import classify, evalrun, support
     number = args.get("number") if isinstance(args, dict) else getattr(args, "number", None)
     mode = (args.get("mode") if isinstance(args, dict) else getattr(args, "mode", None)) or "all"
+    if number == "eval":
+        number, mode = None, "eval"
+    if mode == "eval":
+        report = evalrun.run()
+        _out({k: report[k] for k in ("cases", "pass", "fail", "unknown_rate", "note", "how_to_read")}
+             | {"overreach": len(report["overreach"]),
+                "failures": [{k: row[k] for k in ("id", "wrong", "got", "expected")}
+                             for row in report["failures"]]})
+        return 0 if report["fail"] == 0 and not report["overreach"] else 1
     if not number:
         _out({"ok": False, "why": "lookup needs a number",
               "usage": "heyphony --lookup +447700900123 [line|support|probes]",
@@ -515,7 +526,9 @@ def build_parser():
     hk.set_defaults(func=cmd_hooks)
     lk = sub.add_parser("lookup", help="what a number is: line class, text, service support")
     lk.add_argument("number")
-    lk.add_argument("mode", nargs="?", default="all", choices=list(LOOKUP_MODES) + ["all"])
+    lk.add_argument("mode", nargs="?", default="all",
+                    choices=list(LOOKUP_MODES) + ["all", "eval"],
+                    help="`eval` runs the labelled fixtures instead of a number")
     lk.set_defaults(func=cmd_lookup)
 
     vm = sub.add_parser("voicemail", help="place one call and leave a spoken message")

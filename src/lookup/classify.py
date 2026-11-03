@@ -9,12 +9,29 @@ instead of inferring a line type from an area code.
 coverage is per market and named in MARKETS, because a lookup tool that quietly generalises from the one
 plan it knows is worse than no tool.
 """
+import json
+import pathlib
+
 from src.setup import numbering
 
+NANP_FILE = pathlib.Path(__file__).with_name("nanp.json")
+_NANP = None
+
+
+def nanp():
+    """the generated area code table, read once: the plan's geography, not a carrier's."""
+    global _NANP
+    if _NANP is None:
+        try:
+            _NANP = json.loads(NANP_FILE.read_text())
+        except (OSError, ValueError):
+            _NANP = {"countries": {}, "area_codes": {}, "_generated": {"from": "absent"}}
+    return _NANP
 PER_RANGE = "per-range"
 MARKET_LEVEL = "market-level"
 CARRIER_QUESTION = "carrier-question"
 UNSEEDED = "unseeded"
+AREA_CODE = "area-code"
 
 STRENGTH = {
     PER_RANGE: "the plan encodes the line type for every range, so this is a table lookup: ofcom's "
@@ -24,6 +41,8 @@ STRENGTH = {
     CARRIER_QUESTION: "this market's plan does not encode line type. a carrier lookup answers that "
                       "question and a range lookup cannot, so the answer is unknown",
     UNSEEDED: "no numbering table for this market is carried here, so nothing is claimed about it",
+    AREA_CODE: "the nanp assigns area codes to countries, territories and regions, so geography is a "
+                "plan fact. it assigns no line type, which stays a carrier question",
 }
 
 MARKETS = {
@@ -44,6 +63,14 @@ MARKETS = {
 
 # what the range class says about a text arriving, which is the question behind most lookups
 TEXT_BY_SMS = {"yes": True, "usually": True, "sometimes": "unknown", "no": False, "never": False}
+
+NANP_TYPES = {"geographic": "unknown", "non-geographic": "non-geographic numbering",
+              "toll-free": "toll-free", "premium": "premium rate",
+              "personal numbering": "personal numbering"}
+
+# what the area code class says about a text, which for a service code is the useful part
+NANP_TEXT = {"geographic": "unknown", "non-geographic": "unknown", "toll-free": False,
+             "premium": False, "personal numbering": "unlikely"}
 
 KINDS = {"mobile": "mobile", "business": "business numbering", "geographic": "landline",
          "voip": "voip", "personal numbering": "personal numbering", "pager": "pager",
@@ -104,12 +131,79 @@ def _gb(national):
     return answer
 
 
+def _nanp(number, iso_dial):
+    """a +1 number: the plan gives the country, the territory and the region, and stops there."""
+    table = nanp()
+    got = digits(number)
+    npa = got[1:4]
+    row = table["area_codes"].get(npa)
+    if not row:
+        return {"type": "unknown", "receive_text": "unknown", "region": None, "npa": npa,
+                "adapter": ADAPTER,
+                "why": f"the area code {npa} is not one the carried table knows, so not even the place "
+                       f"is claimed, and the plan never carries line type"}
+    country = table["countries"].get(row["iso"], row["iso"])
+    kind = row["class"]
+    text = NANP_TEXT.get(kind, "unknown")
+    region = row["place"] if kind == "geographic" else None
+    why = {
+        "geographic": f"{npa} is a geographic area code for {row['place']}. the plan still says nothing "
+                      f"about whether this line is mobile, landline or voip",
+        "non-geographic": f"{npa} is one of the plan's national rather than regional codes",
+        "toll-free": f"{npa} is a toll-free service code: a business answers it, nobody signs up with it",
+        "premium": f"{npa} is a premium rate service code",
+        "personal numbering": f"{npa} is a personal numbering code: a follow-me number rather than a "
+                              f"line somebody answers",
+    }.get(kind, "the area code class says nothing about line type")
+    return {"type": NANP_TYPES.get(kind, "unknown"), "receive_text": text,
+            "country": row["iso"], "country_name": country, "region": region,
+            "npa": npa, "npa_class": kind, "why": why,
+            "adapter": ADAPTER if kind == "geographic" else None}
+
+
+PARTIAL = r"^\+1(\d{3})$"
+
+
+def partial(number):
+    """a +1 area code on its own, which is the smallest input that still answers the geography.
+
+    the plan puts the country and the region in the first three digits, so a caller who does not want to
+    hand over a whole number is not missing anything the plan could tell them. this is the lookup's
+    version of preferring the domain to the local part.
+    """
+    import re
+    found = re.match(PARTIAL, str(number or "").strip())
+    if not found:
+        return None
+    table = nanp()
+    npa = found.group(1)
+    row = table["area_codes"].get(npa)
+    answer = {"number": number, "valid": False, "partial": True, "npa": npa,
+              "verified": False,
+              "privacy": {"enough": "for a +1 number the area code alone carries the country and the "
+                                    "region, so the subscriber digits are not needed for this answer",
+                          "network": "no request leaves the machine"}}
+    if not row:
+        answer.update({"type": "unknown", "receive_text": "unknown", "market": None,
+                       "why": f"the area code {npa} is not one the carried table knows"})
+        return answer
+    detail = _nanp("+1" + npa + "0000000", "1")
+    answer.update({"market": detail.get("country"), "country_name": detail.get("country_name"),
+                   "region": detail.get("region"), "type": detail.get("type"),
+                   "receive_text": detail.get("receive_text"), "npa_class": detail.get("npa_class"),
+                   "why": "an area code lookup: " + str(detail.get("why"))})
+    return answer
+
+
 def classify(number):
     """what the evidence says, what it cannot say, and nothing beyond that."""
     iso = market_of(number) if valid(number) else None
     answer = {"number": number, "valid": valid(number), "market": iso, "verified": False,
               "limits": dict(LIMITS)}
     if not answer["valid"]:
+        short = partial(number) if str(number or "").strip().startswith("+1") else None
+        if short:
+            return short
         answer.update({"type": "unknown", "receive_text": "unknown", "evidence": [],
                        "why": "not an e164 number, so there is nothing to classify"})
         return answer
@@ -123,16 +217,27 @@ def classify(number):
         national = "0" + got[len(row["dial"]):]
         detail = _gb(national)
     elif row["strength"] == CARRIER_QUESTION:
-        detail = {"type": "unknown", "receive_text": "unknown", "region": None,
-                  "why": "the plan does not separate mobile, landline and voip, so the range says "
-                         "nothing about the line",
-                  "adapter": ADAPTER}
+        detail = _nanp(number, row["dial"])
+        answer["market"] = detail.get("country") or iso
+        answer["plan"] = "NANP"
+        answer["country_name"] = detail.get("country_name")
     else:
         detail = {"type": "mobile", "receive_text": True, "region": None,
                   "why": "cloud numbers in this market are issued in mobile ranges"}
     answer.update(detail)
-    answer["evidence"] = [{"strength": row["strength"], "source": row["source"],
-                           "why": STRENGTH[row["strength"]]}]
+    answer["privacy"] = {"derived_from": "the market's numbering plan, read locally",
+                         "network": "no request leaves the machine",
+                         "retention": "nothing is stored"}
+    if row["strength"] == CARRIER_QUESTION:
+        generated = nanp()["_generated"]
+        answer["evidence"] = [
+            {"strength": AREA_CODE, "source": f"{generated['from']} area code table, "
+                                              f"generated {generated['at']}",
+             "why": STRENGTH[AREA_CODE]},
+            {"strength": CARRIER_QUESTION, "source": row["source"], "why": STRENGTH[CARRIER_QUESTION]}]
+    else:
+        answer["evidence"] = [{"strength": row["strength"], "source": row["source"],
+                               "why": STRENGTH[row["strength"]]}]
     answer["limits"]["coverage"] = (
         f"{iso} is carried per range from {row['source']}" if row["strength"] == PER_RANGE
         else f"{iso} is carried at {row['strength']} strength")

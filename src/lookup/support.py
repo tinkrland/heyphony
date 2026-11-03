@@ -24,8 +24,8 @@ UNKNOWN = "unknown"
 
 # what each class can physically do, which is the part a plan knows
 CLASS_RANK = {"mobile": 3, "voip": 2, "business numbering": 2, "landline": 1,
-              "personal numbering": 1, "pager": 0, "service range": 0, "premium rate": 0,
-              "freephone": 0, "unknown": -1}
+              "non-geographic numbering": 1, "personal numbering": 1, "pager": 0, "service range": 0,
+              "premium rate": 0, "toll-free": 0, "freephone": 0, "unknown": -1}
 
 SERVICES = {
     "imessage": {
@@ -100,7 +100,8 @@ def support(number):
     return {"number": number, "line": {k: line.get(k) for k in
                                        ("valid", "market", "type", "receive_text", "region", "why")},
             "services": services, "note": NOTE, "verified": False,
-            "limits": line["limits"]}
+            "partial": bool(line.get("partial")),
+            "limits": line.get("limits") or {"partial": "a partial lookup answers geography only"}}
 
 
 def probe_plan(number, service=None):
