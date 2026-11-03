@@ -115,13 +115,39 @@ the answer carries `also_read_as` rather than picking one silently, and the serv
 other platform `unknown` instead of `unlikely`. `alice.4` is the sharper case: too short a
 discriminator for signal, a perfectly legal whatsapp handle.
 
-### what a handle cannot tell you, and why no probe is offered
+### what a handle cannot tell you, and the two ways left to ask
 
-Existence, identity and the number behind it are all withheld. A username is built to be changed, and
-signal keeps a hash of the username rather than the username, so the same string next month may be
-somebody else. WhatsApp adds a four digit username key, so even the exact handle is not always enough to
-open a chat. The only way to check any of it is a message to a stranger, which is contact rather than a
-lookup, so `probes` names it and refuses it.
+Existence, identity and the number behind it are all withheld, for a reason that outlasts any probe: a
+username is built to be changed, and after a period of disuse somebody else can claim it. Signal keeps a
+hash of the username rather than the username. So the string is not the identity, and the answer says so
+instead of implying otherwise.
+
+That still leaves a better instrument than a scan, and it is worth naming because it is the one that
+fits a single person.
+
+**Resolve, do not scan.** Signal's own client library can turn a username, or a `signal.me/#eu/` link,
+into an account id without sending anything: `kpcyrd/signal-whois` is a small resolver built on
+libsignal that does exactly that. One request, from an identity you already own, asking the platform a
+question it expects a client to ask. Because this package already onboards Signal with
+`heyphony get signal`, that identity is the one it would ride. The probe row says `sends_nothing: true`
+and `wired: false`, so the page advertises the instrument without pretending it runs.
+
+Three limits come with it, and all three are in the output rather than the small print. It needs your
+**own registered identity**, because there is no anonymous resolve. It answers **one exact string**, and a
+loop over many is a username oracle, which is the thing platform rate limits exist to stop. And what
+comes back is an **account id, which is a pseudonym**, so it is the stable thing to keep while the
+username is not.
+
+**Where there is no resolver, say so.** WhatsApp publishes no directory, offers no suggestions, and has
+no resolution path that is not a first message, plus a four digit key that can gate that message anyway.
+For a single person that is fine, because opening a chat is what you were going to do; the honest
+position is to prepare the contact rather than dress up a message as a check. `probes` names
+`open-a-chat`, marks it `sends_nothing: false`, and refuses it.
+
+**And ask.** The primitive these platforms ship for exactly this question is a shared username, a QR
+code or a link: one person handing another person a way to start a chat. No request, no third party, and
+the only method that answers the question people actually mean, which is not whether a string resolves
+but whether it is the person they think it is.
 
 ## the osint turnkey tools, and why the probing half is not here
 

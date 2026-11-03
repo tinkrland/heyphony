@@ -151,7 +151,30 @@ def lookup(value, platform=None):
     outside = _outside(entry, chosen, got) if ok else []
     if outside:
         answer["outside_shape"] = outside
-    answer["probes"] = [{"name": "send-and-see", "would_answer": "whether the handle resolves",
-                         "wired": False,
-                         "refused": "it messages a stranger to satisfy a lookup, so it is not offered"}]
+    answer["probes"] = _probes(chosen)
     return answer
+
+
+# a handle has two ways to be answered and they are not the same instrument: one asks the platform a
+# question it expects a client to ask, from an identity you already own, and one is messaging a stranger
+PROBES = {
+    "signal": [
+        {"name": "resolve", "sends_nothing": True, "wired": False,
+         "would_answer": "whether an account answers to this username right now, as an opaque account id",
+         "needs": "your own registered signal identity (heyphony get signal) and a resolver built on "
+                  "libsignal, which is what signal-whois is: it turns a username or a signal.me link "
+                  "into an account id without sending anything",
+         "one_at_a_time": "one exact string is a resolution. a loop over many is a username oracle, and "
+                          "the platform rate limits lookup precisely because of that",
+         "what_it_does_not_say": "an account id is a pseudonym rather than a person. it is the stable "
+                                 "thing to keep, because the username is not"}],
+    "whatsapp": [
+        {"name": "open-a-chat", "sends_nothing": False, "wired": False,
+         "would_answer": "whether the handle resolves, and the four digit key if one is required",
+         "refused": "whatsapp publishes no directory and no resolution endpoint, so the only check is "
+                    "the first message, and the first message is contact"}],
+}
+
+
+def _probes(platform):
+    return [dict(row) for row in PROBES.get(platform, [])]

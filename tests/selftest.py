@@ -2247,12 +2247,12 @@ class TestAHandleIsWhereANumberIsNotNeeded(unittest.TestCase):
         found = self.h.lookup("alice")
         self.assertIn("four digit username key", found["withheld"]["chat"])
 
-    def test_the_only_probe_is_refused_rather_than_offered(self):
-        found = self.h.lookup("alice.42")
-        probe = found["probes"][0]
-        self.assertEqual(probe["name"], "send-and-see")
-        self.assertFalse(probe["wired"])
-        self.assertIn("messages a stranger", probe["refused"])
+    def test_the_only_probe_that_sends_is_a_first_message_and_it_is_refused(self):
+        signal_probe = self.h.lookup("alice.42")["probes"][0]
+        whatsapp_probe = self.h.lookup("alice")["probes"][0]
+        self.assertTrue(signal_probe["sends_nothing"])
+        self.assertFalse(whatsapp_probe["sends_nothing"])
+        self.assertIn("is contact", whatsapp_probe["refused"])
 
     def test_the_carried_rules_admit_they_are_unverified(self):
         table = self.h.platforms()["platforms"]
@@ -2301,6 +2301,59 @@ class TestTheOsintToolsAreNamedRatherThanReimplemented(unittest.TestCase):
             answer = classify.classify(value)
             self.assertEqual(answer["privacy"]["network"], "no request leaves the machine", value)
             self.assertFalse(answer["verified"], value)
+
+
+class TestResolvingAHandleIsNotScanningForOne(unittest.TestCase):
+    """the good instrument for one person: one exact string, your own identity, nothing sent."""
+
+    def setUp(self):
+        from src.lookup import handles
+        self.h = handles
+        self.page = " ".join((ROOT / "src" / "lookup" / "readme.md").read_text().split())
+
+    def test_signal_offers_a_resolve_and_says_it_sends_nothing(self):
+        probe = self.h.lookup("alice.42")["probes"][0]
+        self.assertEqual(probe["name"], "resolve")
+        self.assertTrue(probe["sends_nothing"])
+        self.assertFalse(probe["wired"])
+
+    def test_the_resolve_names_the_identity_it_needs_and_the_library_it_rides(self):
+        probe = self.h.lookup("alice.42")["probes"][0]
+        self.assertIn("heyphony get signal", probe["needs"])
+        self.assertIn("libsignal", probe["needs"])
+        self.assertIn("signal-whois", probe["needs"])
+
+    def test_one_string_is_a_resolution_and_a_loop_is_an_oracle(self):
+        probe = self.h.lookup("alice.42")["probes"][0]
+        self.assertIn("username oracle", probe["one_at_a_time"])
+        self.assertIn("rate limits", probe["one_at_a_time"])
+
+    def test_an_account_id_is_a_pseudonym_and_the_stable_thing(self):
+        probe = self.h.lookup("alice.42")["probes"][0]
+        self.assertIn("pseudonym", probe["what_it_does_not_say"])
+        self.assertIn("username is not", probe["what_it_does_not_say"])
+
+    def test_whatsapp_has_no_resolver_so_the_only_check_is_a_message(self):
+        probe = self.h.lookup("alice")["probes"][0]
+        self.assertEqual(probe["name"], "open-a-chat")
+        self.assertFalse(probe["sends_nothing"])
+        self.assertFalse(probe["wired"])
+        self.assertIn("no resolution endpoint", probe["refused"])
+
+    def test_no_resolve_runs_and_nothing_leaves_the_machine(self):
+        for value in ("alice.42", "alice"):
+            answer = self.h.lookup(value)
+            self.assertFalse(any(row["wired"] for row in answer["probes"]), value)
+            self.assertEqual(answer["privacy"]["network"], "no request leaves the machine", value)
+
+    def test_the_page_puts_resolve_ahead_of_scanning_and_says_why_asking_wins(self):
+        for needle in ("Resolve, do not scan", "kpcyrd/signal-whois", "own registered identity",
+                       "username oracle", "the stable thing to keep while the username is not",
+                       "And ask."):
+            self.assertIn(needle, self.page)
+
+    def test_the_page_keeps_reuse_in_view_because_hands_change(self):
+        self.assertIn("somebody else can claim it", self.page)
 
 
 
