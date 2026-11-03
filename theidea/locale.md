@@ -20,18 +20,26 @@ number, and the category exists because the regulator expects the provider to be
 
 ## the list, and why it is short
 
-| country | prefix | what a cloud number is there | signup-class services | cost |
+| country | prefix | what a cloud number is there | signup-class services | band |
 | --- | --- | --- | --- | --- |
-| united kingdom | +44 | virtual mobile number, a mobile range issued to a provider | accepted | more than a us number |
-| australia | +61 | mobile number, issued the same way | accepted | more than the uk |
-| sweden | +46 | mobile number | accepted | middling |
-| lithuania | +370 | mobile number | accepted | middling |
-| poland | +48 | mobile number | accepted | middling |
-| netherlands | +31 | mobile number | accepted | expensive, only worth it if the workflow pays for itself |
+| united kingdom | +44 | virtual mobile number, a mobile range issued to a provider | accepted | standard |
+| sweden | +46 | mobile number | accepted | standard |
+| lithuania | +370 | mobile number | accepted | standard |
+| poland | +48 | mobile number | accepted | standard |
+| australia | +61 | mobile number, issued the same way | accepted | pricier |
+| netherlands | +31 | mobile number | accepted | pricier |
 | united states, canada, +1 | +1 | a did, one bucket for cloud, softphone and trunk | refused | cheapest, and the wrong tool |
+
+the bands are the owner's sorting, not a price list: the united kingdom, sweden, lithuania and poland are the standard band, australia and the netherlands are the pricier one, and everything in the standard band still costs more than a +1 number, which is the number that does not work.
 
 the last row is the one people buy first because it is a dollar and it arrives in a minute. it is also
 the row that fails at the exact moment the number matters.
+
+## the prefix is the product, not the country
+
+within the united kingdom the country code is not enough to answer the question, because +44 contains ranges that behave nothing alike and they are sold on the same form for the same monthly price. 07 is a mobile range, which is the one a virtual mobile number is issued in and the reason the uk row works at all. 03 is uk-wide business numbering and is usually text capable. 01 and 02 are geographic landlines, and most of them cannot receive a text: the call connects and the message simply never arrives. 056 is the uk's own range for voip services, and 070 is personal numbering, which redirects a call rather than holding a message.
+
+so the orderable prefixes are 07 and 03, and the answer for a country is a range rather than a country. `src/setup/numbering.py` is where that lives as data, `heyphony setup provision --numbering GB` prints it before anything is bought, and `heyphony connect sip` applies the same reading to the number somebody already holds.
 
 ## it is the law, not a trick
 

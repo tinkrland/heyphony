@@ -1,6 +1,6 @@
 {
   "name": "heyphony",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "give your ai agent a phone number of its own: a sip did, an inbox that survives the machine sleeping, and the rails a number unlocks",
   "keywords": [
     "ai-agent",

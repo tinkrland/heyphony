@@ -221,7 +221,9 @@ class TestThePagesSayHowToGetIt(unittest.TestCase):
         text = self.root_readme.read_text()
         self.assertIn("the package is on the npm registry", text,
                       "it is published, so the page says so and names the version")
-        self.assertIn("heyphony@0.2.0", text)
+        import src
+        self.assertIn(f"heyphony@{src.__version__}", text,
+                      "the page names the version the code holds, not an older tag")
         npm_page = self.npm_readme.read_text()
         self.assertIn("is on the npm registry", npm_page.lower(),
                       "the install page must not imply `npm i -g heyphony` works today")
@@ -1176,8 +1178,9 @@ class TestTheMarketArgumentAndTheProviderIndex(unittest.TestCase):
     def test_the_provider_index_puts_the_messaging_app_case_in_the_uk_and_au(self):
         text = self.index.read_text()
         self.assertIn("virtual mobile number", text)
-        self.assertIn("united kingdom (+44) or australia (+61)", text)
-        self.assertIn("usa and canada mash cloud numbers", text)
+        self.assertIn("united kingdom", text)
+        self.assertIn("+44", text)
+        self.assertIn("share one bucket", text)
         self.assertIn("cannot be registered in baresip or linphone", text)
 
     def test_the_provider_index_is_not_an_advertisement(self):
@@ -1507,6 +1510,119 @@ class TestEveryProviderHasAPage(unittest.TestCase):
         index = (self.providers_dir() / "readme.md").read_text()
         for name in providers.PROVIDERS:
             self.assertIn(f"({name}/readme.md)", index, f"the index does not link {name}")
+
+
+class TestTheNumberingRanges(unittest.TestCase):
+    """a country code is not a product. the uk range decides whether the text lane exists."""
+
+    def setUp(self):
+        from src.setup import numbering
+        self.n = numbering
+
+    def test_the_two_orderable_uk_ranges_are_named(self):
+        answer = self.n.advice("GB")
+        self.assertEqual(answer["orderable_prefixes"], ["07", "03"])
+        self.assertIn("07 mobile", answer["order"])
+        self.assertIn("01 and 02 are geographic landlines", answer["avoid"])
+        self.assertEqual(answer["band"], "standard")
+
+    def test_a_uk_mobile_range_reads_as_one(self):
+        found = self.n.look("+447700900123")
+        self.assertEqual(found["kind"], "mobile")
+        self.assertEqual(found["sms"], "yes")
+        self.assertTrue(found["orderable"])
+
+    def test_a_uk_landline_is_the_same_order_form_and_the_wrong_product(self):
+        for number in ("+442071234567", "+441614960000"):
+            found = self.n.look(number)
+            self.assertEqual(found["kind"], "geographic", number)
+            self.assertEqual(found["sms"], "no")
+            self.assertFalse(found["orderable"])
+            warning = self.n.warn(number)
+            self.assertIsNotNone(warning)
+            self.assertIn("07 mobile", warning["next"])
+
+    def test_personal_numbering_is_not_mistaken_for_a_mobile(self):
+        """070 starts with 07 and behaves nothing like it, which is the trap in a prefix rule."""
+        found = self.n.look("+447012345678")
+        self.assertEqual(found["kind"], "personal numbering")
+        self.assertEqual(found["sms"], "no")
+        self.assertFalse(found["orderable"])
+
+    def test_the_uk_voip_range_says_what_it_is(self):
+        found = self.n.look("+445612345678")
+        self.assertEqual(found["kind"], "voip")
+        self.assertEqual(found["sms"], "no")
+        self.assertIn("voip", found["why"])
+
+    def test_a_good_number_gets_no_warning(self):
+        self.assertIsNone(self.n.warn("+447700900123"))
+        self.assertIsNone(self.n.warn("+443300000000"), "03 is usually text capable, not a refusal")
+
+    def test_the_bands_are_the_owners_bands(self):
+        standard = sorted(k for k, v in self.n.COUNTRIES.items() if v["band"] == self.n.STANDARD)
+        pricier = sorted(k for k, v in self.n.COUNTRIES.items() if v["band"] == self.n.PRICIER)
+        refused = sorted(k for k, v in self.n.COUNTRIES.items() if v["band"] == self.n.REFUSED)
+        self.assertEqual(standard, ["GB", "LT", "PL", "SE"])
+        self.assertEqual(pricier, ["AU", "NL"])
+        self.assertEqual(refused, ["CA", "US"])
+
+    def test_an_unknown_country_is_said_out_loud(self):
+        answer = self.n.advice("JP")
+        self.assertFalse(answer["known"])
+        self.assertIn("no numbering opinion", answer["why"])
+
+    def test_provisioning_prints_the_ranges_before_the_order(self):
+        done = subprocess.run([str(ROOT / "bin" / "heyphony"), "setup", "provision",
+                               "--numbering", "GB"], capture_output=True, text=True, timeout=90)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        answer = json.loads(done.stdout)
+        self.assertEqual(answer["numbering"]["band"], "standard")
+        prefixes = [row["prefix"] for row in answer["ranges"]]
+        self.assertIn("071", prefixes)
+        self.assertIn("030", prefixes)
+        self.assertNotIn("070", prefixes, "personal numbering is not an orderable range")
+
+    def test_connect_sip_warns_about_a_did_that_cannot_be_texted(self):
+        done = subprocess.run([str(ROOT / "bin" / "heyphony"), "connect", "sip", "--provider", "voip.ms",
+                               "--did", "+442071234567", "--username", "u", "--password", "p"],
+                              capture_output=True, text=True, timeout=90,
+                              env={**os.environ, "HOME": tempfile.mkdtemp()})
+        self.assertEqual(done.returncode, 0, done.stderr)
+        answer = json.loads(done.stdout)
+        self.assertEqual(answer["numbering"]["sms"], "no")
+        self.assertIn("07 mobile", answer["warning"]["next"])
+
+    def test_the_pages_and_the_data_agree(self):
+        index = (ROOT / "providers/readme.md").read_text()
+        table = index.split("| how heavy the workflow is |")[1].split("### why the region")[0]
+        for iso, row in self.n.COUNTRIES.items():
+            self.assertIn(row["name"], table, f"the table lost {row['name']}")
+            self.assertIn(row["code"], table, f"the table lost {row['code']}")
+        for band in (self.n.STANDARD, self.n.PRICIER):
+            self.assertIn(band, table, f"the table lost the {band!r} band")
+        loc = (ROOT / "theidea/locale.md").read_text()
+        for needle in ("standard", "pricier", "07 and 03", "01 and 02", "056"):
+            self.assertIn(needle, loc.lower(), f"locale.md lost {needle!r}")
+
+
+class TestTheVersionOnThePagesMatchesTheCode(unittest.TestCase):
+    """one number, everywhere: the code, the manifest, the install lines and the tags."""
+
+    def test_both_pages_name_the_version_the_code_holds(self):
+        import src
+        for page in ("readme.md", "npm/readme.md"):
+            text = (ROOT / page).read_text()
+            named = set(re.findall(r"heyphony@(\d+\.\d+\.\d+)", text))
+            named |= set(re.findall(r"heyphony-(\d+\.\d+\.\d+)\.tgz", text))
+            self.assertTrue(named, f"{page} names no version at all")
+            self.assertEqual(named, {src.__version__}, f"{page} names {named}, the code says {src.__version__}")
+
+    def test_the_package_page_does_not_claim_the_first_publish_was_the_last(self):
+        text = (ROOT / "npm/readme.md").read_text()
+        self.assertNotIn("the first publish", text,
+                         "that sentence only stays true until the second release")
+
 
 
 if __name__ == "__main__":

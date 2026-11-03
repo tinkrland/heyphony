@@ -103,11 +103,11 @@ four ways, in the order most people want them. the full table with what each one
 ```
 curl -fsSL https://raw.githubusercontent.com/tinkrland/heyphony/main/npm/install.sh | sh
 git clone https://github.com/tinkrland/heyphony && cd heyphony && ./bin/heyphony status
-cd npm && npm pack && npm i -g ./heyphony-0.2.0.tgz
+cd npm && npm pack && npm i -g ./heyphony-0.2.1.tgz
 npx heyphony status          # or npm i -g heyphony, both straight from the registry
 ```
 
-the url install needs neither node nor git, which is why it is first. the package is on the npm registry as `heyphony@0.2.0`, published on 2026-11-03, so `npm i -g heyphony` and `npx heyphony` are live routes rather than promises. [npm/publish.md](npm/publish.md) is the runbook that got it there, including what the next version has to do.
+the url install needs neither node nor git, which is why it is first. the package is on the npm registry as `heyphony@0.2.1`, published on 2026-11-03, so `npm i -g heyphony` and `npx heyphony` are live routes rather than promises. [npm/publish.md](npm/publish.md) is the runbook that got it there, including what the next version has to do.
 
 an agent installing this should read [npm/agents.md](npm/agents.md) instead of this page, because it says which four commands to run, which two questions are for its human, and what it is not allowed to attempt.
 

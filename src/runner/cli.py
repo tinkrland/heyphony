@@ -148,11 +148,17 @@ def cmd_import(args):
 
 def cmd_provision(args):
     """buy and arm a number from the cli, where a provider documents enough to script it."""
-    from src.setup import provision
+    from src.setup import numbering, provision
     if args.areas and args.provider != "anveo":
         _out({"ok": False, "why": "only anveo publishes a stock and price lookup we can call",
               "can_provision": ["anveo"]})
         return 1
+    if args.numbering:
+        country = args.numbering
+        _out({"numbering": numbering.advice(country),
+              "ranges": [r for r in numbering.UK_RANGES if r["kind"] in ("mobile", "business")]
+              if country.upper() == "GB" else None})
+        return 0
     if args.areas:
         from src.setup import provision
         answer = provision.areas(did_type=args.did_type, country_id=args.country_id,
@@ -226,8 +232,15 @@ def cmd_connect(args):
         raise SystemExit("connect sip needs --provider, or --voipms / --flowroute")
     providers.profile(provider)
     path = sip.write_rc(provider, args.did, args.username, args.password, args.server)
-    _out({"rc": str(path), "provider": provider, "did": args.did, "endpoint": args.on,
-          "plan": sip.connection_plan(args.did, args.on), "next": "start the client on the host, then heyphony status"})
+    from src.setup import numbering
+    answer = {"rc": str(path), "provider": provider, "did": args.did, "endpoint": args.on,
+              "plan": sip.connection_plan(args.did, args.on),
+              "next": "start the client on the host, then heyphony status",
+              "numbering": numbering.look(args.did)}
+    warning = numbering.warn(args.did)
+    if warning:
+        answer["warning"] = warning
+    _out(answer)
 
 
 def cmd_calls(args):
@@ -382,6 +395,8 @@ def build_parser():
                     help="parked: the order is the payment step, and no payment rail is wired")
     pv.add_argument("--did-type", default="GEOGRAPHIC")
     pv.add_argument("--rate-plan", default="SU")
+    pv.add_argument("--numbering", metavar="ISO",
+                    help="say what to order in a country before ordering anything (GB, SE, LT, PL, AU, NL)")
     pv.add_argument("--country-id")
     pv.add_argument("--state-id")
     pv.add_argument("--title", default="heyphony")

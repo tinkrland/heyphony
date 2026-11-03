@@ -77,6 +77,13 @@ npm owner add <collaborator>            # if anyone else should be able to publi
 - **no provenance attestation.** `npm publish --provenance` ties a tarball to a public GitHub Actions run, which is the right thing eventually and needs the CI above.
 - **no automatic version bumping.** one file, bumped by hand, checked by a machine. for a package that ships 250 kB of python, that is the correct amount of ceremony.
 
+## the second release, same day
+
+`0.2.1` followed within the hour, because eight provider pages, the numbering rules and the outbound
+paths had landed after `0.2.0` was packed and the tarball could not carry them. the second publish
+behaved like an ordinary publish: no placeholder, no 404 window, no 409. staging is a gate on a new
+package name, not on every version, and the release after the first one is uneventful.
+
 ## what happened on 2026-11-03, recorded because it will happen again
 
 `heyphony@0.2.0` went out. `npm run preflight` was green and `npm publish` returned zero, and then the registry answered 404 for `heyphony@0.2.0` for two minutes while `npm view heyphony` showed a package called `0.0.0-stage` described as "Temporary package placeholder for staged publishing".

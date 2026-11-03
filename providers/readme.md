@@ -8,19 +8,42 @@ a phone number is not a feature you buy, it is a classification somebody else ap
 
 ### the table
 
-| how heavy the workflow is | what it is actually doing | the number it needs | where that number comes from | what gets refused |
-| --- | --- | --- | --- | --- |
-| heaviest: an identity on a messaging app | holding a whatsapp, signal or google account that verifies by sms, and keeping it | a number the app reads as a **mobile**, which in practice means a virtual mobile number rather than a did | united kingdom (+44) or australia (+61), where the regulator's numbering rules classify a virtual mobile number as an ordinary mobile number | +1 numbers. usa and canada mash cloud numbers, softphones and trunks into one bucket, and the large services read that bucket as voip and refuse it. the netherlands, sweden, lithuania and poland also behave, at european prices |
-| heavy: receiving most of the traffic | a number humans call and text, with an inbox an agent reads | any sms capable did, on a provider that will arm an sms webhook | the vendors on the pages beside this one: voip.ms, flowroute, anveo, signalwire, questblue, bulkvs | a number from a vendor that only does voice. a calls only number cannot receive a text, and no amount of cli fixes a webhook the carrier will not call |
-| medium: occasional outbound at human pace | one call or one message at a time, to somebody who expects it | the same did as above, ideally from a vendor that lets you set the caller id and read delivery reports | the same list | anything bulk. a2p consent, attested origination and a registered business are the real requirements, and this repo refuses that lane rather than pretending a cheap did solves it |
-| light: proving a lane works | one real call and one real text to confirm the setup | the number you already bought, or a vendor's test line | wherever you just signed up | nothing, but do not build a workflow on the trial |
-| none: codes and verification at volume | signing up for things by sms | none of these numbers. a did is voip, and voip is the classification that gets refused | nowhere | this whole repo. there is no otp story here and buying a number will not create one |
+| how heavy the workflow is | what it is actually doing | the number it needs | country | prefix | price band | what gets refused |
+| --- | --- | --- | --- | --- | --- | --- |
+| heaviest: an identity on a messaging app | holding a whatsapp, signal or google account that verifies by sms, and keeping it | a number the app reads as a **mobile**, which in practice means a virtual mobile number rather than a did | united kingdom | +44 | standard | 01 and 02 ranges. a uk landline prefix is the same order form and the wrong product |
+| heaviest: an identity on a messaging app | the same | the same | sweden | +46 | standard | a geographic fixed line |
+| heaviest: an identity on a messaging app | the same | the same | lithuania | +370 | standard | a geographic fixed line |
+| heaviest: an identity on a messaging app | the same | the same | poland | +48 | standard | a geographic fixed line |
+| heaviest: an identity on a messaging app | the same | the same | australia | +61 | pricier | a geographic fixed line |
+| heaviest: an identity on a messaging app | the same | the same | netherlands | +31 | pricier | a geographic fixed line |
+| heaviest: an identity on a messaging app | the same | the same | united states, canada, all +1 | +1 | cheapest | all of it. cloud numbers, softphones and trunks share one bucket, and the large services read that bucket as voip |
+| heavy: receiving most of the traffic | a number humans call and text, with an inbox an agent reads | any sms capable did, on a provider that will arm an sms webhook | any of the vendor countries | whatever the vendor stocks | the vendor's | a number from a vendor that only does voice. a calls only number cannot receive a text, and no amount of cli fixes a webhook the carrier will not call |
+| medium: occasional outbound at human pace | one call or one message at a time, to somebody who expects it | the same did as above, ideally from a vendor that lets you set the caller id and read delivery reports | any | the same | the vendor's | anything bulk. a2p consent, attested origination and a registered business are the real requirements, and this repo refuses that lane rather than pretending a cheap did solves it |
+| light: proving a lane works | one real call and one real text to confirm the setup | the number you already bought, or a vendor's test line | wherever you signed up | the same | already paid | nothing, but do not build a workflow on the trial |
+| none: codes and verification at volume | signing up for things by sms | none of these numbers. a did is voip, and voip is the classification that gets refused | nowhere | none | not applicable | this whole repo. there is no otp story here and buying a number will not create one |
+
+the country rows carry the price band the owner sorts by: the united kingdom, sweden, lithuania and poland are the standard band, australia and the netherlands are the pricier one, and every row above a +1 number costs more than the +1 number while being the only ones that work.
+
+### a uk number is a range, not a country
+
+"get a uk number" is not an instruction. inside +44 the range decides whether the text lane exists at all, and the ranges are sold on the same order form for the same monthly price:
+
+| prefix | what the range is | can it receive a text |
+| --- | --- | --- |
+| 07 | mobile, the range a virtual mobile number is issued in | yes, and this is why the uk row works |
+| 03 | uk-wide business numbering | usually, and it is worth confirming per carrier before paying |
+| 01 and 02 | geographic landlines | mostly not. the number dials, the text does not arrive |
+| 056 | the uk's own range for voip services | no, and it is the one prefix that announces what it is |
+| 070 | personal numbering, which redirects a call | no. it moves a call and holds no text |
+| 08 and 09 | service and premium ranges | no, and 09 is never a number a person texts |
+
+so the two orderable prefixes are **07** and **03**, and `heyphony setup provision --numbering GB` prints that answer with the range table instead of leaving a person to find out after the number is bought. `heyphony connect sip` reads the did you gave it and says the same thing about that number.
 
 ### why the region decides more than the vendor
 
 **classification rides the numbering plan, not the marketing.** two vendors can sell you a number in the same country and it will be treated the same way, because the thing that answers the "what is this" question is the regulator and the carrier, not the invoice. that is also why moving up a page to a more expensive vendor does not change what your number is, and why the cheap option and the expensive option are often the same classification wearing different dashboards.
 
-for the messaging app case the ordering is roughly: uk and australia read as mobile for the large services, the netherlands, sweden, lithuania and poland are viable and cheaper to work with in different ways, and +1 is the one to avoid when the far end is a consumer service running a risk engine.
+for the messaging app case the ordering is roughly: the united kingdom, sweden, lithuania and poland read as mobile for the large services at the standard band, australia and the netherlands read the same way at the pricier one, and +1 is the row to avoid when the far end is a consumer service running a risk engine.
 
 ### the two kinds of number, in one line each
 
