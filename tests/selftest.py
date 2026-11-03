@@ -296,6 +296,11 @@ class TestTheLanePage(unittest.TestCase):
         self.assertIn("covers the header and the payload", text)
         self.assertIn("nonce", text)
 
+    def test_the_copy_on_the_other_line_is_named(self):
+        text = self.page.read_text()
+        self.assertIn("`omni`", text)
+        self.assertIn("cannot import another branch", text)
+
     def test_the_refusals_are_repeated_where_the_lane_lives(self):
         text = self.page.read_text()
         for needle in ("no cold join", "no recording"):

@@ -45,3 +45,9 @@ joining and recording are different consents, and the moment a recording exists 
 ## the state, and what would change it
 
 every platform here is `designed`: the join path is read from the platform's own documentation, the token is minted and re-verified, and the plan names the gate. no meeting has been joined from this branch, so nothing is `verified`, and the word `verified` is reserved for a real room with the human who invited the agent saying it worked.
+
+## the copy on the other line, named
+
+`omni` carries the same lane as a registry row, because a branch cannot import another branch and that line has to list nine of them. its version is the shallow one: carrier, gate, state, and the plan. the token, the microphone rail and the shim are here, and this is the page with the round trip in it. when the two ever disagree, this one is the one held by tests.
+
+this branch also does not sign anybody up. an account elsewhere needs four legs (an address, an inbox, a browser, sometimes a phone), and that errand is `omni`'s `signup` verb. joining a room and acquiring the identity that accepts an invite are different jobs.
