@@ -97,16 +97,21 @@ class TestThePackageIsStandalone(unittest.TestCase):
         allowed = {"argparse", "base64", "email", "hashlib", "hmac", "http", "json", "os",
                    "contextlib", "math", "pathlib", "re", "shlex", "shutil", "sqlite3", "src",
                    "subprocess", "sys", "termios", "time", "tty", "urllib", "uuid", "xml"}
+        import ast
         for path in sorted((ROOT / "src").rglob("*.py")):
-            for line in path.read_text().splitlines():
-                stripped = line.strip()
-                if not stripped.startswith(("import ", "from ")):
+            tree = ast.parse(path.read_text())
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    names = [alias.name.split(".")[0] for alias in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    names = [(node.module or "").split(".")[0]]
+                else:
                     continue
-                if stripped.startswith(("from src", "import src")):
-                    continue
-                module = stripped.split()[1].split(".")[0]
-                self.assertIn(module, allowed,
-                              f"{path.relative_to(ROOT)} imports {module}, which is not in the package")
+                for module in names:
+                    if module in ("src", ""):
+                        continue
+                    self.assertIn(module, allowed,
+                                  f"{path.relative_to(ROOT)} imports {module}, which is not in the package")
 
     def test_the_umbrella_is_not_named_in_an_import_anywhere(self):
         for path in sorted((ROOT / "src").rglob("*.py")):
@@ -622,7 +627,7 @@ class TestTheDirectoryExplainsItself(unittest.TestCase):
         table = (self.hey / "src/setup/commands/readme.md").read_text()
         for name in subs:
             self.assertIn(f"`heyphony {name}", table, f"{name} exists and is not in the index")
-        for absent in ("heyphony send", "heyphony call`"):
+        for absent in ("heyphony call`",):
             self.assertIn(absent, table, f"the index stopped declaring {absent} missing")
 
     def test_the_prose_never_claims_a_lane_is_proven(self):
@@ -1162,6 +1167,15 @@ class TestTheMarketArgumentAndTheProviderIndex(unittest.TestCase):
                        "read the call log and the message thread as one context"):
             self.assertIn(needle, text, f"the readme lost the market argument: {needle!r}")
 
+    def test_the_readme_states_the_two_new_volumes_and_their_honest_limits(self):
+        text = self.readme.read_text()
+        for needle in ("leaving a voicemail is the same act, with a voice",
+                       "there is no answering-machine detection here",
+                       "a group is four named people, not a list",
+                       "each member receives a one-to-one text from your did",
+                       "HEYPHONY_CALL=allowed"):
+            self.assertIn(needle, text, f"the readme lost {needle!r}")
+
     def test_the_readme_says_the_hybrid_is_the_reason_for_a_client(self):
         text = self.readme.read_text()
         self.assertIn("a client and a cli rather than a subscription", text)
@@ -1622,6 +1636,145 @@ class TestTheVersionOnThePagesMatchesTheCode(unittest.TestCase):
         text = (ROOT / "npm/readme.md").read_text()
         self.assertNotIn("the first publish", text,
                          "that sentence only stays true until the second release")
+
+
+class TestLeavingAVoicemail(unittest.TestCase):
+    """one call, one person, and no answering-machine detection anywhere in the story."""
+
+    def setUp(self):
+        from src.manage.outgoing import voicemail
+        self.v = voicemail
+        self.msg = "sorry we missed each other, call me back when you get this"
+
+    def test_a_call_needs_a_trunk_and_says_which_pieces_are_missing(self):
+        plan = self.v.plan("+15551234567", self.msg, env={})
+        self.assertFalse(plan["ok"])
+        self.assertEqual(plan["missing"], ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET",
+                                          "LIVEKIT_SIP_TRUNK"])
+        self.assertFalse(plan["honest"]["verified"])
+
+    def test_the_missing_amd_check_is_stated_rather_than_hidden(self):
+        self.assertIn("answering-machine-detection", self.v.REFUSES)
+        plan = self.v.plan("+15551234567", self.msg, env={})
+        self.assertIn("seconds after the call is answered", " ".join(plan["steps"]))
+        self.assertEqual(plan["wait_after_answer"], 18)
+
+    def test_one_recipient_and_nothing_long(self):
+        problems = self.v.plan("+15551234567, +15551234568", self.msg, env={})["problems"]
+        self.assertTrue(problems, "a list of numbers is not one call")
+        self.assertIn("one recipient", problems[0]["why"].lower())
+        long_one = self.v.plan("+15551234567", "word " * 400, env={})["problems"]
+        self.assertTrue(any("too long to be a voicemail" == p["why"] for p in long_one))
+        self.assertTrue(any("longer than a minute of speech" == p["why"] for p in long_one))
+
+    def test_a_closed_gate_is_a_draft_and_names_the_gate(self):
+        answer = self.v.leave("+15551234567", self.msg, allow=True, env={})
+        self.assertFalse(answer["sent"])
+        self.assertIn("HEYPHONY_CALL=allowed", answer["why"])
+
+    def test_an_open_gate_with_no_trunk_refuses_and_names_the_piece(self):
+        env = {"HEYPHONY_CALL": "allowed", "LIVEKIT_URL": "wss://x.livekit.cloud"}
+        answer = self.v.leave("+15551234567", self.msg, allow=True, env=env)
+        self.assertFalse(answer["sent"])
+        self.assertIn("LIVEKIT_API_KEY", answer["why"])
+
+    def test_the_dial_is_livekits_documented_sip_call(self):
+        env = {"LIVEKIT_URL": "wss://proj.livekit.cloud", "LIVEKIT_SIP_TRUNK": "ST_abc"}
+        request = self.v.dial_request(env, "+15551234567", "voicemail-123")
+        self.assertEqual(request["url"], "https://proj.livekit.cloud/twirp/livekit.SIP/CreateSIPParticipant")
+        self.assertEqual(request["body"]["sip_call_to"], "+15551234567")
+        self.assertEqual(request["body"]["sip_trunk_id"], "ST_abc")
+        self.assertTrue(request["body"]["wait_until_answered"])
+        curl = self.v.as_curl(request)
+        self.assertIn("$LIVEKIT_JWT", curl, "the curl line must not carry a secret")
+        self.assertNotIn("Bearer <jwt", curl)
+
+    def test_a_dialed_call_records_what_the_endpoint_answered(self):
+        env = {"HEYPHONY_CALL": "allowed", "LIVEKIT_URL": "wss://p.livekit.cloud",
+               "LIVEKIT_API_KEY": "k", "LIVEKIT_API_SECRET": "s", "LIVEKIT_SIP_TRUNK": "ST_1"}
+        answer = self.v.leave("+15551234567", self.msg, allow=True, env=env,
+                              opener=lambda request: {"ok": True, "status": 200})
+        self.assertTrue(answer["sent"])
+        self.assertIn("agent has to be running", answer["why"])
+
+    def test_the_tts_worker_is_written_for_reading_not_hidden(self):
+        script = self.v.agent_script("hello from the agent", wait=12)
+        self.assertIn('MESSAGE = "hello from the agent"', script)
+        self.assertIn("WAIT = 12", script)
+        self.assertIn("no amd on this rail", script)
+
+
+class TestAGroupIsNotAList(unittest.TestCase):
+    """four named people are a conversation. the fifth makes it an audience."""
+
+    def setUp(self):
+        import tempfile
+        from src.manage import groups
+        self.g = groups
+        self.store = tempfile.mktemp()
+        self.members = [{"name": "ada", "number": "+15551230001"},
+                        {"name": "bob", "number": "+15551230002"}]
+
+    def tearDown(self):
+        import os
+        if os.path.exists(self.store):
+            os.unlink(self.store)
+
+    def test_two_named_people_make_a_group(self):
+        answer = self.g.create("dinner plans", self.members, store=self.store)
+        self.assertTrue(answer["ok"])
+        self.assertTrue(answer["group"]["id"].startswith("dinner-plans-"))
+        self.assertIn("one-to-one", answer["what_members_see"])
+
+    def test_the_ceiling_is_four_and_it_is_not_a_flag(self):
+        many = [{"name": f"p{i}", "number": f"+1555123000{i}"} for i in range(5)]
+        answer = self.g.create("everyone", many, store=self.store)
+        self.assertFalse(answer["ok"])
+        self.assertEqual(self.g.MAX_MEMBERS, 4)
+        self.assertTrue(any("audience" in p["why"] for p in answer["problems"]))
+
+    def test_a_bare_number_is_not_a_member(self):
+        answer = self.g.create("x", ["+15551230001", "+15551230002"], store=self.store)
+        self.assertFalse(answer["ok"])
+        self.assertIn("not a bare number", answer["problems"][0]["why"])
+
+    def test_an_unnamed_member_and_a_duplicate_are_both_refused(self):
+        answer = self.g.create("x", [{"name": "", "number": "+15551230001"},
+                                     {"name": "bob", "number": "+15551230001"}],
+                               store=self.store)
+        self.assertFalse(answer["ok"])
+        whys = " ".join(p["why"] for p in answer["problems"])
+        self.assertIn("needs a name", whys)
+        self.assertIn("same number twice", whys)
+
+    def test_one_member_is_a_thread_not_a_group(self):
+        answer = self.g.create("just us", [{"name": "ada", "number": "+15551230001"}],
+                               store=self.store)
+        self.assertFalse(answer["ok"])
+        self.assertIn("one member is a thread", " ".join(p["why"] for p in answer["problems"]))
+
+    def test_saying_something_drafts_to_every_member_and_records_the_attempt(self):
+        created = self.g.create("dinner plans", self.members, store=self.store)
+        answer = self.g.say(created["group"]["id"], "seven at the usual place", provider="voip.ms",
+                            from_number="+15550001111", allow=False, store=self.store)
+        self.assertEqual(answer["of"], 2)
+        self.assertEqual(answer["sent"], 0)
+        self.assertTrue(answer["draft"])
+        self.assertIn("HEYPHONY_SEND=allowed", answer["why"])
+        shown = self.g.show(created["group"]["id"], store=self.store)
+        self.assertEqual(len(shown["group"]["messages"]), 1)
+        self.assertEqual(shown["group"]["messages"][0]["of"], 2)
+
+    def test_the_cli_creates_and_lists_a_group(self):
+        env = {**os.environ, "HEYPHONY_GROUPS": self.store}
+        done = subprocess.run([str(ROOT / "bin" / "heyphony"), "group", "new", "--name", "dinner plans",
+                               "--with", "ada=+15551230001", "--with", "bob=+15551230002"],
+                              capture_output=True, text=True, timeout=90, env=env)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertTrue(json.loads(done.stdout)["ok"])
+        listing = subprocess.run([str(ROOT / "bin" / "heyphony"), "group", "list"],
+                                 capture_output=True, text=True, timeout=90, env=env)
+        self.assertEqual(json.loads(listing.stdout)["count"], 1)
 
 
 

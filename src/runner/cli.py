@@ -8,6 +8,7 @@ import argparse
 import json
 import os
 import pathlib
+import pathlib
 import sys
 
 from src import __version__
@@ -287,6 +288,62 @@ def cmd_get(args):
     _out(getters.run(args.name, path=args.path, dry=not args.run))
 
 
+def cmd_voicemail(args):
+    """one call, one person, a message spoken after whatever answers picks up."""
+    from src.manage.outgoing import voicemail
+    if not args.to or not args.message:
+        _out({"placed": False, "why": "voicemail needs --to and --message",
+              "usage": 'heyphony voicemail --to +15551234567 --message "sorry we missed you" --send',
+              "refuses": voicemail.REFUSES})
+        return 1
+    answer = voicemail.leave(args.to, args.message, wait=args.wait, allow=bool(args.send))
+    if args.curl:
+        answer["curl"] = voicemail.as_curl(voicemail.dial_request(dict(os.environ), args.to,
+                                                                  answer["room"]))
+    if args.agent:
+        state = pathlib.Path(os.environ.get("HEYPHONY_STATE")
+                             or pathlib.Path.home() / ".local/share/telephony")
+        state.mkdir(parents=True, exist_ok=True)
+        script = state / "voicemail_agent.py"
+        script.write_text(voicemail.agent_script(args.message, wait=args.wait))
+        os.chmod(script, 0o600)
+        answer["agent_script"] = str(script)
+        answer["agent_command"] = f"python {script} dev"
+    _out(answer)
+    return 0 if answer.get("sent") else 1
+
+
+def cmd_group(args):
+    """a conversation with two to four named people, one message at a time."""
+    from src.manage import groups
+    if args.action == "new":
+        members = []
+        for chunk in args.with_ or []:
+            name, _, number = chunk.partition("=")
+            members.append({"name": name.strip(), "number": number.strip() or name.strip()})
+        answer = groups.create(args.name, members)
+    elif args.action == "list":
+        answer = groups.listing()
+    elif args.action in ("show", "messages"):
+        answer = groups.show(args.group)
+    elif args.action == "say":
+        if not args.text:
+            _out({"sent": 0, "why": "say needs --text"})
+            return 1
+        provider = args.provider or os.environ.get("HEYPHONY_SIP_PROVIDER") or "voip.ms"
+        from_number = os.environ.get("HEYPHONY_SIP_DID")
+        if not from_number:
+            _out({"sent": 0, "why": "no sender number",
+                  "how": "set HEYPHONY_SIP_DID to the did this provider holds"})
+            return 1
+        answer = groups.say(args.group, args.text, provider=provider, from_number=from_number,
+                            allow=bool(args.send))
+    else:
+        answer = {"ok": False, "why": "group takes new, list, show or say"}
+    _out(answer)
+    return 0 if answer.get("ok") or answer.get("count") is not None else 1
+
+
 def cmd_send(args):
     """one outbound text, drafted by default and sent only when the gate and the flag both agree."""
     if args.paths:
@@ -412,6 +469,27 @@ def build_parser():
     hk.add_argument("--did")
     hk.add_argument("--apply", action="store_true", help="set it over the provider's api, when that exists")
     hk.set_defaults(func=cmd_hooks)
+    vm = sub.add_parser("voicemail", help="place one call and leave a spoken message")
+    vm.add_argument("--to")
+    vm.add_argument("--message")
+    vm.add_argument("--wait", type=int, default=18,
+                    help="seconds after the call is answered before speaking (no amd on this rail)")
+    vm.add_argument("--send", action="store_true", help="actually dial, with HEYPHONY_CALL=allowed")
+    vm.add_argument("--curl", action="store_true", help="print the livekit dial as a curl line")
+    vm.add_argument("--agent", action="store_true", help="write the tts worker that speaks the message")
+    vm.set_defaults(func=cmd_voicemail)
+
+    gr = sub.add_parser("group", help="a small named conversation, one message per member")
+    gr.add_argument("action", choices=["new", "list", "show", "say"])
+    gr.add_argument("--name")
+    gr.add_argument("--with", dest="with_", action="append", metavar="NAME=+1555...",
+                    help="a member, repeated (max four)")
+    gr.add_argument("--group", help="group id or name")
+    gr.add_argument("--text")
+    gr.add_argument("--provider")
+    gr.add_argument("--send", action="store_true", help="actually send, with HEYPHONY_SEND=allowed")
+    gr.set_defaults(func=cmd_group)
+
     s = sub.add_parser("send", help="one outbound text: drafted unless --send, gated by HEYPHONY_SEND")
     s.add_argument("--to", help="one recipient in e164. a list is refused, on purpose")
     s.add_argument("--text", help="the body. 1600 characters is the ceiling")

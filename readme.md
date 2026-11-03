@@ -87,6 +87,25 @@ signal wants a phone number before it will talk to you, so `heyphony get signal`
 
 `heyphony send` exists, and it is the narrowest version of outbound that is still useful: one recipient, one body, drafted unless the gate is open and the call asks for it. a reply to somebody who wrote first is the case it was built for, and a loop over a list is the case it refuses.
 
+### leaving a voicemail is the same act, with a voice
+
+`heyphony voicemail --to +1... --message "..." --send` places **one** call and speaks a message you wrote. the pstn leg comes from your livekit trunk rather than from this repo, and the speaking half is a python worker (`livekit-agents`, apache-2.0) that heyphony writes to disk so you can read it, edit it and run it yourself: a call that only exists while some service worker is alive deserves to be visible rather than magic.
+
+two things about it are worth saying plainly rather than discovering on the first call:
+
+- **there is no answering-machine detection here.** livekit does not offer it and a naive attempt at it is how an agent ends up talking over a person. the plan waits a fixed number of seconds after the answer and then speaks. if a human picked up, a human hears the message. that is why `--wait` is a flag and not a promise.
+- **a voicemail is not a call you can hold.** nothing here receives the far end's audio into a conversation, transcribes it, or dials back. it is one outbound leg with a spoken message at the end of it.
+
+it is gated like the text rail: `HEYPHONY_CALL=allowed` and `--send`, both, or you get the plan printed in full.
+
+### a group is four named people, not a list
+
+`heyphony group new --name "dinner" --with ada=+1... --with bob=+1...` then `heyphony group say dining --text "seven o'clock"`.
+
+the outbound rail refuses a pasted list, and that refusal is about broadcast: one text to many strangers at machine pace with no conversation behind it. a group chat is the other thing, so the shape is narrow enough that the difference is structural instead of a promise. four members is a hard ceiling rather than a flag, a member is a name **and** a number, and every message goes out through the same one-recipient rail with its own gate and its own character limit. one member failing does not quietly become "sent to the group".
+
+and the thing people assume wrong, so it is in the command output as well as here: most carriers do not carry a group sms as a group. each member receives a one-to-one text from your did, with no sign that anyone else exists. the shared transcript is in your records, not in their phones, and no carrier group thread is started.
+
 ### the number outlives the machine
 
 the honest shape of a phone number is that half of it is somebody else's computer, so the interesting question is what happens when the host sleeps.
@@ -103,11 +122,11 @@ four ways, in the order most people want them. the full table with what each one
 ```
 curl -fsSL https://raw.githubusercontent.com/tinkrland/heyphony/main/npm/install.sh | sh
 git clone https://github.com/tinkrland/heyphony && cd heyphony && ./bin/heyphony status
-cd npm && npm pack && npm i -g ./heyphony-0.2.1.tgz
+cd npm && npm pack && npm i -g ./heyphony-0.3.0.tgz
 npx heyphony status          # or npm i -g heyphony, both straight from the registry
 ```
 
-the url install needs neither node nor git, which is why it is first. the package is on the npm registry as `heyphony@0.2.1`, published on 2026-11-03, so `npm i -g heyphony` and `npx heyphony` are live routes rather than promises. [npm/publish.md](npm/publish.md) is the runbook that got it there, including what the next version has to do.
+the url install needs neither node nor git, which is why it is first. the package is on the npm registry as `heyphony@0.3.0`, published on 2026-11-03, so `npm i -g heyphony` and `npx heyphony` are live routes rather than promises. [npm/publish.md](npm/publish.md) is the runbook that got it there, including what the next version has to do.
 
 an agent installing this should read [npm/agents.md](npm/agents.md) instead of this page, because it says which four commands to run, which two questions are for its human, and what it is not allowed to attempt.
 
@@ -137,6 +156,8 @@ the refusal is not a verdict on this package. it is adversarial detection aimed 
 ### what outbound is, and what it is not
 
 `sms on this number, one message at a time.` the rail sends when the gate is open (`HEYPHONY_SEND=allowed`) and the call says so (`--send`), records the message in the same thread as what came in, and refuses a list, a loop and a schedule, because a campaign is a different product with consent, attested origination and a registered business behind it.
+
+three shapes ride that one rail: a single reply, a voicemail, and a small named group. all three are the same act at different volumes, which is why none of them has a queue, a retry, a schedule or a quiet-hours engine. one of them is a call, so `HEYPHONY_CALL=allowed` is its own gate rather than a second meaning for the text gate.
 
 provider terms, quiet hours, and what the recipient actually agreed to are yours. a tool that respects a gate cannot also audit a business, and pretending otherwise would be the dishonest version of a safety feature.
 
