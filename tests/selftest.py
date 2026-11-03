@@ -233,7 +233,9 @@ class TestThePagesSayHowToGetIt(unittest.TestCase):
         """a reader who heard about the api should not go looking for a fifth install route."""
         text = " ".join(self.root_readme.read_text().split())
         self.assertIn("the http api and the mcp server are in development on their own branch", text)
-        self.assertIn("neither is published", text)
+        self.assertIn("a cloud hosted version is planned beside them", text)
+        self.assertIn("none of the three is published yet", text)
+        self.assertIn("it will be the only paid one, and paid only for that convenience", text)
 
     def test_the_page_does_not_claim_a_publish_that_has_not_happened(self):
         text = self.root_readme.read_text()
