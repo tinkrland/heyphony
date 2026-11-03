@@ -288,6 +288,50 @@ def cmd_get(args):
     _out(getters.run(args.name, path=args.path, dry=not args.run))
 
 
+LOOKUP_MODES = ("line", "support", "probes")
+
+
+def _lookup_args(rest):
+    """`--lookup <number> [mode]`, with the mode optional because the number is the point."""
+    parsed = {"number": None, "mode": "all"}
+    for word in rest:
+        if word.startswith("-"):
+            continue
+        if parsed["number"] is None:
+            parsed["number"] = word
+        elif word in LOOKUP_MODES:
+            parsed["mode"] = word
+        else:
+            parsed["mode"] = word
+    return parsed
+
+
+def cmd_lookup(args):
+    """what a number is, from the plan that issues it, and the probe that would go further."""
+    from src.lookup import classify, support
+    number = args.get("number") if isinstance(args, dict) else getattr(args, "number", None)
+    mode = (args.get("mode") if isinstance(args, dict) else getattr(args, "mode", None)) or "all"
+    if not number:
+        _out({"ok": False, "why": "lookup needs a number",
+              "usage": "heyphony --lookup +447700900123 [line|support|probes]",
+              "modes": list(LOOKUP_MODES)})
+        return 1
+    if mode in ("support", "services", "all"):
+        answer = support.support(number)
+        if mode == "support":
+            _out(answer)
+            return 0 if answer["line"]["valid"] else 1
+        answer = {"ok": True, "all": answer, "line": classify.classify(number)}
+    elif mode == "probes":
+        answer = support.probe_plan(number)
+        _out(answer)
+        return 0 if answer.get("ok") else 1
+    else:
+        answer = {"ok": True, "line": classify.classify(number)}
+    _out(answer)
+    return 0 if answer.get("ok", True) else 1
+
+
 def cmd_voicemail(args):
     """one call, one person, a message spoken after whatever answers picks up."""
     from src.manage.outgoing import voicemail
@@ -469,6 +513,11 @@ def build_parser():
     hk.add_argument("--did")
     hk.add_argument("--apply", action="store_true", help="set it over the provider's api, when that exists")
     hk.set_defaults(func=cmd_hooks)
+    lk = sub.add_parser("lookup", help="what a number is: line class, text, service support")
+    lk.add_argument("number")
+    lk.add_argument("mode", nargs="?", default="all", choices=list(LOOKUP_MODES) + ["all"])
+    lk.set_defaults(func=cmd_lookup)
+
     vm = sub.add_parser("voicemail", help="place one call and leave a spoken message")
     vm.add_argument("--to")
     vm.add_argument("--message")
@@ -509,6 +558,10 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "--setup":
         argv = ["setup"] + argv[1:]
+    if argv and argv[0] == "--lookup":
+        return cmd_lookup(_lookup_args(argv[1:]))
+    if argv and argv[0] == "lookup":
+        return cmd_lookup(_lookup_args(argv[1:]))
     if argv[:2] == ["setup", "provision"]:
         argv = ["provision"] + argv[2:]
     if argv[:2] == ["setup", "--select"]:

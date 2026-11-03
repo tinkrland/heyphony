@@ -1176,6 +1176,14 @@ class TestTheMarketArgumentAndTheProviderIndex(unittest.TestCase):
                        "HEYPHONY_CALL=allowed"):
             self.assertIn(needle, text, f"the readme lost {needle!r}")
 
+    def test_the_readme_states_what_a_lookup_can_and_cannot_say(self):
+        text = self.readme.read_text()
+        for needle in ("looking a number up is a read",
+                       "never a boolean",
+                       "carrier-question",
+                       "guessing a line type from an area code is how a lookup tool starts lying politely"):
+            self.assertIn(needle, text, f"the readme lost {needle!r}")
+
     def test_the_readme_says_the_hybrid_is_the_reason_for_a_client(self):
         text = self.readme.read_text()
         self.assertIn("a client and a cli rather than a subscription", text)
@@ -1775,6 +1783,164 @@ class TestAGroupIsNotAList(unittest.TestCase):
         listing = subprocess.run([str(ROOT / "bin" / "heyphony"), "group", "list"],
                                  capture_output=True, text=True, timeout=90, env=env)
         self.assertEqual(json.loads(listing.stdout)["count"], 1)
+
+
+class TestTheLookupReadsThePlan(unittest.TestCase):
+    """a number is classified by the plan that issues it, and unknown is a real answer."""
+
+    def setUp(self):
+        from src.lookup import classify
+        self.c = classify
+
+    def test_a_london_landline_is_a_landline_that_cannot_take_a_text(self):
+        answer = self.c.classify("+442071234567")
+        self.assertEqual(answer["type"], "landline")
+        self.assertFalse(answer["receive_text"])
+        self.assertEqual(answer["region"], "london")
+        self.assertEqual(answer["market"], "GB")
+
+    def test_a_uk_mobile_range_takes_a_text_and_a_056_range_does_not(self):
+        mobile = self.c.classify("+447700900123")
+        self.assertEqual(mobile["type"], "mobile")
+        self.assertTrue(mobile["receive_text"])
+        voip = self.c.classify("+445612345678")
+        self.assertEqual(voip["type"], "voip")
+        self.assertFalse(voip["receive_text"])
+
+    def test_personal_numbering_is_not_a_mobile_even_though_it_starts_07(self):
+        answer = self.c.classify("+447000123456")
+        self.assertEqual(answer["type"], "personal numbering")
+        self.assertFalse(answer["receive_text"])
+
+    def test_a_north_american_number_comes_back_unknown_and_says_why(self):
+        answer = self.c.classify("+15373832662")
+        self.assertEqual(answer["market"], "US")
+        self.assertEqual(answer["type"], "unknown")
+        self.assertEqual(answer["evidence"][0]["strength"], self.c.CARRIER_QUESTION)
+        self.assertFalse(answer["adapter"]["wired"], "the carrier adapter is named, not wired")
+
+    def test_an_unseeded_market_is_named_rather_than_guessed(self):
+        answer = self.c.classify("+33612345678")
+        self.assertIsNone(answer["market"])
+        self.assertEqual(answer["type"], "unknown")
+        self.assertEqual(answer["evidence"][0]["strength"], self.c.UNSEEDED)
+
+    def test_something_that_is_not_a_number_is_refused_before_classification(self):
+        answer = self.c.classify("not a number")
+        self.assertFalse(answer["valid"])
+        self.assertEqual(answer["type"], "unknown")
+        self.assertEqual(answer["evidence"], [])
+
+    def test_every_answer_carries_the_limits_it_cannot_cross(self):
+        answer = self.c.classify("+447700900123")
+        for key in ("porting", "person", "virtual", "carrier", "coverage"):
+            self.assertIn(key, answer["limits"])
+        self.assertFalse(answer["verified"])
+
+
+class TestTheSupportMatrixIsEvidenceNotVerdict(unittest.TestCase):
+    """no boolean per service, because a plan cannot produce one."""
+
+    def setUp(self):
+        from src.lookup import support
+        self.s = support
+
+    def test_a_mobile_is_possible_for_all_three_and_a_landline_is_unlikely(self):
+        mobile = {r["service"]: r["verdict"] for r in self.s.support("+447700900123")["services"]}
+        self.assertEqual(mobile["imessage"], self.s.POSSIBLE)
+        self.assertEqual(mobile["whatsapp"], self.s.POSSIBLE)
+        landline = {r["service"]: r["verdict"] for r in self.s.support("+442071234567")["services"]}
+        self.assertEqual(landline["signal"], self.s.UNLIKELY)
+
+    def test_no_verdict_is_ever_a_boolean(self):
+        for number in ("+447700900123", "+442071234567", "+15373832662", "+33612345678"):
+            for row in self.s.support(number)["services"]:
+                self.assertIn(row["verdict"], (self.s.POSSIBLE, self.s.UNLIKELY, self.s.UNKNOWN),
+                              f"{row['service']} returned {row['verdict']!r}")
+
+    def test_plain_sms_is_the_only_line_the_plan_answers_outright(self):
+        rows = {r["service"]: r for r in self.s.support("+447700900123")["services"]}
+        self.assertEqual(rows["sms"]["basis"], "numbering plan")
+        self.assertEqual(rows["whatsapp"]["basis"], "line class")
+        self.assertIn("probe", self.s.support("+447700900123")["note"])
+
+    def test_the_probe_plan_is_printed_and_nothing_is_wired(self):
+        plan = self.s.probe_plan("+15252627527")
+        self.assertTrue(plan["ok"])
+        self.assertEqual(plan["wired"], [], "a probe that claims to be wired must actually be wired")
+        self.assertEqual(len(plan["probes"]), 3)
+        self.assertIn("stranger's phone buzzes", " ".join(p["consequence"] for p in plan["probes"]))
+        self.assertIn("undocumented", plan["why_not_run"])
+        self.assertEqual(plan["gate"]["env"], "HEYPHONY_LOOKUP")
+
+    def test_an_unknown_service_is_a_refusal_with_the_known_ones(self):
+        plan = self.s.probe_plan("+15551234567", service="telegram")
+        self.assertFalse(plan["ok"])
+        self.assertIn("whatsapp", plan["known"])
+
+
+class TestTheLookupFlagAnswersBothShapes(unittest.TestCase):
+    """the two shapes the owner asked for, from one flag."""
+
+    def _run(self, *argv):
+        done = subprocess.run([str(ROOT / "bin" / "heyphony"), *argv],
+                              capture_output=True, text=True, timeout=120)
+        return done.returncode, json.loads(done.stdout)
+
+    def test_the_bare_lookup_answers_what_the_number_is(self):
+        code, answer = self._run("--lookup", "+442071234567")
+        self.assertEqual(code, 0)
+        self.assertEqual(answer["line"]["type"], "landline")
+        self.assertFalse(answer["line"]["receive_text"])
+
+    def test_the_support_mode_answers_per_service(self):
+        code, answer = self._run("--lookup", "+15252627527", "support")
+        self.assertEqual(code, 0)
+        names = [r["service"] for r in answer["services"]]
+        self.assertEqual(names, ["sms", "imessage", "signal", "whatsapp"])
+        self.assertTrue(all(r["verdict"] for r in answer["services"]))
+
+    def test_the_subcommand_is_the_same_answer_as_the_flag(self):
+        self.assertEqual(self._run("lookup", "+447700900123", "line")[1],
+                         self._run("--lookup", "+447700900123", "line")[1])
+
+    def test_the_probes_mode_prints_the_plan(self):
+        code, answer = self._run("--lookup", "+15252627527", "probes")
+        self.assertEqual(code, 0)
+        self.assertEqual(answer["wired"], [])
+
+    def test_no_number_is_a_usage_answer_not_a_crash(self):
+        code, answer = self._run("--lookup")
+        self.assertEqual(code, 1)
+        self.assertIn("usage", answer)
+
+
+class TestTheLookupPageMatchesTheCode(unittest.TestCase):
+    """the page is the promise, so it is pinned to the data and to the refusals."""
+
+    def setUp(self):
+        self.page = (ROOT / "src" / "lookup" / "readme.md").read_text()
+
+    def test_the_page_says_evidence_not_verdicts(self):
+        self.assertIn("evidence, not a verdict", self.page)
+        self.assertIn("a first-class result", self.page)
+
+    def test_the_page_names_the_probe_consequences(self):
+        self.assertIn("sends an sms code to that handset", self.page)
+        self.assertIn("undocumented", self.page)
+
+    def test_the_page_states_the_coverage_per_market(self):
+        for iso in ("gb", "us and ca", "se, pl, lt, nl, au"):
+            self.assertIn(iso, self.page, f"the page does not state coverage for {iso}")
+
+    def test_the_page_has_no_em_dash(self):
+        self.assertNotIn("\u2014", self.page)
+
+    def test_the_markets_in_the_code_are_the_markets_on_the_page(self):
+        from src.lookup import classify
+        for iso in ("GB", "US", "CA", "SE", "PL", "LT", "NL", "AU"):
+            self.assertIn(iso, classify.MARKETS)
+        self.assertNotIn("FR", classify.MARKETS, "an unseeded market stays unseeded until a table exists")
 
 
 

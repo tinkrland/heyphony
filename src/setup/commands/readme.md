@@ -23,6 +23,9 @@ one table, because the most common confusion in this package was not knowing whi
 | `heyphony voicemail --to +1555... --message "..."` | manage (out) | one call, dialed through your livekit trunk, with the message spoken after the answer | no: `--send` dials a real phone, and `--agent` writes the worker that speaks |
 | `heyphony group new --name "dinner" --with ada=+1555...` | manage (out) | a named conversation of two to four people, each message sent one at a time | yes, it refuses a duplicate id by name and time |
 | `heyphony group say <id> --text "seven o'clock"` | manage (out) | the same rail, once per member, with each member's own result | no: it sends when `--send` and the gate agree |
+| `heyphony lookup +447700900123` (`--lookup` also works) | lookup | what the number is: line class, whether it can take a text, and the market's coverage | yes, it reads a plan |
+| `heyphony --lookup +1555... support` | lookup | the same line, one verdict per service, with `possible` and `unlikely` instead of a boolean | yes |
+| `heyphony --lookup +1555... probes` | lookup | the probes each service would need, and what running one would do to somebody's phone | yes, and nothing is dialed |
 | `heyphony get signal` | onramp | prints the recipe for signal, `--run` executes the install steps | yes |
 | `heyphony status` | any | one line per lane: open, closed, designed | yes |
 

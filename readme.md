@@ -106,6 +106,14 @@ the outbound rail refuses a pasted list, and that refusal is about broadcast: on
 
 and the thing people assume wrong, so it is in the command output as well as here: most carriers do not carry a group sms as a group. each member receives a one-to-one text from your did, with no sign that anyone else exists. the shared transcript is in your records, not in their phones, and no carrier group thread is started.
 
+### looking a number up is a read, and that is why it is the safe half
+
+`heyphony --lookup +447700900123` answers what a number is from the plan that issues it: `mobile` for a range issued for mobile services, `landline` for a geographic one, `voip` for the uk's own 056 range, `personal numbering` for 070. it also answers the question behind the question, `receive_text`: a mobile range can take a text, a geographic landline mostly cannot.
+
+`heyphony --lookup +1555... support` answers per service instead, and this is where the tool refuses to be clever. a numbering plan can say whether a range can receive a code at all. it cannot say whether this particular number already has a whatsapp account, because that is a fact held by whatsapp and nobody else. so the verdicts are `possible`, `unlikely` and `unknown`, never a boolean, and `heyphony --lookup +1555... probes` prints the exact probe each service would need along with what running it would do: one of them sends an sms to that handset, and two of them lean on undocumented endpoints.
+
+`unknown` is a real answer rather than a failure. the north american numbering plan does not encode line type at all, so every +1 number comes back `type: unknown` with `carrier-question` as its evidence, and with the carrier-lookup adapter named and marked unwired. guessing a line type from an area code is how a lookup tool starts lying politely.
+
 ### the number outlives the machine
 
 the honest shape of a phone number is that half of it is somebody else's computer, so the interesting question is what happens when the host sleeps.
@@ -156,6 +164,8 @@ the refusal is not a verdict on this package. it is adversarial detection aimed 
 ### what outbound is, and what it is not
 
 `sms on this number, one message at a time.` the rail sends when the gate is open (`HEYPHONY_SEND=allowed`) and the call says so (`--send`), records the message in the same thread as what came in, and refuses a list, a loop and a schedule, because a campaign is a different product with consent, attested origination and a registered business behind it.
+
+the lookup reads a plan and never dials. that is the same split as the rest of the package at a different scale: reading is patient and cheap, and everything that touches somebody else's phone has a gate, a ceiling and a stated consequence.
 
 three shapes ride that one rail: a single reply, a voicemail, and a small named group. all three are the same act at different volumes, which is why none of them has a queue, a retry, a schedule or a quiet-hours engine. one of them is a call, so `HEYPHONY_CALL=allowed` is its own gate rather than a second meaning for the text gate.
 
