@@ -143,11 +143,16 @@ const newestTarball = (dir) => {
 	record("npm is authenticated", loggedIn,
 		loggedIn ? `as ${who.out}` : "run `npm login` (or set a granular access token), and have the 2FA code ready");
 
+	// a first publish claims a name; every publish after it updates one. the question is not "is the
+	// name free" but "can this account write to it", so a name held by us is a pass and only a name
+	// held by somebody else stops the run.
 	const name = await registry(pkg.name);
-	record("the name is yours to claim", name.free === true,
-		name.free === true ? `${pkg.name} answers 404 on the registry, so it is unheld`
+	const mine = name.free === false && who.out && name.owner === who.out;
+	record("the name is yours to claim", name.free === true || mine,
+		name.free === true ? `${pkg.name} answers 404 on the registry, so this publish claims it`
 			: name.timeout ? "the registry did not answer, check the network"
-			: name.free === false ? `${pkg.name} already exists${name.latest ? ` at ${name.latest}` : ""}${name.owner ? `, held by ${name.owner}` : ""}`
+			: mine ? `${pkg.name} already exists${name.latest ? ` at ${name.latest}` : ""}, held by ${name.owner}, so this publish updates it`
+			: name.free === false ? `${pkg.name} exists${name.latest ? ` at ${name.latest}` : ""}${name.owner ? ` and is held by ${name.owner}` : ""}, which is not this account`
 			: `could not check: ${name.error || "unknown"}`);
 
 	const width = Math.max(...results.map((row) => row.name.length));
