@@ -123,7 +123,12 @@ curl -fsSL https://raw.githubusercontent.com/tinkrland/heyphony/main/npm/install
 
 it downloads the same tree and puts `heyphony` on your path, needing python3 and nothing else. the two routes differ in what they leave behind, not in what they can do.
 
-the http api and the mcp server are in development on their own branch rather than this one, and a cloud hosted version is planned beside them. the api is what a client calls instead of a shell, the mcp server is the same verbs for an agent that speaks the protocol, and the hosted one is for somebody who would rather not keep a machine awake to hold a number. none of the three is published yet, so this page does not pretend they are a fifth route. when the hosted version lands it will be the only paid one, and paid only for that convenience: hosting a number for you is the one part that costs something to run, and everything above stays yours to install and hold.
+### other offerings
+
+- mcp server (in development) @ `mcp` branch
+- rest api over https (in development)
+- heyphony sdk (planned)
+- hosted cloud offering (paid only, planned)
 
 [the full table, with what each route needs, is in npm/readme.md](npm/readme.md), and [npm/publish.md](npm/publish.md) is the runbook that got 0.3.0 onto the registry.
 

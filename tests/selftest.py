@@ -229,13 +229,17 @@ class TestThePagesSayHowToGetIt(unittest.TestCase):
         for needle in ("npx heyphony", "npm/readme.md", "npm/publish.md"):
             self.assertIn(needle, text, f"the root readme stopped pointing at {needle!r}")
 
-    def test_the_page_names_the_api_and_the_mcp_server_as_unpublished_work(self):
-        """a reader who heard about the api should not go looking for a fifth install route."""
-        text = " ".join(self.root_readme.read_text().split())
-        self.assertIn("the http api and the mcp server are in development on their own branch", text)
-        self.assertIn("a cloud hosted version is planned beside them", text)
-        self.assertIn("none of the three is published yet", text)
-        self.assertIn("it will be the only paid one, and paid only for that convenience", text)
+    def test_the_page_lists_the_other_offerings_as_bullets(self):
+        """the owner's shape: a short list under its own subheading, each line marked for how far along it is."""
+        text = self.root_readme.read_text()
+        self.assertIn("### other offerings", text)
+        for needle in ("- mcp server (in development) @ `mcp` branch",
+                       "- rest api over https (in development)",
+                       "- heyphony sdk (planned)",
+                       "- hosted cloud offering (paid only, planned)"):
+            self.assertIn(needle, text, f"the offerings list lost {needle!r}")
+        self.assertNotIn("does not pretend they are a fifth route", text,
+                         "the paragraph this replaced is gone rather than sitting beside the list")
 
     def test_the_page_does_not_claim_a_publish_that_has_not_happened(self):
         text = self.root_readme.read_text()
