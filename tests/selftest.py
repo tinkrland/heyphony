@@ -2613,6 +2613,122 @@ class TestAGroupReplyComesBackAsAStranger(unittest.TestCase):
             self.assertIn(needle, page)
 
 
+class TestTheCodeAGroupCarries(unittest.TestCase):
+    """membership is a guess, so a group gets a code a reply can quote instead."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        os.environ["HEYPHONY_GROUPS"] = os.path.join(self.tmp, "groups.json")
+        os.environ["VOIPMS_API_USER"] = "user"
+        os.environ["VOIPMS_API_PASS"] = "secret"
+        os.environ["HEYPHONY_SEND"] = "allowed"
+        from src.manage import groups
+        self.g = groups
+        self.did = "+15550000000"
+        self.made = self.g.create("friday crew", [{"name": "ada", "number": "+15550000001"},
+                                                  {"name": "bo", "number": "+15550000002"}])
+        self.code = self.made["code"]
+        self.g.create("sunday", [{"name": "ada", "number": "+15550000001"},
+                                 {"name": "cy", "number": "+15550000003"}])
+
+    def tearDown(self):
+        for name in ("HEYPHONY_GROUPS", "HEYPHONY_SEND", "VOIPMS_API_USER", "VOIPMS_API_PASS"):
+            os.environ.pop(name, None)
+
+    def test_the_code_is_four_characters_nobody_can_confuse(self):
+        self.assertEqual(len(self.code), 4)
+        for character in self.code:
+            self.assertIn(character, self.g.CODE_ALPHABET)
+        for confusable in "BIOS01258":
+            self.assertNotIn(confusable, self.g.CODE_ALPHABET)
+
+    def test_two_live_groups_never_answer_to_the_same_code(self):
+        codes = [group["code"] for group in self.g.load()["groups"]]
+        self.assertEqual(len(codes), len(set(codes)))
+
+    def test_the_tag_rides_on_what_leaves_and_the_body_stays_the_body(self):
+        sent = {}
+
+        def opener(request):
+            sent.setdefault("requests", []).append(request)
+            return 200, "{}"
+
+        answer = self.g.say("friday crew", "seven then", provider="voip.ms",
+                            from_number=self.did, allow=True, opener=opener)
+        self.assertEqual(answer["tag"], f"ref {self.code}")
+        self.assertEqual(len(sent["requests"]), 2)
+        self.assertIn(self.code, json.dumps(sent["requests"][0]))
+        stored = self.g.load()["groups"][0]["messages"][0]
+        self.assertEqual(stored["text"], "seven then")
+        self.assertIn(f"ref {self.code}", stored["sent_text"])
+
+    def test_no_tag_sends_the_body_alone_and_says_so_by_omission(self):
+        answer = self.g.say("friday crew", "seven then", provider="voip.ms", from_number=self.did,
+                            allow=False, tag=False, opener=lambda request: (200, "{}"))
+        self.assertIsNone(answer["tag"])
+
+    def test_the_output_names_the_segment_cost_of_the_tag(self):
+        answer = self.g.say("friday crew", "seven then", provider="voip.ms", from_number=self.did,
+                            allow=False, opener=lambda request: (200, "{}"))
+        self.assertIn("second segment", answer["segments"])
+        self.assertIn("--no-tag", answer["segments"])
+
+    def test_a_quoted_code_is_certain_even_from_a_number_we_never_recorded(self):
+        found = self.g.attribute_inbound(sender="+15557777777", text=f"on my way\n\nref {self.code}")
+        self.assertEqual(found["by"], "code")
+        self.assertTrue(found["certain"])
+        self.assertEqual([g["name"] for g in found["groups"]], ["friday crew"])
+        self.assertIsNone(found["groups"][0]["member"])
+
+    def test_a_code_settles_a_member_who_is_in_two_groups(self):
+        guessed = self.g.attribute_inbound(sender="+15550000001", text="sounds good")
+        self.assertEqual(guessed["by"], "ambiguous")
+        self.assertFalse(guessed["certain"])
+        self.assertEqual(len(guessed["groups"]), 2)
+        settled = self.g.attribute_inbound(sender="+15550000001",
+                                          text=f"sounds good\n\nref {self.code}")
+        self.assertEqual(settled["by"], "code")
+        self.assertEqual([g["name"] for g in settled["groups"]], ["friday crew"])
+        self.assertEqual(settled["groups"][0]["member"], "ada")
+
+    def test_a_member_can_answer_with_the_code_alone(self):
+        self.assertEqual(self.g.code_of(self.code), self.code)
+        self.assertEqual(self.g.code_of(f"  {self.code.lower()} "), self.code)
+        self.assertIsNone(self.g.code_of("sounds good"))
+        self.assertIsNone(self.g.code_of("ok"))
+        found = self.g.attribute_inbound(sender="+15550000002", text=self.code)
+        self.assertEqual(found["by"], "code")
+        self.assertEqual(found["groups"][0]["member"], "bo")
+
+    def test_a_body_that_merely_looks_like_a_code_is_not_one(self):
+        self.assertIsNone(self.g.code_of("ACDE is the start of the alphabet"))
+        self.assertIsNone(self.g.code_of("see you at 4"))
+
+    def test_a_group_with_a_number_of_its_own_is_addressed_rather_than_guessed(self):
+        self.g.create("dinner", [{"name": "ada", "number": "+15550000001"},
+                                 {"name": "dee", "number": "+15550000004"}],
+                      number="+15550009999")
+        found = self.g.attribute_inbound(sender="+15550000004", text="table for four",
+                                         recipient="+15550009999")
+        self.assertEqual(found["by"], "number")
+        self.assertTrue(found["certain"])
+        self.assertEqual([g["name"] for g in found["groups"]], ["dinner"])
+
+    def test_the_code_is_never_dressed_up_as_a_secret(self):
+        answer = self.made
+        self.assertIn("not a person", answer["the_code_is_not_a_secret"])
+        self.assertIn("never a way to prove who is writing", answer["the_code_is_not_a_secret"])
+        self.assertIn("not a secret", answer["the_code_is_not_a_secret"])
+
+    def test_the_page_names_the_ladder_and_what_the_code_cannot_do(self):
+        page = " ".join((ROOT / "readme.md").read_text().split())
+        for needle in ("### the code the group carries, so a reply can name itself",
+                       "eight characters and no more", 'by: "code"', 'by: "ambiguous"',
+                       "and the code is not a secret"):
+            self.assertIn(needle, page)
+
+
 
 if __name__ == "__main__":
     suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])

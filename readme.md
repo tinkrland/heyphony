@@ -112,6 +112,18 @@ a member's reply arrives as an ordinary one-to-one text from their number, becau
 
 `heyphony group reply dinner --text "seven then" --replying +1...` is what "reply to the group" can honestly mean here. it goes to every member through the same one-recipient rail, so the replier receives it in the same thread they used, as if you answered them, and every other member gets their own copy. nobody sees a group, and the command output carries that sentence rather than leaving it to be discovered.
 
+### the code the group carries, so a reply can name itself
+
+membership is a guess, so a group gets a code of its own at the moment it is created: four characters drawn from an alphabet with no B, I, O, S, 0, 1, 2, 5 or 8, because a code gets read aloud, copied off a screen and typed back, and those are the pairs that turn one into another. `heyphony group new` prints it and `group show` keeps printing it.
+
+the code rides on the end of what members receive, eight characters and no more: `seven then` leaves as `seven then\n\nref K7QD`. that is the whole point of it. a member's reply can then **name** its group instead of being guessed at, and a member can answer with the code alone if they want to be unambiguous. `--no-tag` sends the body by itself, and the output says the cost rather than leaving it to be discovered: eight characters can push a body near the ceiling into a second segment, which is a second message and a second charge.
+
+so attribution is a ladder with the evidence named, not a single rule. a body quoting the group's code is `by: "code"` and certain. a text arriving on a did the group holds is `by: "number"` and certain. no code, one group in our records is `by: "membership"`, reported as a guess, and no code with two candidate groups is `by: "ambiguous"`, which reports both and picks neither. every inbound row carries `certain` beside the name, because "this is bo's group" and "this came from a number that is in bo's group" are different claims and the second one is the one that could be wrong.
+
+the strongest form is a number of its own: `group new --number +1...` attaches a did to the group, and then a reply is *addressed* rather than inferred, which also covers a member texting from a phone we never recorded. it costs a number per group, which is why it is optional rather than the default, and it still starts no carrier group thread, so the members still do not see each other.
+
+and the code is not a secret, which is stated in the command output as well as here: it names a conversation, not a person. anybody holding the message can quote it, so it never proves who is writing, only which group they mean. it also cannot recover a reply whose tag was deleted, a text somebody forwarded from the message, or a carrier group mms, which arrives with its members in a payload this package does not parse.
+
 two limits, stated because they are invisible otherwise. a real carrier group mms from somebody else arrives as an mms from the group or the original sender with the members in a payload this package does not parse, so it is not turned into a group and no media is read. and membership is the only marker there is, so a member texting you one-to-one about dinner is indistinguishable from their group reply, which is a property of the rail and not of the code.
 
 and the thing people assume wrong, so it is in the command output as well as here: most carriers do not carry a group sms as a group. each member receives a one-to-one text from your did, with no sign that anyone else exists. the shared transcript is in your records, not in their phones, and no carrier group thread is started.

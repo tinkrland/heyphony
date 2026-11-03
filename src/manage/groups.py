@@ -31,6 +31,11 @@ import pathlib
 import time
 
 MAX_MEMBERS = 4
+
+# the alphabet a code is drawn from: no B, I, O, S, 0, 1, 2, 5 or 8, because a code gets read out
+# loud, copied off a screen and typed back, and those are the pairs that turn one into another
+CODE_ALPHABET = "ACDEFGHJKLMNPQRTUVWXY34679"
+CODE_LENGTH = 4
 STORE = pathlib.Path(os.environ.get("HEYPHONY_GROUPS")
                      or pathlib.Path.home() / ".local/share/telephony/groups.json")
 
@@ -90,7 +95,7 @@ def _clean_members(with_):
     return members, problems
 
 
-def create(name, with_, store=None):
+def create(name, with_, store=None, number=None):
     """a named conversation, small enough to be one."""
     members, problems = _clean_members(with_)
     if not str(name or "").strip():
@@ -106,10 +111,45 @@ def create(name, with_, store=None):
                 "why": "refused: a group is small and named, and the problems above say why"}
     data = load(store)
     group = {"id": new_id(name, [m["number"] for m in members]), "name": str(name).strip(),
-             "members": members, "created": int(time.time()), "messages": []}
+             "members": members, "created": int(time.time()), "messages": [],
+             "code": new_code(name, members, data["groups"]),
+             # a group can hold a did of its own, in which case a reply arrives addressed to it and
+             # needs no code and no guess. optional, because it costs a number per group
+             "number": (str(number).strip() or None) if number else None}
+    group = {k: v for k, v in group.items() if v is not None or k in ("members", "messages")}
     data["groups"].append(group)
     save(data, store)
-    return {"ok": True, "group": group, "what_members_see": WHAT_MEMBERS_SEE}
+    return {"ok": True, "group": group, "code": group["code"], "tag": tag_for(group),
+            "what_members_see": WHAT_MEMBERS_SEE, "the_code_is_not_a_secret": CODE_IS_NOT_A_SECRET}
+
+
+CODE_IS_NOT_A_SECRET = ("the code is not a secret: it names a conversation, not a person. it rides on "
+                        "the message and anybody who reads it can quote it, so it is never a way to "
+                        "prove who is writing, only which group they mean")
+
+
+def new_code(name, members, groups):
+    """four characters drawn from the group itself, and never one a live group already answers to."""
+    held = {g.get("code") for g in groups if g.get("code")}
+    seed = f"{name}|{'|'.join(sorted(m['number'] for m in members))}"
+    for salt in range(0, 500):
+        digest = hashlib.sha256(f"{seed}|{salt}".encode()).digest()
+        code = "".join(CODE_ALPHABET[b % len(CODE_ALPHABET)] for b in digest[:CODE_LENGTH])
+        if code not in held:
+            return code
+    return "".join(CODE_ALPHABET[b % len(CODE_ALPHABET)] for b in digest[-CODE_LENGTH:])
+
+
+def tag_for(group):
+    """what a member sees on the end of the message: short enough to be eight characters and no more."""
+    return f"ref {group['code']}"
+
+
+def tag_text(text, group):
+    return f"{text}{TAG_JOINER}{tag_for(group)}"
+
+
+TAG_JOINER = "\n\n"
 
 
 WHAT_MEMBERS_SEE = ("each member gets a one-to-one text from your did. no carrier group thread is "
@@ -164,7 +204,8 @@ def thread(group_id, store=None, messages=None):
     rows = []
     for entry in group.get("messages", []):
         rows.append({"at": entry.get("at"), "direction": "out", "who": "you",
-                     "text": entry.get("text"), "sent": entry.get("sent"), "of": entry.get("of")})
+                     "text": entry.get("text"), "tag": entry.get("tag"),
+                     "sent": entry.get("sent"), "of": entry.get("of")})
     members = {_digits(m["number"]): m["name"] for m in group.get("members", [])}
     for entry in (messages if messages is not None else _inbox()):
         sender = _digits(entry.get("sender"))
@@ -187,6 +228,58 @@ def _inbox():
         return []
 
 
+def code_of(text):
+    """the code a body quotes, if it quotes one. explicit rather than a bare token, because a
+    four character string that happens to fall in the alphabet is a coincidence, not an address."""
+    import re
+    found = re.search(r"\bref\s+([A-Za-z0-9]{4})\b", str(text or ""))
+    if found:
+        return found.group(1).upper()
+    bare = str(text or "").strip().upper()
+    return bare if len(bare) == CODE_LENGTH and all(ch in CODE_ALPHABET for ch in bare) else None
+
+
+def attribute_inbound(groups=None, sender=None, text=None, recipient=None):
+    """which group an inbound text belongs to, and on what evidence.
+
+    the ladder is code, then the group's own number, then membership. only the first two are evidence:
+    a quoted code or an addressed number says which conversation this is, while membership says only
+    that this person is in one, which is a guess from our own records and is reported as one.
+    """
+    groups = load()["groups"] if groups is None else groups
+    code = code_of(text)
+    if code:
+        hit = next((g for g in groups if g.get("code") == code), None)
+        if hit:
+            member = next((m.get("name") for m in hit.get("members", [])
+                           if _digits(m.get("number")) == _digits(sender)), None)
+            return {"groups": [{"id": hit["id"], "name": hit["name"], "member": member}],
+                    "by": "code", "certain": True, "code": code}
+    if recipient:
+        hit = next((g for g in groups if g.get("number")
+                    and _digits(g["number"]) == _digits(recipient)), None)
+        if hit:
+            member = next((m.get("name") for m in hit.get("members", [])
+                           if _digits(m.get("number")) == _digits(sender)), None)
+            return {"groups": [{"id": hit["id"], "name": hit["name"], "member": member}],
+                    "by": "number", "certain": True}
+    hits = attribute(groups, sender)
+    if not hits:
+        return {"groups": [], "by": None, "certain": False}
+    return {"groups": hits, "by": "membership" if len(hits) == 1 else "ambiguous",
+            "certain": False}
+
+
+ATTRIBUTION_MEANS = {
+    "code": "the body quotes this group's code, so the conversation is named rather than guessed",
+    "number": "the text arrived on this group's own number, so it is addressed rather than guessed",
+    "membership": "no code in the body, so the group comes from our own membership records and is a "
+                  "guess rather than a fact",
+    "ambiguous": "the sender is in more than one group and the body names none of them, so every "
+                 "candidate is reported and none is picked",
+}
+
+
 def listing(store=None):
     groups = load(store)["groups"]
     return {"count": len(groups),
@@ -196,7 +289,7 @@ def listing(store=None):
 
 
 def reply(group_id, text, provider, from_number, allow=False, store=None, opener=None,
-          replying=None):
+          replying=None, tag=True):
     """answer a member in the group rather than only to them.
 
     the replier has a one-to-one thread with your did and nothing else, so sending to every member
@@ -204,7 +297,7 @@ def reply(group_id, text, provider, from_number, allow=False, store=None, opener
     everyone else gets it as their own one-to-one. nobody sees a group, and the output says so.
     """
     answer = say(group_id, text, provider=provider, from_number=from_number, allow=allow,
-                 store=store, opener=opener)
+                 store=store, opener=opener, tag=tag)
     # the shape of a group reply does not depend on whether this one left the machine, so a draft
     # carries the same explanation as a sent message
     answer["reply"] = True
@@ -215,16 +308,17 @@ def reply(group_id, text, provider, from_number, allow=False, store=None, opener
     return answer
 
 
-def say(group_id, text, provider, from_number, allow=False, store=None, opener=None):
+def say(group_id, text, provider, from_number, allow=False, store=None, opener=None, tag=True):
     """one message, one member at a time, through the rail that already refuses lists."""
     from src.manage.outgoing import send as outbox
     group = find(load(store)["groups"], group_id)
     if not group:
         return {"ok": False, "why": "no such group", "sent": 0}
+    sent_text = tag_text(text, group) if tag and group.get("code") else text
     results = []
     for member in group["members"]:
         answer = outbox.send(provider=provider, from_number=from_number, to=member["number"],
-                             text=text, allow=allow, opener=opener)
+                             text=sent_text, allow=allow, opener=opener)
         results.append({"name": member["name"], "to": member["number"], "sent": bool(answer.get("sent")),
                         "why": answer.get("why")})
     sent = sum(1 for row in results if row["sent"])
@@ -232,6 +326,8 @@ def say(group_id, text, provider, from_number, allow=False, store=None, opener=N
     live = find(data["groups"], group["id"])
     if live is not None:
         live.setdefault("messages", []).append({"at": int(time.time()), "text": text,
+                                                "sent_text": sent_text,
+                                                "tag": tag_for(group) if sent_text != text else None,
                                                 "sent": sent, "of": len(results)})
         save(data, store)
     return {"ok": sent == len(results) and sent > 0, "sent": sent, "of": len(results),
@@ -239,4 +335,9 @@ def say(group_id, text, provider, from_number, allow=False, store=None, opener=N
             "draft": not allow,
             "why": ("draft: pass --send and set HEYPHONY_SEND=allowed to send" if not allow else
                     f"{sent} of {len(results)} members accepted the message"),
+            "tag": tag_for(group) if sent_text != text else None,
+            "code": group.get("code"),
+            "the_code_is_not_a_secret": CODE_IS_NOT_A_SECRET,
+            "segments": ("the tag is 8 characters, so a body near the segment ceiling can become a "
+                         "second segment where one was drafted. --no-tag sends the body alone"),
             "what_members_see": WHAT_MEMBERS_SEE}
