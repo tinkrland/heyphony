@@ -1,0 +1,7 @@
+#!/bin/sh
+# meetings, from a clone. the module is the thing you can read, so this stays a shim over it.
+#
+# the existing PYTHONPATH is kept rather than replaced, because this branch reads the token and the
+# audio rails and nothing else, and a caller may well have put the number's tree there too.
+here=$(cd "$(dirname "$0")/.." && pwd)
+PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}" PYTHONDONTWRITEBYTECODE=1 exec python3 -m meetings.cli "$@"

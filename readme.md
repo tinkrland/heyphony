@@ -12,11 +12,17 @@ the table is generated from `rails.py`, and a test fails when the page and the d
 
 | rail | how a bot joins | the signature | audio | state |
 | --- | --- | --- | --- | --- |
-| `zoom` | meeting sdk join token, or the browser client with a link | hs256 jwt over header and payload, iat backdated 30 seconds for clock drift, exp two hours | livekit room | contract |
-| `googlemeet` | a browser participant, because there is no bot api | none, the invite is the permission | livekit room | contract |
-| `teams` | a browser participant, tenant policy permitting | none, and a tenant can refuse outside guests | livekit room | contract |
+| `zoom` | meeting sdk join token, or the browser client with a link | hs256 jwt over header and payload, iat backdated 30 seconds for clock drift, exp two hours | livekit room | designed |
+| `googlemeet` | a browser participant, because there is no bot api | none, the invite is the permission | livekit room | designed |
+| `teams` | a browser participant, tenant policy permitting | none, and a tenant can refuse outside guests | livekit room | designed |
 
-**state is `contract` on every row.** nothing on this branch joins a meeting yet. the shape, the signature and the refusals are written down; the participant is not, and a page that implied otherwise would be a page about software that does not exist.
+**state is `designed` on every row.** the join path is implemented rather than merely described: the zoom token is minted and re-verified, the plan for a given platform is built and names its gate, and the microphone rail answers per room. nothing on this branch joins a meeting yet, so nothing here is `verified`, and that word stays reserved for a room with the person who sent the invite saying it worked.
+
+## what actually runs here
+
+`bin/meetings` is the one command, and it is a shim over `python3 -m meetings.cli` so the module is the thing you can read. `join --platform --meeting` answers what that room takes: the join path, the signal the platform allows, the audio rail, the gate, and which of those gates are missing today. `--platform zoom` with its two variables set also returns the minted token, because a token is the answer to "what do I paste into the sdk", not a separate errand. `audio` answers the microphone question per room, with `--audit` for the free software half, and `sign` is there for the case where the token is all anything wanted. `status` reports every platform and what each is missing, and `--setup` returns the whole lane in the shape the other lanes use.
+
+the modules are three. `rails.py` is the data: the three platforms, the jose fields, the refusals, the state with its evidence. `meetings/meetings_lane.py` is the code that acts on it: the token, the verification, and the join plan, with `PLATFORMS` derived from `rails.py` rather than written again beside it. `audio.py` is the microphone story, kept as data plus three small functions so the audit is a lookup rather than a mood.
 
 ## the signature is the only part worth being exact about
 
@@ -27,6 +33,8 @@ google meet and teams have no equivalent. a bot joins those as a browser partici
 ## the audio is a room, not a telephone call
 
 inside a meeting the agent is a participant in a livekit room: it subscribes to the mixed audio, and it publishes its own track. that is a different media path from the sip call on `main`, where the client owns one stream and the number owns the identity. the two do not merge, and pretending they do would mean writing a bridge that pumps two clocks and two codecs, which is a project rather than a helper.
+
+getting a microphone at all is the part people get wrong, because a virtual microphone is not one thing. a browser room needs no device: chromium answers getUserMedia from a wav with two flags, which is the whole rail for zoom web, meet and teams. a native client needs a pipewire null sink and a remap source, two pactl calls, both free software. obs is free software and still not the microphone, since its virtual audio device is a macos extra. macos and windows need a device installed, and the windows one is closed source, which `audio.py` says out loud instead of describing it as free.
 
 ## what a human still does
 

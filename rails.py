@@ -6,8 +6,9 @@ it.
 
 state values:
 
-  contract   a shape with a join path and refusals, no participant, no meeting ever joined
-  designed   the join path read from the platform's own documentation
+  designed   the join path read from the platform's own documentation and implemented here: the
+             signature is minted and checked, the plan is built, and no meeting has been joined
+  verified   a real meeting joined, with the human who invited the agent saying it worked
   verified   a real meeting joined, with the human who invited the agent saying it worked
 """
 
@@ -29,7 +30,9 @@ RAILS = {
         "audio": "livekit room",
         "screenshare": "getDisplayMedia, a human picks the surface",
         "gate": ["ZOOM_SDK_KEY", "ZOOM_SDK_SECRET"],
-        "state": "contract",
+        "signal": "raise hand, reactions and the screen share, all through the room's own ui",
+        "evidence": "the join token is minted and re-verified in tests/selftest.py; no meeting joined",
+        "state": "designed",
         "refused": ["a cold join from a meeting id", "recording without the host's consent"],
         "scope": "the one platform with a documented programmatic join, so the one where a wrong "
                  "field is a silent failure",
@@ -41,7 +44,9 @@ RAILS = {
         "audio": "livekit room",
         "screenshare": "getDisplayMedia, a human picks the surface",
         "gate": ["MEETING_BROWSER_PROFILE"],
-        "state": "contract",
+        "signal": "browser ui only: there is no host api to raise a hand through",
+        "evidence": "the browser room is the whole join path; no browser has been sent to one",
+        "state": "designed",
         "refused": ["a cold join", "a profile that is not signed in", "recording by default"],
         "scope": "the invite is the permission, and the participant is a headless browser wearing a "
                  "normal participant's clothes",
@@ -52,15 +57,17 @@ RAILS = {
         "signature": None,
         "audio": "livekit room",
         "screenshare": "getDisplayMedia, a human picks the surface",
-        "gate": ["MEETING_BROWSER_PROFILE"],
-        "state": "contract",
+        "gate": ["MEETING_BROWSER_PROFILE", "MS_TENANT_ID"],
+        "signal": "browser ui only, and a tenant policy can end the join before any ui appears",
+        "evidence": "the tenant gate is named in the plan; no tenant has been asked for one",
+        "state": "designed",
         "refused": ["a cold join", "an org whose tenant refuses outside guests"],
         "scope": "the platform most likely to refuse a guest mid-join, and the page says so rather "
                  "than blaming the participant later",
     },
 }
 
-STATES = ("contract", "designed", "verified")
+STATES = ("designed", "verified")
 
 
 def rail(name):
@@ -79,6 +86,11 @@ def table_rows():
     """the readme table, derived: name, join, signature presence, audio, state."""
     return [(row["name"], row["join"], "hs256 jwt" if row["signature"] else "none",
              row["audio"], row["state"]) for row in RAILS.values()]
+
+
+def platform_names():
+    """the keys a `bin/meetings join --platform` will accept, so the shim cannot invent one."""
+    return sorted(RAILS)
 
 
 def signature_of(name):
