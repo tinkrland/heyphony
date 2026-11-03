@@ -98,14 +98,6 @@ two things about it are worth saying plainly rather than discovering on the firs
 
 it is gated like the text rail: `HEYPHONY_CALL=allowed` and `--send`, both, or you get the plan printed in full.
 
-### a group is four named people, not a list
-
-`heyphony group new --name "dinner" --with ada=+1... --with bob=+1...` then `heyphony group say dining --text "seven o'clock"`.
-
-the outbound rail refuses a pasted list, and that refusal is about broadcast: one text to many strangers at machine pace with no conversation behind it. a group chat is the other thing, so the shape is narrow enough that the difference is structural instead of a promise. four members is a hard ceiling rather than a flag, a member is a name **and** a number, and every message goes out through the same one-recipient rail with its own gate and its own character limit. one member failing does not quietly become "sent to the group".
-
-and the thing people assume wrong, so it is in the command output as well as here: most carriers do not carry a group sms as a group. each member receives a one-to-one text from your did, with no sign that anyone else exists. the shared transcript is in your records, not in their phones, and no carrier group thread is started.
-
 ### the number outlives the machine
 
 the honest shape of a phone number is that half of it is somebody else's computer, so the interesting question is what happens when the host sleeps.
@@ -117,16 +109,23 @@ that asymmetry is the design. it is why the number lives on the host rather than
 
 ## get it
 
-four ways, in the order most people want them. the full table with what each one needs is in [npm/readme.md](npm/readme.md).
+```
+npm i -g heyphony
+```
+
+that is the whole install, and it works because the package is on the npm registry as `heyphony@0.3.0`, published on 2026-11-03. `npx heyphony status` does the same thing without the `i -g` if you would rather not install it.
+
+or, if you don't have either git nor node, the url install is a better fit:
 
 ```
 curl -fsSL https://raw.githubusercontent.com/tinkrland/heyphony/main/npm/install.sh | sh
-git clone https://github.com/tinkrland/heyphony && cd heyphony && ./bin/heyphony status
-cd npm && npm pack && npm i -g ./heyphony-0.3.0.tgz
-npx heyphony status          # or npm i -g heyphony, both straight from the registry
 ```
 
-the url install needs neither node nor git, which is why it is first. the package is on the npm registry as `heyphony@0.3.0`, published on 2026-11-03, so `npm i -g heyphony` and `npx heyphony` are live routes rather than promises. [npm/publish.md](npm/publish.md) is the runbook that got it there, including what the next version has to do.
+it downloads the same tree and puts `heyphony` on your path, needing python3 and nothing else. the two routes differ in what they leave behind, not in what they can do.
+
+the http api and the mcp server are in development on their own branch rather than this one: the api is what a client calls instead of a shell, and the mcp server is the same verbs for an agent that speaks the protocol. neither is published, so this page does not pretend they are a fifth route yet.
+
+[the full table, with what each route needs, is in npm/readme.md](npm/readme.md), and [npm/publish.md](npm/publish.md) is the runbook that got 0.3.0 onto the registry.
 
 an agent installing this should read [npm/agents.md](npm/agents.md) instead of this page, because it says which four commands to run, which two questions are for its human, and what it is not allowed to attempt.
 
@@ -157,7 +156,7 @@ the refusal is not a verdict on this package. it is adversarial detection aimed 
 
 `sms on this number, one message at a time.` the rail sends when the gate is open (`HEYPHONY_SEND=allowed`) and the call says so (`--send`), records the message in the same thread as what came in, and refuses a list, a loop and a schedule, because a campaign is a different product with consent, attested origination and a registered business behind it.
 
-three shapes ride that one rail: a single reply, a voicemail, and a small named group. all three are the same act at different volumes, which is why none of them has a queue, a retry, a schedule or a quiet-hours engine. one of them is a call, so `HEYPHONY_CALL=allowed` is its own gate rather than a second meaning for the text gate.
+two shapes ride that one rail: a single reply and a voicemail. both are the same act at different volumes, which is why neither has a queue, a retry, a schedule or a quiet-hours engine. one of them is a call, so `HEYPHONY_CALL=allowed` is its own gate rather than a second meaning for the text gate.
 
 provider terms, quiet hours, and what the recipient actually agreed to are yours. a tool that respects a gate cannot also audit a business, and pretending otherwise would be the dishonest version of a safety feature.
 

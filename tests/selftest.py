@@ -217,10 +217,23 @@ class TestThePagesSayHowToGetIt(unittest.TestCase):
     npm_readme = ROOT / "npm/readme.md"
     agents = ROOT / "npm/agents.md"
 
-    def test_every_install_route_is_on_the_page(self):
-        text = self.root_readme.read_text()
-        for needle in ("npm/install.sh", "git clone", "npm pack", "npx heyphony", "bin/heyphony"):
-            self.assertIn(needle, text, f"the root readme stopped mentioning {needle!r}")
+    def test_the_page_leads_with_the_registry_and_keeps_the_url_install_as_the_fallback(self):
+        """the owner's order: npm first, the url install for a machine with neither git nor node."""
+        text = " ".join(self.root_readme.read_text().split())
+        npm_first = text.index("npm i -g heyphony")
+        url_after = text.index("npm/install.sh")
+        self.assertLess(npm_first, url_after, "the registry line has to come before the url install")
+        self.assertIn("or, if you don't have either git nor node, the url install is a better fit", text)
+        self.assertNotIn("git clone", text.split("## three places it can live")[0],
+                         "the get it section no longer leads with a clone, so it does not list one")
+        for needle in ("npx heyphony", "npm/readme.md", "npm/publish.md"):
+            self.assertIn(needle, text, f"the root readme stopped pointing at {needle!r}")
+
+    def test_the_page_names_the_api_and_the_mcp_server_as_unpublished_work(self):
+        """a reader who heard about the api should not go looking for a fifth install route."""
+        text = " ".join(self.root_readme.read_text().split())
+        self.assertIn("the http api and the mcp server are in development on their own branch", text)
+        self.assertIn("neither is published", text)
 
     def test_the_page_does_not_claim_a_publish_that_has_not_happened(self):
         text = self.root_readme.read_text()
@@ -1171,10 +1184,16 @@ class TestTheMarketArgumentAndTheProviderIndex(unittest.TestCase):
         text = self.readme.read_text()
         for needle in ("leaving a voicemail is the same act, with a voice",
                        "there is no answering-machine detection here",
-                       "a group is four named people, not a list",
-                       "each member receives a one-to-one text from your did",
                        "HEYPHONY_CALL=allowed"):
             self.assertIn(needle, text, f"the readme lost {needle!r}")
+
+    def test_the_main_page_stays_quiet_about_groups_while_they_are_one_branchs_work(self):
+        """the owner asked for the group chat portion to stay off this page; the command still exists
+        and the command index still documents it."""
+        text = (ROOT / "readme.md").read_text().lower()
+        self.assertNotIn("group", text, "the group chat portion was meant to come off the main page")
+        self.assertIn("group", (ROOT / "src" / "setup" / "commands" / "readme.md").read_text().lower(),
+                      "the command index is the reference, so it still documents the verb")
 
     def test_the_readme_says_the_hybrid_is_the_reason_for_a_client(self):
         text = self.readme.read_text()
