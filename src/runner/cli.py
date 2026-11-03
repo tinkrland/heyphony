@@ -392,6 +392,7 @@ def cmd_voicemail(args):
 def cmd_group(args):
     """a conversation with two to four named people, one message at a time."""
     from src.manage import groups
+    args.group = args.group or getattr(args, "target", None)
     if args.action == "new":
         members = []
         for chunk in args.with_ or []:
@@ -402,7 +403,9 @@ def cmd_group(args):
         answer = groups.listing()
     elif args.action in ("show", "messages"):
         answer = groups.show(args.group)
-    elif args.action == "say":
+        if answer.get("ok"):
+            answer["thread"] = groups.thread(args.group, messages=None)["rows"]
+    elif args.action in ("say", "reply"):
         if not args.text:
             _out({"sent": 0, "why": "say needs --text"})
             return 1
@@ -412,10 +415,12 @@ def cmd_group(args):
             _out({"sent": 0, "why": "no sender number",
                   "how": "set HEYPHONY_SIP_DID to the did this provider holds"})
             return 1
-        answer = groups.say(args.group, args.text, provider=provider, from_number=from_number,
-                            allow=bool(args.send))
+        verb = groups.reply if args.action == "reply" else groups.say
+        extra = {"replying": args.replying} if args.action == "reply" else {}
+        answer = verb(args.group, args.text, provider=provider, from_number=from_number,
+                      allow=bool(args.send), **extra)
     else:
-        answer = {"ok": False, "why": "group takes new, list, show or say"}
+        answer = {"ok": False, "why": "group takes new, list, show, say or reply"}
     _out(answer)
     return 0 if answer.get("ok") or answer.get("count") is not None else 1
 
@@ -565,14 +570,17 @@ def build_parser():
     vm.set_defaults(func=cmd_voicemail)
 
     gr = sub.add_parser("group", help="a small named conversation, one message per member")
-    gr.add_argument("action", choices=["new", "list", "show", "say"])
+    gr.add_argument("action", choices=["new", "list", "show", "say", "reply"])
     gr.add_argument("--name")
     gr.add_argument("--with", dest="with_", action="append", metavar="NAME=+1555...",
                     help="a member, repeated (max four)")
+    gr.add_argument("target", nargs="?", help="group id or name, the same thing --group takes")
     gr.add_argument("--group", help="group id or name")
     gr.add_argument("--text")
     gr.add_argument("--provider")
     gr.add_argument("--send", action="store_true", help="actually send, with HEYPHONY_SEND=allowed")
+    gr.add_argument("--replying", metavar="+1555...",
+                    help="the member whose text you are answering, recorded rather than messaged singly")
     gr.set_defaults(func=cmd_group)
 
     s = sub.add_parser("send", help="one outbound text: drafted unless --send, gated by HEYPHONY_SEND")

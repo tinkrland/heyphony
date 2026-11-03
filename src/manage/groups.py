@@ -130,12 +130,89 @@ def show(group_id, store=None):
     return {"ok": True, "group": group, "what_members_see": WHAT_MEMBERS_SEE}
 
 
+def attribute(groups, number):
+    """which named groups a number belongs to, from our own records rather than the carrier.
+
+    a member's reply arrives as an ordinary one-to-one text with no group marker on it: the carrier
+    carries no group thread, because we never started one. so membership is the only join available,
+    it is ours, and a person in two groups gets both rather than a silently picked one.
+    """
+    target = _digits(number)
+    hits = []
+    for group in groups or []:
+        for member in group.get("members", []):
+            if _digits(member.get("number")) == target:
+                hits.append({"id": group["id"], "name": group["name"],
+                             "member": member.get("name")})
+                break
+    return hits
+
+
+def _digits(value):
+    return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+
+def thread(group_id, store=None, messages=None):
+    """my sends and their replies in one order, because that is the conversation a person had.
+
+    the carrier contributes nothing here: the sends come from this store and the replies are matched
+    by membership, so an inbound row is a member's own text rather than a group message.
+    """
+    group = find(load(store)["groups"], group_id)
+    if not group:
+        return {"ok": False, "why": "no such group"}
+    rows = []
+    for entry in group.get("messages", []):
+        rows.append({"at": entry.get("at"), "direction": "out", "who": "you",
+                     "text": entry.get("text"), "sent": entry.get("sent"), "of": entry.get("of")})
+    members = {_digits(m["number"]): m["name"] for m in group.get("members", [])}
+    for entry in (messages if messages is not None else _inbox()):
+        sender = _digits(entry.get("sender"))
+        if sender in members:
+            rows.append({"at": entry.get("at"), "direction": "in", "who": members[sender],
+                         "text": entry.get("body"), "from": entry.get("sender"),
+                         "id": entry.get("id")})
+    rows.sort(key=lambda row: float(row.get("at") or 0))
+    return {"ok": True, "group": {"id": group["id"], "name": group["name"]},
+            "rows": rows, "count": len(rows), "what_members_see": WHAT_MEMBERS_SEE,
+            "means": ("an in row is a member's own text to your did, matched by membership rather "
+                      "than by a group marker, because no group thread exists to carry one")}
+
+
+def _inbox():
+    try:
+        from src.manage import inbox as store
+        return store.read()
+    except Exception:
+        return []
+
+
 def listing(store=None):
     groups = load(store)["groups"]
     return {"count": len(groups),
             "groups": [{"id": g["id"], "name": g["name"], "members": len(g["members"]),
                         "messages": len(g.get("messages", []))} for g in groups],
             "max_members": MAX_MEMBERS, "what_members_see": WHAT_MEMBERS_SEE}
+
+
+def reply(group_id, text, provider, from_number, allow=False, store=None, opener=None,
+          replying=None):
+    """answer a member in the group rather than only to them.
+
+    the replier has a one-to-one thread with your did and nothing else, so sending to every member
+    is what "reply to the group" can mean: the replier gets it in the same thread they used, and
+    everyone else gets it as their own one-to-one. nobody sees a group, and the output says so.
+    """
+    answer = say(group_id, text, provider=provider, from_number=from_number, allow=allow,
+                 store=store, opener=opener)
+    # the shape of a group reply does not depend on whether this one left the machine, so a draft
+    # carries the same explanation as a sent message
+    answer["reply"] = True
+    answer["replying_to"] = replying
+    answer["means"] = ("the replier gets this in the same one-to-one thread they used, and every "
+                       "other member gets their own copy, because no group thread exists for one "
+                       "message to arrive in")
+    return answer
 
 
 def say(group_id, text, provider, from_number, allow=False, store=None, opener=None):

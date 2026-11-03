@@ -23,6 +23,8 @@ one table, because the most common confusion in this package was not knowing whi
 | `heyphony voicemail --to +1555... --message "..."` | manage (out) | one call, dialed through your livekit trunk, with the message spoken after the answer | no: `--send` dials a real phone, and `--agent` writes the worker that speaks |
 | `heyphony group new --name "dinner" --with ada=+1555...` | manage (out) | a named conversation of two to four people, each message sent one at a time | yes, it refuses a duplicate id by name and time |
 | `heyphony group say <id> --text "seven o'clock"` | manage (out) | the same rail, once per member, with each member's own result | no: it sends when `--send` and the gate agree |
+| `heyphony group reply <id> --text "seven then"` | manage (out) | answers the group after a member writes: the replier gets it in their own thread, everyone else gets a copy | no: same gate and the same `--send` |
+| `heyphony group show <id>` | manage (in) | your sends and their replies in one order, with inbound rows matched by membership | reads only |
 | `heyphony lookup eval` | lookup | runs the labelled fixture corpus and reports pass, fail, unknown rate and overreach | yes, it only reads |
 | `heyphony lookup dana@icloud.com` | lookup | the local part, the domain, and an iMessage verdict of possible, unknown or unlikely | yes, and nothing is sent |
 | `heyphony lookup examplemail@gmail.com support` | lookup | the capability matrix: `imessage: true` for an address, false for the services that verify by number | yes, and nothing is sent |

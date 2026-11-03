@@ -104,6 +104,16 @@ it is gated like the text rail: `HEYPHONY_CALL=allowed` and `--send`, both, or y
 
 the outbound rail refuses a pasted list, and that refusal is about broadcast: one text to many strangers at machine pace with no conversation behind it. a group chat is the other thing, so the shape is narrow enough that the difference is structural instead of a promise. four members is a hard ceiling rather than a flag, a member is a name **and** a number, and every message goes out through the same one-recipient rail with its own gate and its own character limit. one member failing does not quietly become "sent to the group".
 
+### what comes back, and how a reply is answered
+
+a member's reply arrives as an ordinary one-to-one text from their number, because that is the only kind of text this number can receive: we never started a carrier group, so nothing marks the message as belonging to one. `heyphony open messages` therefore names the group on a row where the sender is a member (`groups: [{id, name, member}]`, with a note saying it is their own text), and it resolves that name **at read time** from your own records rather than writing it into the stored message, so history is never rewritten when a member joins later and a person in two groups gets both names instead of a silently picked one.
+
+`heyphony group show dinner` then prints the thread: your sends and their replies in one order. because the carrier contributes nothing, an inbound row is a member's text matched by membership, and the output says exactly that rather than implying a group message arrived.
+
+`heyphony group reply dinner --text "seven then" --replying +1...` is what "reply to the group" can honestly mean here. it goes to every member through the same one-recipient rail, so the replier receives it in the same thread they used, as if you answered them, and every other member gets their own copy. nobody sees a group, and the command output carries that sentence rather than leaving it to be discovered.
+
+two limits, stated because they are invisible otherwise. a real carrier group mms from somebody else arrives as an mms from the group or the original sender with the members in a payload this package does not parse, so it is not turned into a group and no media is read. and membership is the only marker there is, so a member texting you one-to-one about dinner is indistinguishable from their group reply, which is a property of the rail and not of the code.
+
 and the thing people assume wrong, so it is in the command output as well as here: most carriers do not carry a group sms as a group. each member receives a one-to-one text from your did, with no sign that anyone else exists. the shared transcript is in your records, not in their phones, and no carrier group thread is started.
 
 ### looking a number up is a read, and that is why it is the safe half

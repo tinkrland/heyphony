@@ -49,6 +49,25 @@ def mark_read(ids, home=None):
     return sorted(current)
 
 
+def group_digits(value):
+    return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+
+def _groups_by_number():
+    """number -> [{id, name, member}], read from the group store. an unreadable store is not a
+    reason for the inbox to fail, so it degrades to no attribution rather than an exception."""
+    try:
+        from src.manage import groups
+        buckets = {}
+        for group in groups.load().get("groups", []):
+            for member in group.get("members", []):
+                buckets.setdefault(group_digits(member.get("number")), []).append(
+                    {"id": group["id"], "name": group["name"], "member": member.get("name")})
+        return buckets
+    except Exception:
+        return {}
+
+
 def _rows(home=None, path=None):
     """provider texts first: they are the ones that arrive while the machine sleeps."""
     rows = []
@@ -96,13 +115,22 @@ def messages(home=None, path=None, unread=False, since_days=None, thread=None,
     total = len(rows)
     rows = rows[:limit]
     view = []
+    named = _groups_by_number()
     for i, row in enumerate(rows, 1):
-        view.append({
+        entry = {
             "n": i, "id": row["id"], "channel": row["channel"], "from": row["from"],
             "at": row["at"], "thread": row["thread"],
             "unread": row["id"] not in read_ids,
             "preview": (row["body"] or "").replace("\n", " ")[:PREVIEW],
-        })
+        }
+        # a member's reply carries no group marker, so the name comes from our own membership
+        # records, resolved here rather than written into the stored message
+        hits = named.get(group_digits(row["from"]), [])
+        if hits:
+            entry["groups"] = hits
+            entry["note"] = ("a member of this named group writing to your did directly. there is no "
+                             "group thread, so this is their own text")
+        view.append(entry)
     out = {"inbox": "messages", "count": total, "shown": len(view),
            "unread_total": sum(1 for r in _rows(home, path) if r["id"] not in read_ids),
            "rows": view,
