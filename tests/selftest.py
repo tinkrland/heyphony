@@ -1829,10 +1829,17 @@ class TestTheLookupReadsThePlan(unittest.TestCase):
         self.assertEqual(answer["evidence"][0]["strength"], self.c.UNSEEDED)
 
     def test_something_that_is_not_a_number_is_refused_before_classification(self):
-        answer = self.c.classify("not a number")
+        answer = self.c.classify("+99")
         self.assertFalse(answer["valid"])
         self.assertEqual(answer["type"], "unknown")
         self.assertEqual(answer["evidence"], [])
+
+    def test_a_string_that_is_no_kind_of_input_is_refused_as_a_handle(self):
+        answer = self.c.classify("still not an input")
+        self.assertEqual(answer["kind"], "username")
+        self.assertFalse(answer["valid"])
+        self.assertFalse(answer["contactable_without_number"])
+        self.assertIn("neither platform", answer["why"])
 
     def test_every_answer_carries_the_limits_it_cannot_cross(self):
         answer = self.c.classify("+447700900123")
@@ -2134,6 +2141,166 @@ class TestAFieldThePlanCannotFillSaysWhy(unittest.TestCase):
         page = (ROOT / "src" / "lookup" / "readme.md").read_text()
         self.assertIn("a field the plan cannot fill is part of the answer", page)
         self.assertIn("toll-free", page)
+
+
+class TestAnAddressSaysWhatItCanAboutImessage(unittest.TestCase):
+    """the address half: two classes, one verdict, and no probability pretending to be one."""
+
+    def setUp(self):
+        from src.lookup import email
+        self.e = email
+
+    def test_an_apple_address_is_an_apple_account_by_construction(self):
+        for address in ("dana@icloud.com", "dana@me.com", "dana@mac.com"):
+            found = self.e.lookup(address)
+            self.assertEqual(found["domain_class"], "apple account address", address)
+            self.assertEqual(found["imessage"], "possible")
+        self.assertNotIn("reachable_by_imessage", self.e.lookup("dana@icloud.com")["withheld"])
+
+    def test_a_consumer_mailbox_is_unknown_because_it_could_be_either(self):
+        found = self.e.lookup("dana@gmail.com")
+        self.assertEqual(found["domain_class"], "consumer mailbox")
+        self.assertEqual(found["imessage"], "unknown")
+        self.assertIn("most of them are not used as one", found["why"])
+
+    def test_a_desk_is_not_a_person_and_says_so(self):
+        found = self.e.lookup("support@acme.co.uk")
+        self.assertEqual(found["local_class"], "role address")
+        self.assertEqual(found["imessage"], "unlikely")
+        self.assertIn("whoever is on shift", found["why"])
+
+    def test_two_addresses_at_one_domain_get_different_verdicts(self):
+        desk = self.e.lookup("support@acme.co.uk")
+        person = self.e.lookup("dana@acme.co.uk")
+        self.assertEqual(desk["domain_class"], person["domain_class"])
+        self.assertEqual((desk["imessage"], person["imessage"]), ("unlikely", "unknown"))
+
+    def test_a_throwaway_domain_is_unlikely_rather_than_unknown(self):
+        found = self.e.lookup("dana@mailinator.com")
+        self.assertEqual(found["domain_class"], "disposable domain")
+        self.assertEqual(found["imessage"], "unlikely")
+
+    def test_a_tag_is_part_of_the_address_and_not_the_identity(self):
+        found = self.e.lookup("dana+lists@proton.me")
+        self.assertEqual(found["local_class"], "personal mailbox with a tag")
+
+    def test_a_malformed_address_is_refused_with_the_reason(self):
+        for address, needle in (("dana@localhost", "at least one dot"), ("dana@@x.com", "one @"),
+                                ("dana@-x.com", "not a domain"), ("dana smith@x.com", "cannot")):
+            found = self.e.lookup(address)
+            self.assertFalse(found["valid"], address)
+            self.assertIn(needle, found["why"], address)
+            self.assertEqual(found["imessage"], "unknown")
+
+    def test_existence_and_deliverability_are_withheld_rather_than_guessed(self):
+        found = self.e.lookup("dana@gmail.com")
+        self.assertEqual(sorted(found["withheld"]), ["deliverable", "exists", "reachable_by_imessage"])
+        names = [row["name"] for row in found["probes"]]
+        self.assertEqual(names, ["dns-mx", "smtp-rcpt"])
+        self.assertFalse(any(row["wired"] for row in found["probes"]))
+
+
+class TestAHandleIsWhereANumberIsNotNeeded(unittest.TestCase):
+    """the username half, and the ambiguity that makes it worth having."""
+
+    def setUp(self):
+        from src.lookup import handles
+        self.h = handles
+
+    def test_signal_wants_a_nickname_and_a_discriminator(self):
+        found = self.h.lookup("alice.42")
+        self.assertEqual(found["platform"], "signal")
+        self.assertTrue(found["valid"])
+        self.assertTrue(found["contactable_without_number"])
+        self.assertFalse(found["number_known"])
+
+    def test_a_bare_nickname_reaches_nobody_on_signal(self):
+        found = self.h.lookup("alice", "signal")
+        self.assertFalse(found["valid"])
+        self.assertIn("signal adds the number itself", found["why"])
+
+    def test_a_bare_handle_is_whatsapps_shape(self):
+        for value in ("alice", "@alice"):
+            found = self.h.lookup(value)
+            self.assertEqual(found["platform"], "whatsapp", value)
+            self.assertTrue(found["valid"], value)
+        self.assertTrue(self.h.lookup("@alice")["typed_at"])
+
+    def test_the_same_string_is_legal_on_both_and_names_two_accounts(self):
+        found = self.h.lookup("alice.42")
+        self.assertEqual([row["platform"] for row in found["also_read_as"]], ["whatsapp"])
+        self.assertIn("different account", found["also_read_as"][0]["note"])
+
+    def test_a_short_discriminator_is_signal_shaped_and_too_short(self):
+        found = self.h.lookup("alice.4")
+        self.assertEqual(found["platform"], "signal")
+        self.assertFalse(found["valid"])
+        self.assertEqual([row["platform"] for row in found["also_read_as"]], ["whatsapp"])
+
+    def test_a_handle_is_a_handle_and_not_an_identity(self):
+        found = self.h.lookup("alice.42")
+        self.assertIn("hash", found["withheld"]["stability"])
+        self.assertIn("changed", found["withheld"]["stability"])
+        self.assertIn("handle rather than an identity", found["withheld"]["identity"])
+
+    def test_whatsapps_key_is_named_because_a_username_is_not_always_enough(self):
+        found = self.h.lookup("alice")
+        self.assertIn("four digit username key", found["withheld"]["chat"])
+
+    def test_the_only_probe_is_refused_rather_than_offered(self):
+        found = self.h.lookup("alice.42")
+        probe = found["probes"][0]
+        self.assertEqual(probe["name"], "send-and-see")
+        self.assertFalse(probe["wired"])
+        self.assertIn("messages a stranger", probe["refused"])
+
+    def test_the_carried_rules_admit_they_are_unverified(self):
+        table = self.h.platforms()["platforms"]
+        for name, entry in table.items():
+            self.assertFalse(entry["verified"], name)
+            self.assertTrue(entry["sources"], name)
+            self.assertTrue(entry["notes"], name)
+        self.assertIn("only the rules marked fatal decide validity",
+                      self.h.platforms()["_limit"])
+
+    def test_an_outside_bound_is_reported_without_calling_the_handle_invalid(self):
+        found = self.h.lookup("x" * 40, "whatsapp")
+        self.assertTrue(found["valid"], "a wrong bound must not invalidate a real handle")
+        self.assertIn("outside_shape", found)
+        self.assertIn("at most 35", found["outside_shape"][0])
+
+
+class TestTheOsintToolsAreNamedRatherThanReimplemented(unittest.TestCase):
+    """the probing half exists as turnkey tools, and the page says so instead of hiding it."""
+
+    def setUp(self):
+        page = (ROOT / "src" / "lookup" / "readme.md").read_text()
+        # read it as one line, so a sentence that wraps in the source still reads as a sentence
+        self.page = " ".join(page.split())
+
+    def test_the_page_names_the_turnkey_tools_and_their_inputs(self):
+        for needle in ("`holehe`", "`sherlock`", "`maigret`", "`phoneinfoga`",
+                       "forgot password", "dns mx"):
+            self.assertIn(needle, self.page)
+
+    def test_the_page_gives_the_three_reasons_the_probing_half_is_outside(self):
+        for needle in ("The cost lands on the person being looked up", "The coverage rots",
+                       "The scale is wrong"):
+            self.assertIn(needle, self.page)
+
+    def test_no_osint_tool_is_imported_or_shelled_out_to(self):
+        source = "".join(p.read_text() for p in sorted((ROOT / "src").rglob("*.py")))
+        for name in ("holehe", "sherlock", "maigret", "phoneinfoga"):
+            self.assertNotIn(f"import {name}", source)
+            self.assertNotIn(name, source.split("readme")[0])
+        self.assertNotIn("subprocess", (ROOT / "src" / "lookup" / "classify.py").read_text())
+
+    def test_the_reader_still_sends_nothing_for_any_kind(self):
+        from src.lookup import classify
+        for value in ("+12125551234", "dana@icloud.com", "alice.42"):
+            answer = classify.classify(value)
+            self.assertEqual(answer["privacy"]["network"], "no request leaves the machine", value)
+            self.assertFalse(answer["verified"], value)
 
 
 

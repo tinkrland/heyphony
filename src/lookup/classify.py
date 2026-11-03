@@ -12,6 +12,8 @@ plan it knows is worse than no tool.
 import json
 import pathlib
 
+from src.lookup import email as email_mod
+from src.lookup import handles as handles_mod
 from src.setup import numbering
 
 NANP_FILE = pathlib.Path(__file__).with_name("nanp.json")
@@ -185,6 +187,24 @@ def _nanp(number, iso_dial):
 
 PARTIAL = r"^\+1(\d{3})$"
 
+# what the string is asking to be read as. one function, because guessing wrong is the difference
+# between classifying a person's number and classifying their handle as one
+PLATFORMS = ("signal", "whatsapp")
+
+
+def kind_of(value, platform=None):
+    got = str(value or "").strip()
+    if platform in PLATFORMS:
+        return "username"
+    if not got:
+        return "unknown"
+    if got.startswith("+") or (got[0].isdigit() and sum(ch.isdigit() for ch in got) >= 5
+                               and all(ch.isdigit() or ch in " -()." for ch in got)):
+        return "number"
+    if "@" in got:
+        return "email"
+    return "username"
+
 
 def partial(number):
     """a +1 area code on its own, which is the smallest input that still answers the geography.
@@ -218,8 +238,18 @@ def partial(number):
     return answer
 
 
-def classify(number):
-    """what the evidence says, what it cannot say, and nothing beyond that."""
+def classify(number, platform=None):
+    """what the evidence says, what it cannot say, and nothing beyond that.
+
+    three inputs, one answer shape. a number is read from a numbering plan, an address from its own
+    string plus the provider that issues it, a handle from the platform's published form. all three
+    return evidence, a `withheld` map and an `unknown` that means unknown.
+    """
+    kind = kind_of(number, platform)
+    if kind == "email":
+        return email_mod.lookup(number)
+    if kind == "username":
+        return handles_mod.lookup(number, platform)
     iso = market_of(number) if valid(number) else None
     answer = {"number": number, "valid": valid(number), "market": iso, "verified": False,
               "limits": dict(LIMITS)}

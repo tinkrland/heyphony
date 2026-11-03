@@ -290,13 +290,24 @@ def cmd_get(args):
 
 LOOKUP_MODES = ("line", "support", "probes")
 
+# a number is read as a line, an address as an address, a username as a handle. the key says which,
+# because printing an email under a key called "line" is the kind of small wrongness that teaches
+# people to stop reading the output
+SUBJECT_KEYS = {"number": "line", "email": "address", "username": "handle"}
+
 
 def _lookup_args(rest):
     """`--lookup <number> [mode]`, with the mode optional because the number is the point."""
-    parsed = {"number": None, "mode": "all"}
+    parsed = {"number": None, "mode": "all", "platform": None}
     if rest and rest[0] == "eval":
-        return {"number": None, "mode": "eval"}
-    for word in rest:
+        return {"number": None, "mode": "eval", "platform": None}
+    words = list(rest)
+    if "--platform" in words:
+        at = words.index("--platform")
+        if at + 1 < len(words):
+            parsed["platform"] = words[at + 1]
+            del words[at:at + 2]
+    for word in words:
         if word.startswith("-"):
             continue
         if parsed["number"] is None:
@@ -313,6 +324,7 @@ def cmd_lookup(args):
     from src.lookup import classify, evalrun, support
     number = args.get("number") if isinstance(args, dict) else getattr(args, "number", None)
     mode = (args.get("mode") if isinstance(args, dict) else getattr(args, "mode", None)) or "all"
+    platform = args.get("platform") if isinstance(args, dict) else getattr(args, "platform", None)
     if number == "eval":
         number, mode = None, "eval"
     if mode == "eval":
@@ -328,17 +340,21 @@ def cmd_lookup(args):
               "modes": list(LOOKUP_MODES)})
         return 1
     if mode in ("support", "services", "all"):
-        answer = support.support(number)
+        answer = support.support(number, platform)
         if mode == "support":
             _out(answer)
-            return 0 if answer["line"]["valid"] else 1
-        answer = {"ok": True, "all": answer, "line": classify.classify(number)}
+            key = SUBJECT_KEYS.get(answer.get("kind") or "number", "line")
+            return 0 if answer[key]["valid"] else 1
+        single = classify.classify(number, platform)
+        answer = {"ok": True, "all": answer,
+                  SUBJECT_KEYS.get(single.get("kind") or "number", "line"): single}
     elif mode == "probes":
         answer = support.probe_plan(number)
         _out(answer)
         return 0 if answer.get("ok") else 1
     else:
-        answer = {"ok": True, "line": classify.classify(number)}
+        single = classify.classify(number, platform)
+        answer = {"ok": True, SUBJECT_KEYS.get(single.get("kind") or "number", "line"): single}
     _out(answer)
     return 0 if answer.get("ok", True) else 1
 
@@ -526,6 +542,8 @@ def build_parser():
     hk.set_defaults(func=cmd_hooks)
     lk = sub.add_parser("lookup", help="what a number is: line class, text, service support")
     lk.add_argument("number")
+    lk.add_argument("--platform", choices=["signal", "whatsapp"], default=None,
+                    help="which platform's username rules to apply, when the string is a username")
     lk.add_argument("mode", nargs="?", default="all",
                     choices=list(LOOKUP_MODES) + ["all", "eval"],
                     help="`eval` runs the labelled fixtures instead of a number")

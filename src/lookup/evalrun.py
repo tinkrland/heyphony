@@ -29,7 +29,7 @@ def cases(path=None):
 def run(path=None):
     rows = []
     for case in cases(path)[0]:
-        got = classify.classify(case["number"])
+        got = classify.classify(case["number"], case.get("platform"))
         expect = case["expect"]
         wrong = [k for k, v in expect.items() if got.get(k) != v]
         overreach = [k for k, v in expect.items()

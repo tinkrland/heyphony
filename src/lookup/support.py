@@ -86,9 +86,60 @@ def _verdict(service, line):
                       f"fallback, which is why this is unlikely rather than impossible")
 
 
-def support(number):
+# an address and a handle answer a different set of services than a line does, and the difference is
+# the whole point: a handle is how you reach somebody with no number at all
+HANDLE_SERVICES = {
+    "email": {"imessage": "an apple account is an address, so imessage is the one service an email "
+                          "address can hold. the other three verify by a number",
+              "others": "sms, signal and whatsapp verify by a code to a handset, so an address cannot "
+                        "hold them"},
+    "username": {"own": "a username is a way to start a chat without either side giving a number",
+                 "others": "the username is a name on one platform. the other platforms and plain sms "
+                           "route by number"},
+}
+
+
+def _handle_matrix(answer):
+    """the services an address or a handle can hold, in the same rows a number gets."""
+    services = []
+    if answer["kind"] == "email":
+        verdict = answer["imessage"]
+        services.append({"service": "imessage", "verdict": verdict, "why": answer["why"],
+                         "basis": "address class"})
+        for name in ("sms", "signal", "whatsapp"):
+            services.append({"service": name, "verdict": UNLIKELY,
+                             "why": HANDLE_SERVICES["email"]["others"], "basis": "address class"})
+    else:
+        platform = answer["platform"]
+        ambiguous = {row["platform"] for row in answer.get("also_read_as", [])} \
+            if not answer.get("platform_certain") else set()
+        for name in ("imessage", "signal", "whatsapp", "sms"):
+            if name in ambiguous:
+                services.append({"service": name, "verdict": UNKNOWN,
+                                 "why": "the same string is a legal name on this platform too, and it "
+                                        "would name a different account there",
+                                 "basis": "username form"})
+            elif name == platform:
+                services.append({"service": name, "verdict": POSSIBLE if answer["valid"] else UNLIKELY,
+                                 "why": answer.get("shape") or answer.get("why"),
+                                 "basis": "username form"})
+            else:
+                services.append({"service": name, "verdict": UNLIKELY,
+                                 "why": HANDLE_SERVICES["username"]["others"],
+                                 "basis": "username form"})
+    return services
+
+
+def support(number, platform=None):
     """the line, the services, and no boolean that the evidence does not carry."""
-    line = classify.classify(number)
+    line = classify.classify(number, platform)
+    if line.get("kind") in ("email", "username"):
+        return {"number": number, "kind": line["kind"],
+                "address" if line["kind"] == "email" else "handle": line,
+                "services": _handle_matrix(line), "note": NOTE, "verified": False,
+                "partial": False,
+                "limits": {"services": "a handle answers for the platform it belongs to and for "
+                                       "nothing else"}}
     services = []
     for name in ("sms", "imessage", "signal", "whatsapp"):
         verdict, why = _verdict(name, line)

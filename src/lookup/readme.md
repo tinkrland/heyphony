@@ -61,6 +61,90 @@ restraint as preferring a domain to a local part: ask for the part of the number
 and leave the rest on the person's side. every answer carries a `privacy` block saying what the answer
 was derived from, that no request left the machine, and that nothing was stored.
 
+## an address, for the one service that answers one
+
+`--lookup dana@example.com` reads an address the way the number reader reads a line: two independent
+classes, each of which explains itself, and a verdict that stays a verdict.
+
+### the local part says whether a person or a desk
+
+`support@`, `info@`, `billing@` and about thirty more stems are carried as role addresses. A role
+address is a shared desk: mail to it is answered by whoever is on shift, so it is not a person's account
+anywhere. A `+tag` is noted as a tag, because the tag is part of the address and not part of the identity.
+
+### the domain says who issues it
+
+`@icloud.com`, `@me.com` and `@mac.com` are apple's own three forms, and apple's support pages describe
+them as the addresses an icloud account is issued. That makes those three **apple account addresses by
+construction**, which is the single strongest thing an address can say about iMessage. Consumer mailbox
+domains (gmail, outlook, proton, yahoo and the rest) are carried as a list, throwaway domains as
+another, and everything else is a custom domain, which in practice means work or school.
+
+### the verdict is possible, unknown or unlikely, and never a probability
+
+An apple address reaches `possible`, because it is an account address by construction and whether
+iMessage is on is still a setting. A consumer mailbox reaches `unknown`, because an apple account can be
+any address and most consumer addresses are not one. A role address on a custom domain reaches
+`unlikely`, because a shared desk has no apple account and the domain does not change that. A throwaway
+domain reaches `unlikely`, because the address will be gone before a reply arrives.
+
+### what it withholds, and what a probe would need
+
+Existence, deliverability and apple account status are all withheld with a reason, because all three
+need a request and this reader makes none. The `probes` list names what would answer them: a dns mx
+lookup for deliverability, and an smtp `RCPT` for existence, the second of which the domain owner can
+see happen. Neither is wired, and the page says so rather than implying a check that did not run.
+
+## a handle, which is where a number is not needed
+
+`--lookup alice.42` and `--lookup alice` read a username. This is the one address form this package
+deliberately cannot route, and that is the reason to cover it: on signal and on whatsapp a username is
+enough to start a chat without either side giving up a phone number.
+
+### signal wants a discriminator and whatsapp does not
+
+Signal's form is a nickname, a dot and a numeric discriminator, and signal adds the discriminator itself
+when you share a username, so a bare nickname reaches nobody. WhatsApp's form is a plain handle, with no
+discriminator, optionally written with the `@` people type. `--platform signal` or `--platform whatsapp`
+settles which rules to apply.
+
+### the same string is often legal on both, and names a different account
+
+`alice.42` is a valid signal username and a legal whatsapp handle. Those are two different accounts, so
+the answer carries `also_read_as` rather than picking one silently, and the service matrix marks the
+other platform `unknown` instead of `unlikely`. `alice.4` is the sharper case: too short a
+discriminator for signal, a perfectly legal whatsapp handle.
+
+### what a handle cannot tell you, and why no probe is offered
+
+Existence, identity and the number behind it are all withheld. A username is built to be changed, and
+signal keeps a hash of the username rather than the username, so the same string next month may be
+somebody else. WhatsApp adds a four digit username key, so even the exact handle is not always enough to
+open a chat. The only way to check any of it is a message to a stranger, which is contact rather than a
+lookup, so `probes` names it and refuses it.
+
+## the osint turnkey tools, and why the probing half is not here
+
+There are turnkey tools that answer the questions this reader withholds, and they are worth naming
+plainly rather than pretending the capability does not exist.
+
+| tool | input | the question it answers | how it answers | what that costs |
+| --- | --- | --- | --- | --- |
+| `holehe` | an email address | which sites already have an account for that address | drives each site's "forgot password" flow and reads the response | every one of those sites sees the request and learns that somebody is checking that address. each site can change and the module rots |
+| `sherlock` and `maigret` | a username | where that username exists, hundreds of sites for sherlock and thousands for maigret | one http request per site, judged by status code and page markers | a hit is a string match, not the same person, and the tail is noise |
+| `phoneinfoga` | a number | country, area, carrier, plus search footprints | number parsing and search engine dorks | the footprints are searches rather than facts, and the parsing half is what this reader already does offline |
+
+Three reasons the probing half stays out of this package, in order of weight. **The cost lands on the
+person being looked up:** account existence is a fact about them, and every check is a request their
+provider logs. **The coverage rots:** a tool that shells out to a checker inherits its staleness and
+reports it as current. **The scale is wrong:** a username checked across thousands of sites is a scan,
+not a lookup, and a scanner inside a phone-number package is a surprise nobody asked for.
+
+If you run them, run them beside this reader rather than instead of it. Their hits are provider probes,
+which is a different and weaker strength than the plan and issuer evidence here, and this page's own
+`probes` and `withheld` blocks name the same questions in the same vocabulary, so the two outputs read
+together.
+
 ## what it will not answer, and why that is the honest position
 
 a lookup that says `whatsapp: true` for a number is not reading a numbering plan. it is either texting a code to somebody else's handset or talking to an unofficial endpoint with a borrowed token, and both of those are actions against a real person's phone rather than a read of public data.

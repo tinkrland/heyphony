@@ -198,6 +198,140 @@
         "type": "unknown"
       },
       "why": "short strings are not numbers"
+    },
+    {
+      "id": "email-apple-address",
+      "number": "someone@icloud.com",
+      "expect": {
+        "kind": "email",
+        "valid": true,
+        "domain_class": "apple account address",
+        "local_class": "personal mailbox",
+        "imessage": "possible"
+      },
+      "why": "an icloud address is an apple account by construction, and the verdict still says possible rather than yes"
+    },
+    {
+      "id": "email-consumer-contrast",
+      "number": "someone@gmail.com",
+      "expect": {
+        "kind": "email",
+        "valid": true,
+        "domain_class": "consumer mailbox",
+        "imessage": "unknown"
+      },
+      "contrast": "email-apple-address",
+      "why": "the same personal shape at somebody else's mailbox, and the honest answer changes from possible to unknown"
+    },
+    {
+      "id": "email-me-com",
+      "number": "someone@me.com",
+      "expect": {
+        "kind": "email",
+        "valid": true,
+        "domain_class": "apple account address",
+        "imessage": "possible"
+      },
+      "why": "one of the three forms an icloud account is issued"
+    },
+    {
+      "id": "email-role-desk",
+      "number": "support@acme.co.uk",
+      "expect": {
+        "kind": "email",
+        "valid": true,
+        "local_class": "role address",
+        "domain_class": "custom domain",
+        "imessage": "unlikely"
+      },
+      "why": "a shared desk is not an apple account, and a work domain does not change that"
+    },
+    {
+      "id": "email-role-contrast",
+      "number": "dana@acme.co.uk",
+      "expect": {
+        "kind": "email",
+        "valid": true,
+        "local_class": "personal mailbox",
+        "imessage": "unknown"
+      },
+      "contrast": "email-role-desk",
+      "why": "the same domain, a person rather than a desk, and the verdict moves from unlikely to unknown"
+    },
+    {
+      "id": "email-disposable",
+      "number": "someone@mailinator.com",
+      "expect": {
+        "kind": "email",
+        "valid": true,
+        "domain_class": "disposable domain",
+        "imessage": "unlikely"
+      },
+      "why": "a throwaway domain is not where an apple account lives"
+    },
+    {
+      "id": "email-plus-tag",
+      "number": "dana+list@proton.me",
+      "expect": {
+        "kind": "email",
+        "valid": true,
+        "local_class": "personal mailbox with a tag"
+      },
+      "why": "a tag is part of the address and not part of the identity"
+    },
+    {
+      "id": "email-no-tld",
+      "number": "dana@localhost",
+      "expect": {
+        "kind": "email",
+        "valid": false,
+        "imessage": "unknown"
+      },
+      "why": "refused rather than treated as a domain that might work"
+    },
+    {
+      "id": "handle-signal-shape",
+      "number": "alice.42",
+      "expect": {
+        "kind": "username",
+        "valid": true,
+        "platform": "signal",
+        "contactable_without_number": true
+      },
+      "why": "a nickname and a discriminator is signal's form"
+    },
+    {
+      "id": "handle-whatsapp-contrast",
+      "number": "alice",
+      "expect": {
+        "kind": "username",
+        "valid": true,
+        "platform": "whatsapp",
+        "contactable_without_number": true
+      },
+      "contrast": "handle-signal-shape",
+      "why": "the same letters without a discriminator, which is the other platform's form"
+    },
+    {
+      "id": "handle-signal-without-discriminator",
+      "number": "alice",
+      "platform": "signal",
+      "expect": {
+        "kind": "username",
+        "valid": false,
+        "platform": "signal"
+      },
+      "why": "signal adds the discriminator itself, so a bare name reaches nobody"
+    },
+    {
+      "id": "handle-short-discriminator",
+      "number": "alice.4",
+      "expect": {
+        "kind": "username",
+        "valid": false,
+        "platform": "signal"
+      },
+      "why": "one digit is a typed signal username, and the carried rule wants at least two"
     }
   ]
 }
