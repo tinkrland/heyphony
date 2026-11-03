@@ -28,6 +28,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.runner import cli as telephony_cli
+from src import forwarding  # noqa: E402
 from src.manage import catcher as phone_catcher
 from src.onramp import flow as getters
 from src.manage import inbox
@@ -1810,6 +1811,190 @@ class TestAGroupIsNotAList(unittest.TestCase):
         listing = subprocess.run([str(ROOT / "bin" / "heyphony"), "group", "list"],
                                  capture_output=True, text=True, timeout=90, env=env)
         self.assertEqual(json.loads(listing.stdout)["count"], 1)
+
+
+class TestTheCallForwardingModes(unittest.TestCase):
+    """five standard moments, each carrying where it is set and whether it outlives the host."""
+
+    def test_the_ladder_is_the_standard_one(self):
+        self.assertEqual(sorted(forwarding.CALL_MODES),
+                         ["busy", "no_answer", "not_reachable", "selective", "unconditional"])
+
+    def test_every_mode_says_where_it_is_set_and_what_it_costs(self):
+        for name, mode in forwarding.CALL_MODES.items():
+            for key in ("aka", "when", "where", "survives_host_down", "catch"):
+                self.assertIn(key, mode, f"{name} is missing {key}")
+            self.assertIsInstance(mode["survives_host_down"], bool)
+            self.assertGreater(len(mode["catch"]), 60, f"{name} needs a real catch, not a placeholder")
+
+    def test_only_the_carrier_side_modes_outlive_a_sleeping_host(self):
+        survives = sorted(n for n, m in forwarding.CALL_MODES.items() if m["survives_host_down"])
+        self.assertEqual(survives, ["not_reachable", "unconditional"],
+                         "busy, no answer and selective all need an endpoint that is awake to fire")
+
+    def test_selective_is_named_as_ours_to_implement(self):
+        catch = forwarding.CALL_MODES["selective"]["catch"]
+        self.assertIn("not a sip primitive", catch)
+        self.assertIn("handler", catch)
+
+    def test_a_plan_carries_the_catch_and_claims_nothing_verified(self):
+        plan = forwarding.call_plan("no_answer", "pstn")
+        self.assertTrue(plan["known"])
+        self.assertFalse(plan["verified"])
+        self.assertIn("the timer is the whole feature", plan["catch"])
+        self.assertIn("second leg", plan["cost"])
+
+    def test_an_unknown_mode_or_target_lists_the_real_ones(self):
+        self.assertFalse(forwarding.call_plan("divert", "pstn")["known"])
+        self.assertEqual(sorted(forwarding.call_plan("divert", "pstn")["known_modes"]),
+                         sorted(forwarding.CALL_MODES))
+        self.assertFalse(forwarding.call_plan("busy", "carrier-pigeon")["target_known"])
+
+
+class TestTheMessageForwardingModes(unittest.TestCase):
+    """a text has no ladder: the carrier re-addresses it, or we send a second one."""
+
+    def test_the_four_shapes_are_there(self):
+        self.assertEqual(sorted(forwarding.MESSAGE_MODES),
+                         ["carrier_relay", "email_fallback", "store_and_relay", "webhook_relay"])
+
+    def test_relaying_it_ourselves_is_called_a_resend(self):
+        catch = forwarding.MESSAGE_MODES["webhook_relay"]["catch"]
+        self.assertIn("re-send, not a forward", catch)
+        self.assertIn("from THIS number", catch)
+
+    def test_the_carrier_relay_is_the_one_that_survives_the_host(self):
+        self.assertTrue(forwarding.MESSAGE_MODES["carrier_relay"]["survives_host_down"])
+        self.assertFalse(forwarding.MESSAGE_MODES["webhook_relay"]["survives_host_down"])
+
+    def test_a_carrier_relay_to_a_number_is_refused_in_words(self):
+        catch = forwarding.message_plan("carrier_relay", "pstn")["catch"]
+        self.assertIn("carriers relay texts to addresses, not to numbers", catch)
+
+    def test_the_thread_cost_is_named(self):
+        self.assertIn("thread", forwarding.MESSAGE_MODES["carrier_relay"]["catch"])
+        self.assertFalse(forwarding.message_plan("carrier_relay", "email")["verified"])
+
+
+class TestWhatAProviderCanBeAskedFor(unittest.TestCase):
+    """the classification is derived from the provider data on main, not invented beside it."""
+
+    def test_every_provider_is_classified(self):
+        views = forwarding.providers_view()
+        self.assertEqual([v["provider"] for v in views], sorted(forwarding.PROVIDERS))
+        for view in views:
+            self.assertNotIn("unclassified", (view["call"], view["message"]),
+                             f"{view['provider']} needs a class before it can be planned for")
+            self.assertFalse(view["verified"])
+
+    def test_the_providers_own_words_are_carried_through(self):
+        for name in forwarding.PROVIDERS:
+            view = forwarding.provider_view(name)
+            self.assertEqual(view["their_words"]["forwarding"], forwarding.PROVIDERS[name]["forwarding"])
+            self.assertEqual(view["their_words"]["inbound_texts"], forwarding.PROVIDERS[name]["inbound_texts"])
+
+    def test_the_two_providers_this_branch_names_are_classified_as_the_page_says(self):
+        self.assertEqual(forwarding.provider_view("voip.ms")["call"], "carrier-conditional")
+        self.assertEqual(forwarding.provider_view("voip.ms")["message"], "carrier-relay")
+        self.assertEqual(forwarding.provider_view("signalwire")["call"], "handler")
+        self.assertEqual(forwarding.provider_view("questblue")["message"], "both")
+        self.assertEqual(forwarding.provider_view("jmp.chat")["call"], "xmpp-address")
+
+    def test_an_unknown_provider_says_which_ones_exist(self):
+        view = forwarding.provider_view("twilio")
+        self.assertFalse(view["known"])
+        self.assertIn("voip.ms", view["known_providers"])
+
+
+class TestARuleForParticularNumbers(unittest.TestCase):
+    def test_a_rule_normalizes_to_the_same_shape(self):
+        self.assertEqual(forwarding.rule("any", "+1555")["values"], [])
+        self.assertEqual(forwarding.rule("exact", "+15551230000")["values"], ["+15551230000"])
+        self.assertEqual(forwarding.rule("list", ["+1", "+2"])["values"], ["+1", "+2"])
+
+    def test_a_good_rule_has_no_problems(self):
+        problem = forwarding.rule_problem(forwarding.rule("prefix", "+4477", call="not_reachable"))
+        self.assertEqual(problem, [])
+
+    def test_a_value_that_is_not_an_e164_would_never_fire(self):
+        problems = forwarding.rule_problem(forwarding.rule("exact", "2125550000"))
+        self.assertTrue(any("not an e164" in p for p in problems))
+
+    def test_an_empty_list_matches_nobody(self):
+        problems = forwarding.rule_problem(forwarding.rule("list", []))
+        self.assertTrue(any("matches nobody" in p for p in problems))
+
+    def test_a_premium_target_is_the_fraud_pattern_and_is_refused(self):
+        problems = forwarding.rule_problem(forwarding.rule("exact", "+19005550000"))
+        self.assertTrue(any("revenue share" in p for p in problems))
+
+    def test_forwarding_to_one_of_our_own_numbers_is_named(self):
+        problems = forwarding.rule_problem(
+            forwarding.rule("exact", "+15551230000", call="unconditional"),
+            own_dids=["+15551230000"])
+        self.assertTrue(any("forwards to itself" in p for p in problems))
+
+    def test_a_timer_mode_without_a_timer_is_flagged(self):
+        problems = forwarding.rule_problem(forwarding.rule("any", call="no_answer"))
+        self.assertTrue(any("ring timer" in p for p in problems))
+
+    def test_an_unknown_action_mode_is_flagged(self):
+        problems = forwarding.rule_problem(forwarding.rule("any", message="divert"))
+        self.assertTrue(any("not one of the message modes" in p for p in problems))
+
+
+class TestTheLoopIsFoundBeforeItIsConfigured(unittest.TestCase):
+    def test_a_cycle_is_reported_as_the_cycle(self):
+        problems = forwarding.chain_problem({"+15550001111": "+15550002222",
+                                             "+15550002222": "+15550001111"})
+        self.assertEqual(len(problems), 1)
+        self.assertIn("a loop", problems[0])
+        self.assertIn("->", problems[0])
+
+    def test_a_self_forward_is_reported_once_per_number(self):
+        problems = forwarding.chain_problem({"+15550001111": "+15550001111"})
+        self.assertTrue(any("forwards to itself" in p for p in problems))
+
+    def test_a_chain_that_ends_is_not_a_loop(self):
+        self.assertEqual(forwarding.chain_problem({"+1": "+2", "+2": "+3"}), [])
+        self.assertTrue(forwarding.loop_safe({"+1": "+2"}))
+
+
+class TestTheForwardingPage(unittest.TestCase):
+    page = ROOT / "forwarding.md"
+
+    def test_every_mode_is_on_the_page(self):
+        text = self.page.read_text()
+        for name in list(forwarding.CALL_MODES) + list(forwarding.MESSAGE_MODES):
+            self.assertIn(f"`{name}`", text, f"the page lost {name}")
+
+    def test_every_provider_is_on_the_page(self):
+        text = self.page.read_text()
+        for name in forwarding.PROVIDERS:
+            self.assertIn(f"`{name}`", text, f"the page does not say what {name} can do")
+
+    def test_the_page_admits_it_is_an_exploration(self):
+        text = self.page.read_text()
+        self.assertIn("this is an exploration branch, not a feature", text)
+        self.assertIn("verified: False", text)
+        self.assertIn("nothing here calls a carrier", text)
+
+    def test_the_page_names_the_two_shapes_as_different_animals(self):
+        text = self.page.read_text()
+        self.assertIn("a text cannot be forwarded, only relayed", text.lower())
+        self.assertIn("re-send wearing forwarding's clothes", text)
+
+    def test_the_page_carries_the_refusals(self):
+        text = self.page.read_text()
+        for needle in ("campaign", "revenue share", "somebody else's number", "hides itself"):
+            self.assertIn(needle, text, f"the page lost the {needle} refusal")
+
+    def test_the_first_verified_forward_is_named(self):
+        text = self.page.read_text()
+        self.assertIn("no answer to a second did", text)
+
+    def test_the_page_has_no_em_dash(self):
+        self.assertNotIn("\u2014", self.page.read_text())
 
 
 
