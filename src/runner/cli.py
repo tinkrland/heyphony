@@ -399,6 +399,15 @@ def cmd_group(args):
             name, _, number = chunk.partition("=")
             members.append({"name": name.strip(), "number": number.strip() or name.strip()})
         answer = groups.create(args.name, members, number=getattr(args, "number", None))
+    elif args.action == "adopt":
+        if not args.thread:
+            _out({"ok": False, "why": "adopt needs --thread with the carrier's own id"})
+            return 1
+        numbers = []
+        for chunk in args.with_ or []:
+            name, _, number = chunk.partition("=")
+            numbers.append(f"{(name or number).strip()}={number.strip() or name.strip()}")
+        answer = groups.adopt_thread(args.thread, numbers, name=args.name)
     elif args.action == "list":
         answer = groups.listing()
     elif args.action in ("show", "messages"):
@@ -420,7 +429,7 @@ def cmd_group(args):
         answer = verb(args.group, args.text, provider=provider, from_number=from_number,
                       allow=bool(args.send), tag=not bool(getattr(args, "no_tag", False)), **extra)
     else:
-        answer = {"ok": False, "why": "group takes new, list, show, say or reply"}
+        answer = {"ok": False, "why": "group takes new, adopt, list, show, say or reply"}
     _out(answer)
     return 0 if answer.get("ok") or answer.get("count") is not None else 1
 
@@ -570,13 +579,15 @@ def build_parser():
     vm.set_defaults(func=cmd_voicemail)
 
     gr = sub.add_parser("group", help="a small named conversation, one message per member")
-    gr.add_argument("action", choices=["new", "list", "show", "say", "reply"])
+    gr.add_argument("action", choices=["new", "list", "show", "say", "reply", "adopt"])
     gr.add_argument("--name")
     gr.add_argument("--with", dest="with_", action="append", metavar="NAME=+1555...",
                     help="a member, repeated (max four)")
     gr.add_argument("target", nargs="?", help="group id or name, the same thing --group takes")
     gr.add_argument("--group", help="group id or name")
     gr.add_argument("--text")
+    gr.add_argument("--thread", metavar="ID",
+                    help="a carrier thread id, for adopt: the group chat the carrier already carries")
     gr.add_argument("--number", metavar="+1555...",
                     help="a did of the group's own, so replies arrive addressed instead of inferred")
     gr.add_argument("--provider")

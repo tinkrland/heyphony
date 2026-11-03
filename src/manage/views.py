@@ -53,11 +53,11 @@ def group_digits(value):
     return "".join(ch for ch in str(value or "") if ch.isdigit())
 
 
-def attribute(sender, body=None, recipient=None):
+def attribute(sender, body=None, recipient=None, thread=None):
     """the same ladder the group store uses, kept behind one function so the view cannot drift."""
     try:
         from src.manage import groups
-        return groups.attribute_inbound(sender=sender, text=body, recipient=recipient)
+        return groups.attribute_inbound(sender=sender, text=body, recipient=recipient, thread=thread)
     except Exception:
         return {"groups": [], "by": None, "certain": False}
 
@@ -87,6 +87,9 @@ def _rows(home=None, path=None):
             "from": entry.get("sender"), "to": entry.get("recipient"),
             "at": entry.get("at"), "body": entry.get("body") or "",
             "thread": entry.get("thread") or entry.get("sender"),
+            # the carrier's own thread id, kept apart from the display thread above: one names a
+            # conversation the carrier carries, the other is a handle this view invented
+            "carrier_thread": entry.get("thread"),
             "raw": entry.get("raw"),
         })
     for entry in sip.messages(home=home, limit=200):
@@ -132,10 +135,11 @@ def messages(home=None, path=None, unread=False, since_days=None, thread=None,
             "at": row["at"], "thread": row["thread"],
             "unread": row["id"] not in read_ids,
             "preview": (row["body"] or "").replace("\n", " ")[:PREVIEW],
+            "carrier_thread": row.get("carrier_thread"),
         }
         # a reply names its group when it quotes the code, and is only inferred from membership when
         # it does not. either way the name is resolved here, not written into the stored message
-        found = attribute(row["from"], row.get("body"), row.get("to"))
+        found = attribute(row["from"], row.get("body"), row.get("to"), row.get("carrier_thread"))
         if found["groups"]:
             entry["groups"] = found["groups"]
             entry["attributed_by"] = found["by"]

@@ -2729,6 +2729,120 @@ class TestTheCodeAGroupCarries(unittest.TestCase):
             self.assertIn(needle, page)
 
 
+class TestAGroupIsTheThreadTheCarrierCarries(unittest.TestCase):
+    """a group chat is an id a carrier carries, so the thread outranks membership and a code."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        os.environ["HEYPHONY_GROUPS"] = os.path.join(self.tmp, "groups.json")
+        os.environ["VOIPMS_API_USER"] = "user"
+        os.environ["VOIPMS_API_PASS"] = "secret"
+        from src.manage import groups
+        from src.manage.outgoing import send as outbox
+        self.g, self.outbox = groups, outbox
+        self.made = self.g.adopt_thread("gc-77", ["ada=+15550000001", "+15550000002"],
+                                        name="friday crew")
+        self.g.create("sunday", [{"name": "ada", "number": "+15550000001"},
+                                 {"name": "cy", "number": "+15550000003"}])
+
+    def tearDown(self):
+        for name in ("HEYPHONY_GROUPS", "VOIPMS_API_USER", "VOIPMS_API_PASS"):
+            os.environ.pop(name, None)
+
+    def test_an_adopted_thread_is_the_group_and_says_where_it_came_from(self):
+        self.assertTrue(self.made["adopted"])
+        self.assertEqual(self.made["group"]["thread"], "gc-77")
+        self.assertEqual(self.made["group"]["adopted_from"], "carrier")
+        self.assertIn("group reply for everybody", self.made["means"])
+
+    def test_adopting_the_same_thread_twice_does_not_duplicate_it(self):
+        again = self.g.adopt_thread("gc-77", ["+15550000009"])
+        self.assertFalse(again["adopted"])
+        self.assertEqual(len([g for g in self.g.load()["groups"] if g.get("thread") == "gc-77"]), 1)
+
+    def test_a_thread_naming_one_person_is_not_a_group_and_says_why(self):
+        refused = self.g.adopt_thread("gc-88", ["+15550000001"])
+        self.assertFalse(refused["ok"])
+        self.assertIn("not a group", refused["why"])
+        self.assertIn("nothing to reply to", refused["from_carrier"])
+
+    def test_the_thread_outranks_a_code_and_membership(self):
+        found = self.g.attribute_inbound(sender="+15550000001", text="sounds good", thread="gc-77")
+        self.assertEqual(found["by"], "thread")
+        self.assertTrue(found["certain"])
+        self.assertEqual([g["name"] for g in found["groups"]], ["friday crew"])
+        self.assertEqual(found["groups"][0]["member"], "ada")
+
+    def test_a_carrier_names_numbers_so_a_thread_member_keeps_the_name_a_human_gave_it(self):
+        members = self.g.adopt_thread("gc-77")["group"]["members"]
+        self.assertEqual([m["name"] for m in members], ["ada", "+15550000002"])
+
+    def test_a_thread_id_is_never_invented_for_a_plain_text(self):
+        self.assertEqual(self.g.attribute_inbound(sender="+15550000001", text="hi")["by"], "ambiguous")
+        self.assertEqual(self.g.attribute_inbound(sender="+15557777777", thread="gc-99")["by"], None)
+
+    def test_the_envelope_reads_a_thread_and_its_participants_when_a_carrier_sends_them(self):
+        sys.path.insert(0, str(ROOT))
+        from src.setup import routes
+        payload = {"from": "+15550000001", "to": "+15550000000", "body": "hi",
+                   "thread_id": "gc-77", "participants": "+15550000001,+15550000002"}
+        envelope = routes.normalize("voip.ms", payload)
+        self.assertEqual(envelope["thread"], "gc-77")
+        self.assertEqual(envelope["participants"], ["+15550000001", "+15550000002"])
+        self.assertIsNone(routes.normalize("voip.ms", {"from": "+1", "body": "hi"})["thread"])
+
+    def test_no_wired_path_claims_it_can_address_a_thread(self):
+        for provider, row in self.outbox.THREAD_SEND.items():
+            self.assertNotEqual(row["state"], "thread", provider)
+            self.assertTrue(row["why"], provider)
+        self.assertEqual(set(self.outbox.THREAD_SEND), set(self.outbox.PATHS))
+        signalwire = self.outbox.thread_send("signalwire")
+        self.assertFalse(signalwire["ok"])
+        self.assertIn("single e164 string", signalwire["why"])
+
+    def test_a_reply_to_a_thread_group_states_the_gap_rather_than_implying_a_group_reply(self):
+        answer = self.g.say("friday crew", "seven then", provider="voip.ms",
+                            from_number="+15550000000", allow=False,
+                            opener=lambda request: (200, "{}"))
+        self.assertEqual(answer["delivered_as"], "fanout")
+        self.assertEqual(answer["thread"], "gc-77")
+        self.assertIn("will not appear in the group chat", answer["thread_gap"])
+        self.assertIn("one dst per call", answer["thread_gap"])
+
+    def test_a_fan_out_group_has_no_gap_because_it_never_promised_a_thread(self):
+        answer = self.g.say("sunday", "still on", provider="voip.ms", from_number="+15550000000",
+                            allow=False, opener=lambda request: (200, "{}"))
+        self.assertIsNone(answer["thread"])
+        self.assertIsNone(answer["thread_gap"])
+
+    def test_the_inbox_row_keeps_the_carrier_thread_apart_from_the_display_thread(self):
+        from src.manage import views
+        os.environ["XDG_DATA_HOME"] = self.tmp
+        os.makedirs(os.path.join(self.tmp, "telephony"), exist_ok=True)
+        with open(os.path.join(self.tmp, "telephony", "inbox.jsonl"), "w") as handle:
+            handle.write(json.dumps({"id": "t1", "channel": "sms", "direction": "in",
+                                     "sender": "+15550000002", "recipient": "+15550000000",
+                                     "body": "who is driving", "at": 100, "thread": "gc-77"}) + "\n")
+        try:
+            row = views.messages(home=self.tmp, limit=5)["rows"][0]
+            self.assertEqual(row["carrier_thread"], "gc-77")
+            self.assertEqual(row["attributed_by"], "thread")
+            self.assertTrue(row["certain"])
+        finally:
+            os.environ.pop("XDG_DATA_HOME", None)
+
+    def test_the_page_states_the_correction_instead_of_the_old_blanket_claim(self):
+        page = " ".join((ROOT / "readme.md").read_text().split())
+        module = " ".join((ROOT / "src" / "manage" / "groups.py").read_text().split())
+        self.assertIn("### the thread, and the correction that the group is the id", page)
+        self.assertIn('by: "thread"', page)
+        self.assertIn("was wrong about the carriers", page)
+        self.assertNotIn("most carriers do not carry a group sms as a group", page)
+        self.assertNotIn("most carriers do not carry a group sms as a group", module)
+        self.assertIn("group adopt --thread", page)
+
+
 
 if __name__ == "__main__":
     suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])

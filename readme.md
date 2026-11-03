@@ -126,7 +126,15 @@ and the code is not a secret, which is stated in the command output as well as h
 
 two limits, stated because they are invisible otherwise. a real carrier group mms from somebody else arrives as an mms from the group or the original sender with the members in a payload this package does not parse, so it is not turned into a group and no media is read. and membership is the only marker there is, so a member texting you one-to-one about dinner is indistinguishable from their group reply, which is a property of the rail and not of the code.
 
-and the thing people assume wrong, so it is in the command output as well as here: most carriers do not carry a group sms as a group. each member receives a one-to-one text from your did, with no sign that anyone else exists. the shared transcript is in your records, not in their phones, and no carrier group thread is started.
+### the thread, and the correction that the group is the id
+
+a group chat is not a list of people, it is an id that a carrier carries. a message sent into that id is a group reply for everybody reading the thread, which is what the agent should be doing when it answers a group, so the shape here is the thread first and the list second.
+
+`heyphony group adopt --thread <carrier id> --with +1... --with +1...` takes a thread the carrier already uses and makes it the group. attribution then reads `by: "thread"` and is certain, the strongest rung on the ladder, because the carrier named the conversation instead of us inferring it from who happens to be in it. an inbound payload that carries a thread id or a participant list is read for exactly this reason (`THREAD_KEYS` and `PARTICIPANT_KEYS` in the inbound normalizer), so a carrier with group mms lands in the right place without a code change.
+
+what the thread needs next is a send path that can address a thread, and none of the ten wired here can: voip.ms takes one `dst` per call, flowroute's message body carries `to` as one number, and signalwire's message endpoint documents `to` as a single e164 string. that refusal is data in `THREAD_SEND` with the reason per provider, and the consequence is stated in the output rather than buried: on a thread group, today's reply is a fan-out, so each member gets their own one-to-one text and the other humans will **not** see it in the group chat they are reading. `thread_gap` says that in the same breath as the send.
+
+the fan-out is still there for the providers that have nothing else, and it is what this repo shipped first: each member receives a one-to-one text from your did, with no sign that anyone else exists, and the shared transcript lives in your records rather than in their phones. the correction worth keeping is that this is a property of a one-recipient API and not of sms. an earlier version of this page claimed most carriers cannot carry a group text as a group, which was wrong about the carriers and only right about our own rail.
 
 ### looking a number up is a read, and that is why it is the safe half
 

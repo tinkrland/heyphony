@@ -15,14 +15,26 @@ structural rather than a promise:
 - **every message goes through the same rail, one recipient at a time.** each send carries its own
   gate, its own 1600 character ceiling and its own provider path, so a group is not a way around any of
   them. one member failing does not silently become "sent to the group".
-- **no attachments, no mms, no media.** this is text. a real group mms is a carrier product on some
-  north american plans and it is not wired here.
+- **no attachments, no media.** this is text.
 
-**what a member sees, said plainly, because it is the one thing people assume wrong.** most carriers do
-not carry a group sms as a group. each member gets a one-to-one text from the did, with no sign that
-anyone else exists. so this is a transcript that is shared in *your* records and not in their phones.
-the readme and the command output both say so, since a person who thinks they are in a group chat and
-is not will answer as if they were.
+**two modes, and the difference is the carrier's, not ours.** a group chat has an id, and a reply into
+that id is a group reply for everybody in it, which is what a carrier thread does. so a group here can
+be either:
+
+- **a carrier thread**, adopted from the id the carrier already uses (`adopt_thread`, `group adopt
+  --thread`). the thread is the group. attribution is `by: "thread"` and certain, because the carrier
+  named the conversation rather than us guessing from who is in it. what it needs is a send path that
+  can address a thread, and each of the ten paths wired today says in `THREAD_SEND` why it cannot: they
+  take one recipient per call. so a reply to a thread group is currently a fan-out, and the command
+  output says so in `thread_gap` instead of letting anyone believe the group saw one message.
+
+- **a fan-out**, which is this file's loop: each member gets a one-to-one text from the did, with no
+  sign that anyone else exists. that is a property of a single-recipient send path and not of sms, which
+  is the correction worth keeping: the earlier version of this page claimed most carriers cannot carry a
+  group text, and that was wrong about the carriers and only right about our own rail. the shared
+  transcript lives in *your* records and not in their phones, and the readme and the command output both
+  say which mode is in force, since a person who thinks they are in a group chat and is not will answer
+  as if they were.
 """
 import hashlib
 import json
@@ -239,7 +251,7 @@ def code_of(text):
     return bare if len(bare) == CODE_LENGTH and all(ch in CODE_ALPHABET for ch in bare) else None
 
 
-def attribute_inbound(groups=None, sender=None, text=None, recipient=None):
+def attribute_inbound(groups=None, sender=None, text=None, recipient=None, thread=None):
     """which group an inbound text belongs to, and on what evidence.
 
     the ladder is code, then the group's own number, then membership. only the first two are evidence:
@@ -247,6 +259,13 @@ def attribute_inbound(groups=None, sender=None, text=None, recipient=None):
     that this person is in one, which is a guess from our own records and is reported as one.
     """
     groups = load()["groups"] if groups is None else groups
+    if thread:
+        hit = next((g for g in groups if g.get("thread") and str(g["thread"]) == str(thread)), None)
+        if hit:
+            member = next((m.get("name") for m in hit.get("members", [])
+                           if _digits(m.get("number")) == _digits(sender)), None)
+            return {"groups": [{"id": hit["id"], "name": hit["name"], "member": member}],
+                    "by": "thread", "certain": True, "thread": str(thread)}
     code = code_of(text)
     if code:
         hit = next((g for g in groups if g.get("code") == code), None)
@@ -271,6 +290,8 @@ def attribute_inbound(groups=None, sender=None, text=None, recipient=None):
 
 
 ATTRIBUTION_MEANS = {
+    "thread": "the carrier put this text in a thread it named, so the conversation is the thread's "
+              "rather than a guess from who is in it",
     "code": "the body quotes this group's code, so the conversation is named rather than guessed",
     "number": "the text arrived on this group's own number, so it is addressed rather than guessed",
     "membership": "no code in the body, so the group comes from our own membership records and is a "
@@ -278,6 +299,57 @@ ATTRIBUTION_MEANS = {
     "ambiguous": "the sender is in more than one group and the body names none of them, so every "
                  "candidate is reported and none is picked",
 }
+
+
+def adopt_thread(thread, participants=None, name=None, store=None):
+    """a group that exists because a carrier said so.
+
+    the owner's correction, encoded: a group chat has an id, a reply into that id is a group reply
+    for everybody in it, and our records should follow the carrier rather than decide for themselves
+    that no group exists. participants are named by number when the carrier gives no names, which is
+    honest: a carrier knows numbers, we know names, and the name can be filled in later.
+    """
+    if not thread:
+        return {"ok": False, "why": "a thread needs the carrier's own id, not a name we made up"}
+    data = load(store)
+    live = next((g for g in data["groups"] if g.get("thread") == str(thread)), None)
+    if live:
+        return {"ok": True, "group": live, "adopted": False,
+                "why": "this thread is already a group here, so nothing was duplicated"}
+    members = []
+    for entry in participants or []:
+        if isinstance(entry, dict):
+            number = str(entry.get("number") or "").strip()
+            label = str(entry.get("name") or number).strip()
+        else:
+            raw = str(entry).strip()
+            label, _, number = raw.partition("=")
+            if not number:
+                label, number = raw, raw
+            label, number = label.strip(), number.strip()
+        if number and not any(_digits(m["number"]) == _digits(number) for m in members):
+            members.append({"name": label or number, "number": number})
+    if len(members) < 2:
+        return {"ok": False, "participants": len(members),
+                "why": "a thread with one participant is a thread, not a group",
+                "from_carrier": "the carrier named the thread but not its people, so there is "
+                                "nothing to reply to that would be a group reply"}
+    group = {"id": new_id(name or f"thread {thread}", [m["number"] for m in members]),
+             "name": (name or f"thread {thread}").strip(), "members": members,
+             "created": int(time.time()), "messages": [], "thread": str(thread),
+             "code": new_code(name or str(thread), members, data["groups"]),
+             "adopted_from": "carrier"}
+    data["groups"].append(group)
+    save(data, store)
+    return {"ok": True, "group": group, "adopted": True, "thread": str(thread),
+            "means": ("this group is the carrier's thread, so a reply sent into the thread is a "
+                      "group reply for everybody in it"),
+            "what_members_see": WHAT_MEMBERS_SEE_CARRIER}
+
+
+WHAT_MEMBERS_SEE_CARRIER = ("a carrier thread carries the message to every member, so they see it "
+                            "in the group chat they are already in. that needs a send path that "
+                            "addresses the thread, which the ten paths wired here do not")
 
 
 def listing(store=None):
@@ -322,12 +394,25 @@ def say(group_id, text, provider, from_number, allow=False, store=None, opener=N
         results.append({"name": member["name"], "to": member["number"], "sent": bool(answer.get("sent")),
                         "why": answer.get("why")})
     sent = sum(1 for row in results if row["sent"])
+    delivered_as, thread_gap = "fanout", None
+    if group.get("thread"):
+        # the owner's correction, turned into an honest field: a reply into a carrier thread is a
+        # group reply for everyone, and a fan-out of one-to-one texts is not, so say which happened
+        cap = outbox.thread_send(provider)
+        delivered_as = "thread" if cap["ok"] else "fanout"
+        thread_gap = (None if cap["ok"] else
+                      f"this group is a carrier thread, and {provider} cannot address a thread: "
+                      f"{cap['why']}. so each member gets their own one-to-one text instead, which "
+                      f"will not appear in the group chat the others are reading")
     data = load(store)
     live = find(data["groups"], group["id"])
     if live is not None:
         live.setdefault("messages", []).append({"at": int(time.time()), "text": text,
                                                 "sent_text": sent_text,
-                                                "tag": tag_for(group) if sent_text != text else None,
+                                                "delivered_as": delivered_as,
+            "thread": group.get("thread"),
+            "thread_gap": thread_gap,
+            "tag": tag_for(group) if sent_text != text else None,
                                                 "sent": sent, "of": len(results)})
         save(data, store)
     return {"ok": sent == len(results) and sent > 0, "sent": sent, "of": len(results),
@@ -335,6 +420,9 @@ def say(group_id, text, provider, from_number, allow=False, store=None, opener=N
             "draft": not allow,
             "why": ("draft: pass --send and set HEYPHONY_SEND=allowed to send" if not allow else
                     f"{sent} of {len(results)} members accepted the message"),
+            "delivered_as": delivered_as,
+            "thread": group.get("thread"),
+            "thread_gap": thread_gap,
             "tag": tag_for(group) if sent_text != text else None,
             "code": group.get("code"),
             "the_code_is_not_a_secret": CODE_IS_NOT_A_SECRET,
