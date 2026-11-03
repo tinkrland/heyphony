@@ -141,7 +141,7 @@ class TestTheNpmPackageIsInstallable(unittest.TestCase):
 
     def test_the_bin_entry_points_at_a_file_that_exists(self):
         manifest = json.loads((self.npm / "package.json").read_text())
-        self.assertEqual(list(manifest["bin"]), ["heyphony"])
+        self.assertEqual(list(manifest["bin"]), ["heyphony", "heyphony-mcp"])
         target = self.npm / manifest["bin"]["heyphony"]
         self.assertTrue(target.is_file(), "the bin entry points at nothing")
         self.assertTrue(os.access(target, os.X_OK), "the shim is not executable, so npm -g cannot link it")
@@ -150,7 +150,7 @@ class TestTheNpmPackageIsInstallable(unittest.TestCase):
         manifest = json.loads((self.npm / "package.json").read_text())
         for entry in ("python/", "bin/", "readme.md", "agents.md"):
             self.assertIn(entry, manifest["files"], f"{entry} falls out of the tarball")
-        self.assertIn("python3", (self.npm / "bin/heyphony.js").read_text(),
+        self.assertIn("python3", (self.npm / "lib/python.js").read_text(),
                       "the shim stopped naming the interpreter it needs")
 
     def test_the_bundle_copies_the_tree_and_leaves_the_caches_behind(self):
@@ -180,7 +180,7 @@ class TestTheNpmPackageIsInstallable(unittest.TestCase):
 
     def test_the_shim_says_what_is_wrong_instead_of_crashing(self):
         """a shim that dies with a traceback on a python-less machine teaches nobody anything."""
-        source = (self.npm / "bin/heyphony.js").read_text()
+        source = (self.npm / "lib/python.js").read_text()
         for needle in ("ENOENT", "brew install python3", "HEYPHONY_PYTHON", "127"):
             self.assertIn(needle, source, f"the missing-interpreter path lost {needle!r}")
 
@@ -205,7 +205,7 @@ class TestTheNpmPackageIsInstallable(unittest.TestCase):
 
     def test_the_installed_layout_is_the_one_the_installer_claims(self):
         """the shim resolves ../python relative to itself, and the installer must preserve that."""
-        shim = (self.npm / "bin/heyphony.js").read_text()
+        shim = (self.npm / "lib/python.js").read_text()
         self.assertIn('path.join(pythonTree, "src", "runner", "cli.py")', shim)
         self.assertIn('"-m", "src.runner.cli"', shim)
         self.assertIn('PYTHONDONTWRITEBYTECODE', shim, "the shim must not leave a __pycache__ in a tree "
@@ -1196,8 +1196,12 @@ class TestTheMarketArgumentAndTheProviderIndex(unittest.TestCase):
     def test_the_main_page_stays_quiet_about_groups_while_they_are_one_branchs_work(self):
         """the owner asked for the group chat portion to stay off this page; the command still exists
         and the command index still documents it."""
-        text = (ROOT / "readme.md").read_text().lower()
-        self.assertNotIn("group", text, "the group chat portion was meant to come off the main page")
+        page = (ROOT / "readme.md").read_text()
+        # the tool surface below names real verbs, so the claim is pinned where it actually matters:
+        # the page a stranger reads before it gets to the mcp section has no group chat claim on it
+        above = page.split("### the same answers over mcp")[0].lower()
+        self.assertNotIn("group", above, "the group chat portion was meant to come off the main page")
+        self.assertIn("group", page.lower(), "the tool inventory still names the verbs the code has")
         self.assertIn("group", (ROOT / "src" / "setup" / "commands" / "readme.md").read_text().lower(),
                       "the command index is the reference, so it still documents the verb")
 
@@ -1800,6 +1804,84 @@ class TestAGroupIsNotAList(unittest.TestCase):
         listing = subprocess.run([str(ROOT / "bin" / "heyphony"), "group", "list"],
                                  capture_output=True, text=True, timeout=90, env=env)
         self.assertEqual(json.loads(listing.stdout)["count"], 1)
+
+
+class TestTheToolSurface(unittest.TestCase):
+    """the mcp server and the sdk: two adapters, no second implementation, and no gate they can close."""
+
+    def setUp(self):
+        self.npm = ROOT / "npm"
+        self.pkg = json.loads((self.npm / "package.json").read_text())
+        self.server = (self.npm / "bin" / "heyphony-mcp.js").read_text()
+
+    def test_the_tarball_ships_two_bins_and_the_sdk_entry(self):
+        self.assertEqual(self.pkg["bin"], {"heyphony": "bin/heyphony.js",
+                                          "heyphony-mcp": "bin/heyphony-mcp.js"})
+        self.assertEqual(self.pkg["main"], "index.js")
+        self.assertEqual(self.pkg["exports"]["."], "./index.js")
+        for needed in ("bin/", "lib/", "index.js", "python/"):
+            self.assertIn(needed, self.pkg["files"])
+
+    def test_the_server_has_no_dependencies_because_a_transport_is_not_a_tree(self):
+        self.assertNotIn("dependencies", self.pkg)
+        self.assertNotIn("devDependencies", self.pkg)
+        requires = re.findall(r'require\("([^"]+)"\)', self.server)
+        local = ("readline",)
+        for name in requires:
+            self.assertTrue(name.startswith(".") or name in local or name.startswith("node:"),
+                            f"the server requires {name}, which would be a dependency")
+
+    def test_the_python_discovery_lives_in_one_file_and_both_bins_use_it(self):
+        for bin_name in ("heyphony.js", "heyphony-mcp.js"):
+            text = (self.npm / "bin" / bin_name).read_text()
+            self.assertIn('require("../lib/python")', text)
+            self.assertNotIn("HEYPHONY_PYTHON", text, f"{bin_name} should not search for python itself")
+        lib = (self.npm / "lib" / "python.js").read_text()
+        self.assertIn("process.env.HEYPHONY_PYTHON", lib)
+
+    def test_the_three_verbs_that_reach_outside_are_the_only_ones_flagged(self):
+        spend = re.findall(r"gate: (SEND_GATE|CALL_GATE)", self.server)
+        self.assertEqual(spend, ["SEND_GATE", "SEND_GATE", "CALL_GATE"])
+        self.assertIn('const SEND_GATE = "HEYPHONY_SEND"', self.server)
+        self.assertIn('const CALL_GATE = "HEYPHONY_CALL"', self.server)
+
+    def test_a_shut_gate_is_reported_rather_than_retried_or_bypassed(self):
+        self.assertIn("drafted: true", self.server)
+        self.assertIn("nothing left this machine", self.server)
+        self.assertNotIn("process.env.HEYPHONY_SEND = ", self.server)
+        self.assertNotIn('"--apply"', self.server)
+        self.assertNotIn('"--purchase"', self.server)
+
+    def test_the_server_speaks_the_protocol_and_not_a_dialect(self):
+        for method in ('"initialize"', '"tools/list"', '"tools/call"', '"ping"'):
+            self.assertIn(f"if (method === {method})", self.server)
+        self.assertIn("-32601", self.server)
+        self.assertIn("-32700", self.server)
+        self.assertIn("readline.createInterface({ input: process.stdin", self.server)
+
+    def test_the_pages_carry_the_surface_and_the_gate_story(self):
+        root = " ".join((ROOT / "readme.md").read_text().split())
+        package = " ".join((self.npm / "readme.md").read_text().split())
+        agents = " ".join((self.npm / "agents.md").read_text().split())
+        self.assertIn("### the same answers over mcp, for an agent that is not a shell", root)
+        self.assertIn("### the sdk is the cli with the parsing done", root)
+        self.assertIn("### the tool surface cannot close a gate", root)
+        self.assertIn("## as an mcp server", package)
+        self.assertIn("### twelve tools, and which of them spend", package)
+        self.assertIn("## if you speak mcp instead of a shell", agents)
+        for page in (root, package, agents):
+            self.assertIn("HEYPHONY_SEND=allowed", page)
+
+    def test_the_suite_would_notice_a_server_that_stopped_answering(self):
+        script = (self.npm / "scripts" / "test-mcp.js").read_text()
+        self.assertIn('method: "initialize"', script)
+        self.assertIn('method: "tools/list"', script)
+        self.assertIn("gate.closed", script)
+        self.assertIn("only the three verbs that reach outside this machine are marked as doing so", script)
+        self.assertIn("test-mcp.js", self.pkg["scripts"]["test"])
+        preflight = (self.npm / "scripts" / "preflight.js").read_text()
+        self.assertIn('"heyphony-mcp"', preflight)
+        self.assertIn('method: "tools/list"', preflight)
 
 
 

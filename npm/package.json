@@ -4,20 +4,25 @@
   "description": "give your ai agent a phone number of its own: a sip did, an inbox that survives the machine sleeping, and the rails a number unlocks",
   "keywords": [
     "ai-agent",
-    "telephony",
-    "sip",
+    "cli",
     "did",
-    "voip",
+    "mcp",
+    "model-context-protocol",
+    "sip",
     "sms",
-    "cli"
+    "telephony",
+    "voip"
   ],
   "license": "SEE LICENSE IN LICENSE",
   "author": "tinkrland (https://github.com/tinkrland)",
   "bin": {
-    "heyphony": "bin/heyphony.js"
+    "heyphony": "bin/heyphony.js",
+    "heyphony-mcp": "bin/heyphony-mcp.js"
   },
   "files": [
     "bin/",
+    "lib/",
+    "index.js",
     "python/",
     "readme.md",
     "agents.md"
@@ -31,7 +36,7 @@
     "postpack": "node scripts/bundle.js --clean",
     "prepublishOnly": "npm test",
     "preflight": "node scripts/preflight.js",
-    "test": "node scripts/bundle.js --strict && node bin/heyphony.js --version && node scripts/bundle.js --clean"
+    "test": "node scripts/bundle.js --strict && node bin/heyphony.js --version && node scripts/test-mcp.js && node scripts/bundle.js --clean"
   },
   "repository": {
     "type": "git",
@@ -41,5 +46,10 @@
   "homepage": "https://github.com/tinkrland/heyphony/tree/main/npm",
   "bugs": {
     "url": "https://github.com/tinkrland/heyphony/issues"
+  },
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./mcp": "./bin/heyphony-mcp.js"
   }
 }

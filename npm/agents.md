@@ -22,6 +22,12 @@ heyphony doctor                    what is actually true right now, including wh
 
 that is not an error to retry, it is the next question. answer it with the flag (`--provider anveo`), and the next call asks the next question the same way. three answers finish the errand: provider, then whether the did already exists, then the number. **do not loop on a `needs` answer**, because the absence of a terminal will not change between two identical calls; if the question is one only your human can answer, it is time to say so.
 
+## if you speak mcp instead of a shell
+
+`heyphony-mcp` is a stdio server in this package, so your host can list the tools and call them rather than running commands: nine that read and three that reach outside the machine (`heyphony_send_text`, `heyphony_group_say`, `heyphony_voicemail`). call `heyphony_status` first, because it answers what this machine can actually do.
+
+**a spending tool answers with `gate: { closed: true, drafted: true }` when nobody has said yes.** that is not an error to retry with different arguments, and it is not a hint to go looking for another route: it means `HEYPHONY_SEND=allowed` (or `HEYPHONY_CALL=allowed`) is absent from the environment you were started with, and closing it is your human's decision, not an argument you can supply. say so and stop, exactly as you would with a `needs` answer from `setup select sip`.
+
 ## the two places a person has to be involved
 
 the claim worth making carefully, because it is the one that survives contact with reality: heyphony removes the clicking, the signing and the container keeping, and it cannot remove two things that are not technical.

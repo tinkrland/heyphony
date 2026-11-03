@@ -98,6 +98,22 @@ two things about it are worth saying plainly rather than discovering on the firs
 
 it is gated like the text rail: `HEYPHONY_CALL=allowed` and `--send`, both, or you get the plan printed in full.
 
+### the same answers over mcp, for an agent that is not a shell
+
+`heyphony-mcp` is a model context protocol server, and it is deliberately the smallest thing that could work: json-rpc on stdin and stdout, no dependency, and each tool is one of the commands above with its json handed back as the tool result. twelve tools, and the interesting part is not the count, it is which way the arrows point. three of them reach outside this machine (`heyphony_send_text`, `heyphony_group_say`, `heyphony_voicemail`) and the other nine only read, so `readOnlyHint` in `tools/list` is a fact about the code rather than a label somebody typed.
+
+```
+{ "mcpServers": { "heyphony": { "command": "npx", "args": ["-y", "-p", "heyphony", "heyphony-mcp"] } } }
+```
+
+**the gate stays shut, and that is the design.** a send needs the `--send` flag *and* `HEYPHONY_SEND=allowed` in the environment, and the server is not allowed to close that second one on a caller's behalf: an mcp client has no approval dialog, so a tool that quietly sent would turn a human decision into an agent one. when the variable is absent the tool still runs, still answers, and returns the draft with the gate named in the result. `HEYPHONY_CALL=allowed` is the same story for dialling. what is not exposed at all is the pair of verbs that spend without a conversation: `provision --purchase` is parked in the cli and `hooks --apply` is left out of the server, because pointing a carrier at a machine is a decision rather than a tool call.
+
+### the sdk is the cli with the parsing done
+
+`require("heyphony")` gives a node host `run(args)` and a handful of thin wrappers (`status`, `messages`, `calls`, `sendText`, `groups`) that spawn the same python and return the same object the command prints, with `{ ok, code, json, text, stderr, why }` rather than a string to be parsed again by hand.
+
+there is no second implementation to drift, and the wrappers cannot get round a gate either, which is the one property worth having twice: the gates live in the python, and both adapters only pass arguments to it. whether this becomes a package of its own, or stays the `main` field of this one, is a question for after the branch lands; nothing here is published from a side branch.
+
 ### the number outlives the machine
 
 the honest shape of a phone number is that half of it is somebody else's computer, so the interesting question is what happens when the host sleeps.
@@ -132,7 +148,7 @@ it downloads the same tree and puts `heyphony` on your path, needing python3 and
 
 [the full table, with what each route needs, is in npm/readme.md](npm/readme.md), and [npm/publish.md](npm/publish.md) is the runbook that got 0.3.0 onto the registry.
 
-an agent installing this should read [npm/agents.md](npm/agents.md) instead of this page, because it says which four commands to run, which two questions are for its human, and what it is not allowed to attempt.
+an agent installing this should read [npm/agents.md](npm/agents.md) instead of this page, because it says which four commands to run, how to speak to the mcp server instead of a shell, which two questions are for its human, and what it is not allowed to attempt.
 
 ## three places it can live
 
@@ -164,6 +180,14 @@ the refusal is not a verdict on this package. it is adversarial detection aimed 
 two shapes ride that one rail: a single reply and a voicemail. both are the same act at different volumes, which is why neither has a queue, a retry, a schedule or a quiet-hours engine. one of them is a call, so `HEYPHONY_CALL=allowed` is its own gate rather than a second meaning for the text gate.
 
 provider terms, quiet hours, and what the recipient actually agreed to are yours. a tool that respects a gate cannot also audit a business, and pretending otherwise would be the dishonest version of a safety feature.
+
+### the tool surface cannot close a gate, and cannot spend without a conversation
+
+an mcp server is a surface an agent can call without a person watching, so the honest list of what it will not do is short and specific.
+
+- **it will not send because a tool call asked.** `HEYPHONY_SEND=allowed` is read from the server's own environment, so the decision is the one made by whoever started the process. a tool result that says `drafted` is a tool result, not a refusal to retry with a different argument.
+- **it will not buy a number or point a carrier at one.** `provision --purchase` does not exist yet anywhere, and `hooks --apply` is not in the tool list.
+- **it will not hold a secret.** the credentials are the environment it inherits, on the machine it runs on, the same as the cli.
 
 ### and nothing here publishes
 

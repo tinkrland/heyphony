@@ -130,6 +130,44 @@ const newestTarball = (dir) => {
 				try { JSON.parse(status.out); parsed = true; } catch (error) { parsed = false; }
 				record("and it writes json", status.ok && parsed,
 					parsed ? "status parsed on a machine with no config" : `status said: ${(status.out || status.err).slice(0, 120)}`);
+				// the mcp server is a second bin in the same tarball, so it is proved from the same
+				// install: a client that cannot initialize is a client that fails at the first message
+				const mcpShim = path.join(prefix, "bin", "heyphony-mcp");
+				if (fs.existsSync(mcpShim)) {
+					const probe = spawnSync(mcpShim, [], {
+						encoding: "utf8", timeout: 120000, env: { ...process.env, HOME: home },
+						input: [
+							JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize",
+								params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "preflight", version: "1" } } }),
+							JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
+						].join("\n") + "\n",
+					});
+					let answers = [];
+					try {
+						answers = (probe.stdout || "").split("\n").filter((line) => line.trim()).map((line) => JSON.parse(line));
+					} catch (error) {
+						answers = [];
+					}
+					const init = answers.find((entry) => entry.id === 1);
+					const tools = answers.find((entry) => entry.id === 2);
+					const spending = tools ? tools.result.tools.filter((entry) => entry.annotations && entry.annotations.readOnlyHint === false) : [];
+					record("the mcp server answers", Boolean(init && tools) && Boolean(tools.result.tools.length),
+						tools ? `${tools.result.tools.length} tools, ${spending.length} of them reach outside this machine`
+							: `no tools/list reply: ${(probe.stderr || probe.stdout || "silence").slice(0, 120)}`);
+				} else {
+					record("the mcp server answers", false, "no bin/heyphony-mcp in the install prefix");
+				}
+
+				// the sdk is the same python behind a require, so the proof is that the entry point the
+				// manifest names loads from the installed copy and reads its own version out of the bundle
+				const installed = path.join(prefix, "lib", "node_modules", pkg.name);
+				try {
+					const sdk = require(installed);
+					record("the sdk loads", typeof sdk.run === "function" && sdk.version() === pkg.version,
+						`require("${pkg.name}") gives run() and version ${sdk.version()}`);
+				} catch (error) {
+					record("the sdk loads", false, error.message.split("\n")[0]);
+				}
 			} else if (install.ok) {
 				record("the installed command answers", false, "no bin/heyphony in the install prefix");
 			}

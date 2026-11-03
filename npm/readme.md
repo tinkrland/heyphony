@@ -28,6 +28,29 @@ what is still not true: this package ships the code and not the microphone, and 
 
 the other thing worth knowing: a github install such as `npm i -g github:tinkrland/heyphony` does not work, and it is not an oversight. that form wants `package.json` at the repo root, and this repo keeps the code at the root and the packaging in `npm/`, because the code is the point and the packaging is scaffolding around it. use the tarball or the url.
 
+## as an mcp server
+
+the tarball ships two bins, and the second one is a model context protocol server:
+
+```
+heyphony        the cli
+heyphony-mcp    the same answers as mcp tools, over stdin and stdout
+```
+
+a client that can start a local server with a pipe needs no other packaging:
+
+```
+{ "mcpServers": { "heyphony": { "command": "npx", "args": ["-y", "-p", "heyphony", "heyphony-mcp"] } } }
+```
+
+or, once it is installed globally, `{ "command": "heyphony-mcp" }` on its own. `require("heyphony")` is the same code from inside a node process: `run(args)` returns `{ ok, code, json, text, stderr, why }`, and the wrappers on top of it are conveniences rather than a second implementation.
+
+### twelve tools, and which of them spend
+
+nine read: `heyphony_status`, `heyphony_doctor`, `heyphony_open_messages`, `heyphony_open_calls`, `heyphony_open_voicemail`, `heyphony_send_paths`, `heyphony_group_list`, `heyphony_group_show`, `heyphony_hooks`. three reach outside the machine: `heyphony_send_text`, `heyphony_group_say`, `heyphony_voicemail`. that split is published in `tools/list` as `readOnlyHint`, and `node npm/scripts/test-mcp.js` asserts it, so the annotation cannot quietly disagree with the code.
+
+**a spending tool with a shut gate returns the draft, not an error and not a send.** there is no approval dialog in mcp, so the environment is the approval: `HEYPHONY_SEND=allowed` for texts, `HEYPHONY_CALL=allowed` for dialling, read from the server process. the result carries `gate: { closed: true, drafted: true, name, means }` so a client can tell the difference between "cannot" and "did not, because nobody said yes". `provision --purchase` and `hooks --apply` are not tools at all.
+
 ## what the tarball carries
 
 `npm pack` runs `scripts/bundle.js` first, which copies the repo root into `python/` and skips `__pycache__`. **the repo keeps one copy of the code and the package carries a copy made at pack time**, not a second copy committed next to it, because two copies of a lane is how they drift apart while both look maintained.
