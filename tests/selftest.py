@@ -2356,6 +2356,67 @@ class TestResolvingAHandleIsNotScanningForOne(unittest.TestCase):
         self.assertIn("somebody else can claim it", self.page)
 
 
+class TestACapabilityIsABooleanAndExistenceIsNot(unittest.TestCase):
+    """the two questions an address asks, answered separately so neither has to be invented."""
+
+    def setUp(self):
+        from src.lookup import support
+        self.s = support
+
+    def test_an_address_holds_imessage_however_the_mailbox_turns_out(self):
+        for address in ("examplemail@gmail.com", "someone@icloud.com", "support@acme.co.uk",
+                        "dana@mailinator.com"):
+            matrix = self.s.support(address)["matrix"]
+            self.assertTrue(matrix["imessage"], address)
+
+    def test_an_address_holds_none_of_the_services_that_verify_by_number(self):
+        matrix = self.s.support("examplemail@gmail.com")["matrix"]
+        self.assertEqual((matrix["signal"], matrix["whatsapp"], matrix["sms"]), (False, False, False))
+
+    def test_the_same_address_keeps_its_own_unknown_verdict(self):
+        answer = self.s.support("examplemail@gmail.com")
+        self.assertTrue(answer["matrix"]["imessage"])
+        self.assertEqual(answer["address"]["imessage"], "unknown")
+        self.assertIn("exists", answer["address"]["withheld"])
+
+    def test_an_apple_address_is_capable_and_possible_while_gmail_is_capable_and_unknown(self):
+        apple = self.s.support("someone@icloud.com")
+        gmail = self.s.support("examplemail@gmail.com")
+        self.assertEqual(apple["matrix"], gmail["matrix"])
+        self.assertEqual((apple["address"]["imessage"], gmail["address"]["imessage"]),
+                         ("possible", "unknown"))
+
+    def test_a_handle_holds_its_own_platform_and_cannot_hold_the_other(self):
+        signal = self.s.support("alice.42")["matrix"]
+        whatsapp = self.s.support("alice")["matrix"]
+        self.assertEqual((signal["signal"], signal["whatsapp"]), (True, False))
+        self.assertEqual((whatsapp["whatsapp"], whatsapp["signal"]), (True, False))
+
+    def test_a_line_leaves_the_account_question_open_rather_than_guessing(self):
+        matrix = self.s.support("+12125551234")["matrix"]
+        self.assertEqual((matrix["imessage"], matrix["signal"], matrix["whatsapp"]), (None, None, None))
+        self.assertTrue(matrix["sms"])
+
+    def test_a_service_range_can_hold_none_of_them(self):
+        matrix = self.s.support("+18005551234")["matrix"]
+        self.assertEqual(set(matrix.values()), {False})
+
+    def test_the_matrix_says_which_question_its_booleans_answer(self):
+        answer = self.s.support("examplemail@gmail.com")
+        self.assertIn("can hold this service at all", answer["matrix_means"])
+        self.assertIn("not a claim that this particular one is registered", answer["matrix_means"])
+
+    def test_an_invalid_input_holds_nothing_rather_than_unknown_everything(self):
+        self.assertEqual(set(self.s.support("dana@localhost")["matrix"].values()), {False})
+
+    def test_the_page_puts_capability_and_existence_side_by_side(self):
+        page = " ".join((ROOT / "src" / "lookup" / "readme.md").read_text().split())
+        for needle in ("a boolean for the capability and a verdict for this one",
+                       "imessage: true signal: false",
+                       "Both lines are in the same output"):
+            self.assertIn(needle, page)
+
+
 
 if __name__ == "__main__":
     suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])

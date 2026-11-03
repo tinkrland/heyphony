@@ -25,6 +25,7 @@ one table, because the most common confusion in this package was not knowing whi
 | `heyphony group say <id> --text "seven o'clock"` | manage (out) | the same rail, once per member, with each member's own result | no: it sends when `--send` and the gate agree |
 | `heyphony lookup eval` | lookup | runs the labelled fixture corpus and reports pass, fail, unknown rate and overreach | yes, it only reads |
 | `heyphony lookup dana@icloud.com` | lookup | the local part, the domain, and an iMessage verdict of possible, unknown or unlikely | yes, and nothing is sent |
+| `heyphony lookup examplemail@gmail.com support` | lookup | the capability matrix: `imessage: true` for an address, false for the services that verify by number | yes, and nothing is sent |
 | `heyphony lookup alice.42 [--platform signal\|whatsapp]` | lookup | the username form, and the fact that a number is not needed either way | yes, and nobody is messaged |
 | `heyphony lookup +1212` | lookup | the country and region from a +1 area code alone, with the subscriber digits never asked for | yes, and nothing is sent |
 | `heyphony lookup +447700900123` (`--lookup` also works) | lookup | what the number is: line class, whether it can take a text, and the market's coverage | yes, it reads a plan |

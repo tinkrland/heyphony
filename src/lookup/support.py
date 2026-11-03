@@ -99,6 +99,39 @@ HANDLE_SERVICES = {
 }
 
 
+MATRIX_MEANS = ("true means this kind of thing can hold this service at all, false means it cannot, "
+                "and unknown means the capability is a question for the account rather than the "
+                "string. it is not a claim that this particular one is registered, which stays "
+                "withheld until somebody checks with the account holder")
+
+
+def _holds(name, line):
+    """can a thing of this kind hold this service at all, separate from whether this one does.
+
+    this is the question a boolean can answer honestly. an address holds imessage because imessage
+    routes to an apple account and an address can be one, whatever this particular mailbox turns out
+    to be. a whatsapp handle holds whatsapp and cannot hold signal. a line's sms ability is the plan's
+    business, and everything else about a line is a question for the account on it.
+    """
+    kind = line.get("kind")
+    if not line.get("valid"):
+        return False
+    if kind == "email":
+        return name == "imessage"
+    if kind == "username":
+        return name == line.get("platform")
+    if name == "sms":
+        return bool(line.get("receive_text"))
+    cls = (line.get("type") or "").lower()
+    if cls in ("service range", "pager", "premium rate", "toll-free", "freephone"):
+        return False
+    return None
+
+
+def _matrix(line):
+    return {name: _holds(name, line) for name in ("imessage", "signal", "whatsapp", "sms")}
+
+
 def _handle_matrix(answer):
     """the services an address or a handle can hold, in the same rows a number gets."""
     services = []
@@ -137,6 +170,7 @@ def support(number, platform=None):
         return {"number": number, "kind": line["kind"],
                 "address" if line["kind"] == "email" else "handle": line,
                 "services": _handle_matrix(line), "note": NOTE, "verified": False,
+                "matrix": _matrix(line), "matrix_means": MATRIX_MEANS,
                 "partial": False,
                 "limits": {"services": "a handle answers for the platform it belongs to and for "
                                        "nothing else"}}
@@ -151,6 +185,7 @@ def support(number, platform=None):
     return {"number": number, "line": {k: line.get(k) for k in
                                        ("valid", "market", "type", "receive_text", "region", "why")},
             "services": services, "note": NOTE, "verified": False,
+            "matrix": _matrix(dict(line, kind="number")), "matrix_means": MATRIX_MEANS,
             "partial": bool(line.get("partial")),
             "limits": line.get("limits") or {"partial": "a partial lookup answers geography only"}}
 

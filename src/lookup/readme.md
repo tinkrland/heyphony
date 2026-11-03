@@ -88,6 +88,35 @@ any address and most consumer addresses are not one. A role address on a custom 
 `unlikely`, because a shared desk has no apple account and the domain does not change that. A throwaway
 domain reaches `unlikely`, because the address will be gone before a reply arrives.
 
+### a boolean for the capability and a verdict for this one
+
+Two questions hide inside "does this work", and `support` answers them separately because only one of
+them is a boolean.
+
+**Can a thing of this kind hold the service at all.** An address holds iMessage, because iMessage
+routes to an apple account and an address can be one. A whatsapp handle holds whatsapp and cannot hold
+signal. A line's sms ability is the plan's business and everything else about a line is a question for
+the account on it. That is the `matrix`, three valued: `true`, `false`, or `null` when the capability
+belongs to the account rather than the string.
+
+```
+$ heyphony --lookup examplemail@gmail.com
+imessage: true   signal: false   whatsapp: false   sms: false
+```
+
+Read that as capability and it is correct however the mailbox turns out: any address can be an apple
+account, and none of the other three verify by anything but a number. Read it as existence and it would
+be a lie about a mailbox nobody has checked.
+
+**Is this particular one registered.** That is the `verdict` on the address: `possible`, `unknown` or
+`unlikely`, with the reason. The gmail address above holds iMessage and its own verdict is still
+`unknown`, because a consumer mailbox can be an apple account and most are not. Both lines are in the
+same output, and `matrix_means` says in one sentence which one the booleans are.
+
+The pairing is the point. A boolean that tried to answer existence would have to invent the answer. A
+verdict alone hides the capability the caller was actually asking about. So an address gets
+`imessage: true` and `imessage: unknown` together, and neither one undercuts the other.
+
 ### what it withholds, and what a probe would need
 
 Existence, deliverability and apple account status are all withheld with a reason, because all three
