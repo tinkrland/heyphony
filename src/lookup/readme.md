@@ -31,6 +31,28 @@ the area code also carries a **class**, and the class is a real answer:
   with one, so `receive_text: false` follows from the plan rather than from a probe.
 - **personal numbering**: a follow-me number, so `unlikely` rather than a plain no.
 
+## a field the plan cannot fill is part of the answer
+
+an empty `region` is not a hole in the output, and leaving it unexplained is how a lookup tool trains
+people to distrust it. so every answer carries a `withheld` map: the fields it did not fill, each with
+the reason, and the reason is sometimes the whole point.
+
+    $ heyphony --lookup +18005551234
+    type: toll-free   region: null
+    withheld.region: a toll-free code is national by design: there is no region to give,
+                     and the empty region is the answer rather than missing data
+
+a toll-free number has no region because a toll-free code is national by design. that absence is the plan
+being exact, not the table being thin. the same answer names why it will not call the number a business
+landline either: the line belongs to whoever answers it, so there is no personal line type to claim. the
+pattern holds across the classes: a geographic +1 code withholds only the line type, a mobile range
+withholds the region it never had, an area code outside the table says the table is what is missing, and a
+market with no table at all withholds type, text capability and region together, saying each is
+unanswered rather than guessed.
+
+`heyphony --lookup +1800` keeps the same reasons on a partial answer, so asking for less evidence does
+not make the tool quieter about what it does not know.
+
 ## a whole number is not always needed
 
 the geography sits in the first three digits, so `heyphony --lookup +1212` answers the country and the

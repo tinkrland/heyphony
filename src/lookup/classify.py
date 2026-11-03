@@ -72,6 +72,24 @@ NANP_TYPES = {"geographic": "unknown", "non-geographic": "non-geographic numberi
 NANP_TEXT = {"geographic": "unknown", "non-geographic": "unknown", "toll-free": False,
              "premium": False, "personal numbering": "unlikely"}
 
+# a field the plan cannot fill is not a hole in the output, it is part of the answer, so every answer
+# says which fields it withheld and why. an empty region on a toll-free number is the plan being exact.
+WITHHELD = {
+    "toll-free": {"region": "a toll-free code is national by design: there is no region to give, and "
+                            "the empty region is the answer rather than missing data",
+                  "type": "the number belongs to whoever answers it, so a service line has no "
+                          "personal line type"},
+    "premium": {"region": "a premium rate code is national by design, so there is no region",
+                "type": "a premium rate service is not a personal line"},
+    "geographic": {"type": "the plan does not encode line type anywhere in it, so mobile, landline "
+                           "and voip are indistinguishable from the number alone"},
+    "non-geographic": {"region": "the plan marks this code as national rather than regional, so there "
+                                 "is no region to give"},
+    "personal numbering": {"region": "a personal numbering code is national rather than regional",
+                           "type": "the number follows a person rather than a line, so the line type "
+                                   "is not what it names"},
+}
+
 KINDS = {"mobile": "mobile", "business": "business numbering", "geographic": "landline",
          "voip": "voip", "personal numbering": "personal numbering", "pager": "pager",
          "service": "service range", "premium": "premium rate"}
@@ -140,6 +158,9 @@ def _nanp(number, iso_dial):
     if not row:
         return {"type": "unknown", "receive_text": "unknown", "region": None, "npa": npa,
                 "adapter": ADAPTER,
+                "withheld": {"region": "the table does not carry this area code, so not even the place "
+                                      "is claimed",
+                             "type": "the plan does not encode line type anywhere in it"},
                 "why": f"the area code {npa} is not one the carried table knows, so not even the place "
                        f"is claimed, and the plan never carries line type"}
     country = table["countries"].get(row["iso"], row["iso"])
@@ -158,6 +179,7 @@ def _nanp(number, iso_dial):
     return {"type": NANP_TYPES.get(kind, "unknown"), "receive_text": text,
             "country": row["iso"], "country_name": country, "region": region,
             "npa": npa, "npa_class": kind, "why": why,
+            "withheld": dict(WITHHELD.get(kind, {})),
             "adapter": ADAPTER if kind == "geographic" else None}
 
 
@@ -191,7 +213,8 @@ def partial(number):
     answer.update({"market": detail.get("country"), "country_name": detail.get("country_name"),
                    "region": detail.get("region"), "type": detail.get("type"),
                    "receive_text": detail.get("receive_text"), "npa_class": detail.get("npa_class"),
-                   "why": "an area code lookup: " + str(detail.get("why"))})
+                   "why": "an area code lookup: " + str(detail.get("why")),
+                   "withheld": detail.get("withheld") or {}})
     return answer
 
 
@@ -209,6 +232,9 @@ def classify(number):
         return answer
     if not iso:
         answer.update({"type": "unknown", "receive_text": "unknown",
+                       "withheld": {field: "no numbering table is carried for this market, so this is "
+                                           "unanswered rather than guessed"
+                                    for field in ("type", "receive_text", "region")},
                        "why": STRENGTH[UNSEEDED], "evidence": [{"strength": UNSEEDED}]})
         return answer
     row = MARKETS[iso]
@@ -238,6 +264,12 @@ def classify(number):
     else:
         answer["evidence"] = [{"strength": row["strength"], "source": row["source"],
                                "why": STRENGTH[row["strength"]]}]
+    if detail.get("region") is None:
+        answer.setdefault("withheld", {})
+        answer["withheld"].setdefault("region", (
+            "the range is not tied to a place, so the plan has no region for this number"
+            if detail.get("type") not in ("landline", "business numbering", None)
+            else "this market's table carries no region for this number"))
     answer["limits"]["coverage"] = (
         f"{iso} is carried per range from {row['source']}" if row["strength"] == PER_RANGE
         else f"{iso} is carried at {row['strength']} strength")

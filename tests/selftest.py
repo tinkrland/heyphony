@@ -2053,6 +2053,13 @@ class TestTheLookupIsEvaluatedBeforeItIsTrusted(unittest.TestCase):
 class TestTheBuildToolsDoNotLeakIntoTheRuntime(unittest.TestCase):
     """the generator needs a pip install; src/ must keep importing the standard library only."""
 
+    def test_the_tree_carries_no_bytecode_even_untracked(self):
+        """no .gitignore means nothing may leave __pycache__ behind, so the tree is checked, not the index."""
+        left = sorted(str(p.relative_to(ROOT)) for p in ROOT.rglob("__pycache__")
+                      if ".git" not in p.parts)
+        self.assertEqual(left, [], f"bytecode on disk: {left}")
+        self.assertFalse((ROOT / ".gitignore").exists(), "main carries no ignore file by request")
+
     def test_the_generator_lives_outside_src_and_says_why(self):
         generator = ROOT / "tools" / "generate_nanp.py"
         self.assertTrue(generator.exists())
@@ -2071,6 +2078,62 @@ class TestTheBuildToolsDoNotLeakIntoTheRuntime(unittest.TestCase):
         table = _json.loads((ROOT / "src" / "lookup" / "nanp.json").read_text())
         self.assertIn("libphonenumber", table["_generated"]["from"])
         self.assertIn("line type is not in this table", table["_generated"]["what"])
+
+
+class TestAFieldThePlanCannotFillSaysWhy(unittest.TestCase):
+    """an empty field is part of the answer, not a hole: a toll-free number has no region on purpose."""
+
+    def setUp(self):
+        from src.lookup import classify
+        self.c = classify
+
+    def test_a_toll_free_line_says_its_missing_region_is_the_answer(self):
+        answer = self.c.classify("+18005551234")
+        self.assertIsNone(answer["region"])
+        reason = answer["withheld"]["region"]
+        self.assertIn("toll-free", reason)
+        self.assertIn("national by design", reason)
+        self.assertIn("rather than missing data", reason)
+
+    def test_the_same_number_does_not_claim_a_personal_line_type_either(self):
+        answer = self.c.classify("+18005551234")
+        self.assertEqual(answer["type"], "toll-free")
+        self.assertIn("service line", answer["withheld"]["type"])
+
+    def test_a_premium_and_a_personal_code_are_explained_the_same_way(self):
+        for number in ("+19005551234", "+15005551234"):
+            answer = self.c.classify(number)
+            self.assertIsNone(answer["region"])
+            self.assertIn("region", answer["withheld"], number)
+
+    def test_a_geographic_plus_one_withholds_only_the_line_type(self):
+        answer = self.c.classify("+12125551234")
+        self.assertEqual(answer["region"], "New York, NY")
+        self.assertEqual(list(answer["withheld"]), ["type"])
+        self.assertIn("does not encode line type", answer["withheld"]["type"])
+
+    def test_a_mobile_in_a_per_range_market_withholds_a_region_it_never_had(self):
+        answer = self.c.classify("+447700900123")
+        self.assertIsNone(answer["region"])
+        self.assertIn("not tied to a place", answer["withheld"]["region"])
+
+    def test_a_market_with_no_table_withholds_every_answer_it_cannot_give(self):
+        answer = self.c.classify("+33612345678")
+        self.assertEqual(sorted(answer["withheld"]), ["receive_text", "region", "type"])
+        self.assertIn("unanswered rather than guessed", answer["withheld"]["type"])
+
+    def test_an_unknown_area_code_says_the_table_is_what_is_missing(self):
+        answer = self.c.classify("+19995551234")
+        self.assertIn("does not carry this area code", answer["withheld"]["region"])
+
+    def test_a_partial_area_code_lookup_keeps_the_same_reasons(self):
+        partial = self.c.classify("+1800")
+        self.assertIn("toll-free", partial["withheld"]["region"])
+
+    def test_the_page_says_an_empty_region_is_the_plan_being_exact(self):
+        page = (ROOT / "src" / "lookup" / "readme.md").read_text()
+        self.assertIn("a field the plan cannot fill is part of the answer", page)
+        self.assertIn("toll-free", page)
 
 
 
