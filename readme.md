@@ -67,6 +67,20 @@ a phone that registered is not a phone that rang. three answers, and only one of
 
 so `registered is not ringing`, and that is one more reason the recommended route keeps the line on the host: an awake host is something we have, and an awake phone is something we can only ask for.
 
+### waking it on the ring, and then who actually answers
+
+two questions live in the sentence "can the agent take the call", and only the first one is a wake problem.
+
+**waking it is solvable on a phone we own.** whitelist the sip app from doze (`adb shell cmd deviceidle whitelist +<pkg>`), let it hold a foreground service, and an incoming call is one of the few things android still lets draw over a locked screen with a full screen intent. the invite lands, the panel lights, the answer button is there and `tap_text('Answer')` is a verb we already have. on an iphone it stays no: a suspended app cannot wake itself, the wake has to be a pushkit notification with an apns key and the app's own entitlement, and the call screen is system ui we only ever see as pixels.
+
+**answering is the harder half, and waking does not touch it.** three shapes, and the agent only gets ears in two of them:
+
+- **the host softphone answers.** baresip or pjsua as a process on the host, media to a local device or a file. the agent hears, speaks, and the phone is not in the call at all. `designed`.
+- **the phone taps answer.** real, and it produces a call the agent cannot hear: the voice goes to the handset's own earpiece and mic, and there is no supported adb path that turns call audio into something a process reads. screenrecord carries no call audio and a capture needs the app or root. so this row answers the ringing and not the conversation. `designed`.
+- **an app we ship that joins a room.** register the did inside it, answer there, and publish the media into the same livekit room the meetings rail already describes, so the agent subscribes the way it would in any other room. this is the shape that actually makes a phone answerable, and it is a client to build and keep, which is why it is named and not claimed. `designed`.
+
+so the honest order is: the host answers, the phone is hardware, and the phone answers only once there is a client on it that can put the voice somewhere we can reach. waking it is the cheap part.
+
 ### the shell on the phone, which is the idea worth answering
 
 a shell on the phone over ssh is a real door, and termux is how it opens. the honest answer is that it is not the door we need: what is missing is pressing things in apps, and adb already presses. ssh earns its place for moving a file, and `adb push` already moves files. so it stays in the table as a considered route rather than a recommendation, and if a device ever arrives where adb is not available, that row is where the work starts.

@@ -53,6 +53,10 @@ road and not a bug in the step.
 **a black frame from `screencapture`.** the wrong window, or a macos screen recording permission that has
 not been granted to whatever is running the command.
 
+## who answers, once it rings
+
+waking the panel and being in the conversation are different problems. `bin/mobile answer` lists the three shapes and what the agent actually gets in each: the host softphone (ears, and the phone is not in the call), the phone tapping answer (ringing solved, audio in the handset and out of reach), and an app we ship that joins a room (ears, and a client to build and keep). until that client exists the host is the callee and the phone is the device.
+
 ## where the number goes
 
 `bin/mobile routes` is the decision, and the short version is that the host keeps the password. the phone

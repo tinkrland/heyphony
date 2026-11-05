@@ -366,6 +366,11 @@ AREAS = {
                                             "answers": ("three rows: the android app, the iphone app, and the "
                                                         "carrier forwarding to the phone's own number, with what "
                                                         "wakes each one and what we can force")},
+    "can the agent answer a call on the phone": {"asks": "who ends up in the call, and can it hear",
+                                                 "command": "bin/mobile answer",
+                                                 "answers": ("three shapes: the host softphone answers, the phone "
+                                                             "taps answer and the audio stays in the handset, or an "
+                                                             "app we ship joins a room")},
     "how do i prove it works": {
         "asks": "the cheapest first success on a phone somebody is holding",
         "command": "bin/mobile prove",
@@ -455,6 +460,10 @@ def setup_plan():
 WAKE = {
     "android-app": {
         "what": "a sip app on android, registered, holding a foreground service",
+        "wake_on_ring": ("yes, on a phone we own: whitelist the app from doze (adb shell cmd deviceidle "
+                         "whitelist +<pkg>), let it hold a foreground service, and the full screen intent turns "
+                         "the panel on when the invite lands, locked screen and all"),
+        "answer": "phone-taps-answer",
         "invite_while_idle": ("not reliably: doze parks the app's network and stops its keepalive, so the carrier "
                               "believes the registration is live while the invite never reaches the phone"),
         "lights_the_screen": ("yes, once the invite lands: an incoming call is one of the few cases android still "
@@ -468,6 +477,10 @@ WAKE = {
     },
     "ios-app": {
         "what": "a sip app on an iphone, backgrounded",
+        "wake_on_ring": ("no from this branch: a suspended app cannot wake itself, so the wake has to be a "
+                         "pushkit notification with an apns key and the app's own entitlement, and even awake the "
+                         "call screen is system ui we only ever see as pixels"),
+        "answer": None,
         "invite_while_idle": ("no: ios suspends the app and closes the socket within seconds of the screen locking, "
                               "so the registration the app made is gone by the time a call arrives"),
         "lights_the_screen": ("only through callkit, which means the system draws the call screen. an app ringing "
@@ -479,6 +492,8 @@ WAKE = {
     },
     "pstn-handset": {
         "what": "the carrier forwards the did to the phone's own mobile number",
+        "wake_on_ring": "yes, and it asks nothing of us: the handset radio wakes for a call the sim is being rung on",
+        "answer": None,
         "invite_while_idle": ("yes: the handset's own telephony stack answers, not an app, so neither doze nor "
                               "suspension applies"),
         "lights_the_screen": "yes, always, because it is a real call to the sim",
@@ -502,3 +517,47 @@ def wake_rows():
 def routes_that_can_ring():
     """the routes whose phone is meant to answer, so the wake question applies to them at all."""
     return [k for k, v in LINE_ROUTES.items() if v.get("wake")]
+
+
+# who actually answers the call, which is the half the waking does not settle
+ANSWER_PATH = {
+    "host-softphone": {
+        "what": ("a console sip client on the host answers: baresip or pjsua as a process, the did rings there "
+                 "and the media is a local audio device or a file"),
+        "agent_hears": "yes, because the media lands on a machine we run and can point at a pipe or a wav",
+        "agent_speaks": "yes, by the same route in reverse",
+        "needs": ["the did registered on the host", "an audio device or a null sink on the host"],
+        "cost": "the phone is not in the call at all, which is only a cost if a flow insisted on hardware",
+        "state": "designed",
+    },
+    "phone-taps-answer": {
+        "what": ("the app on the phone rings, a full screen intent lights the panel, and our tap_text presses "
+                 "answer on the call screen"),
+        "agent_hears": ("no. the voice goes to the phone's own earpiece and mic, and there is no supported adb "
+                        "path that turns call audio into something a process reads: screenrecord carries no call "
+                        "audio and a capture needs the app or root"),
+        "agent_speaks": "no, for the same reason, and tts into the phone's mic is a separate device we cannot reach",
+        "needs": ["the app registering the did", "android doze whitelist and a foreground service",
+                  "an unlocked screen for the tap"],
+        "cost": "the ringing is solved and the conversation is not: an agent that presses answer has joined a call it cannot hear",
+        "state": "designed",
+    },
+    "our-own-app-in-a-room": {
+        "what": ("an app we write registers the did and also joins the livekit room the meeting rail already "
+                 "describes, so the call audio is published where the agent can subscribe"),
+        "agent_hears": "yes, through the room rather than the handset",
+        "agent_speaks": "yes, publish tts into the same room",
+        "needs": ["an app we ship and sign", "the room keys", "the sip leg inside that app"],
+        "cost": "this is a client to build and maintain, not a verb to call, which is why it is named and not claimed",
+        "state": "designed",
+    },
+}
+
+
+def answer_paths():
+    return [{"name": n, **r} for n, r in ANSWER_PATH.items()]
+
+
+def answers_with_audio():
+    """the shapes where the agent can both hear and be heard."""
+    return [n for n, r in ANSWER_PATH.items() if r["agent_hears"].startswith("yes")]

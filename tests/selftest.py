@@ -277,7 +277,7 @@ class TestTheSetupPlan(unittest.TestCase):
         self.assertIn("no secret", env["note"])
 
     def test_every_area_points_at_a_subcommand_that_exists(self):
-        known = {"status", "prove", "wake", "routes", "verbs", "checks", "plan"}
+        known = {"status", "prove", "wake", "answer", "routes", "verbs", "checks", "plan"}
         for name, row in self.plan["areas"].items():
             self.assertTrue(row["asks"] and row["answers"], f"the area {name!r} is half written")
             command = row["command"].split()
@@ -400,6 +400,57 @@ class TestTheWakeQuestion(unittest.TestCase):
                        "doze parks the app's network", "suspends the app", "telephony stack answers"):
             self.assertIn(needle, page, f"the page lost the {needle!r} answer")
         self.assertIn("bin/mobile wake", (ROOT / "docs/setup.md").read_text())
+
+
+class TestTheAnswerQuestion(unittest.TestCase):
+    """waking the panel is cheap; being in the conversation is the part that decides the branch."""
+
+    def test_every_answer_path_names_what_the_agent_gets(self):
+        for name, row in mobile.ANSWER_PATH.items():
+            for key in ("what", "agent_hears", "agent_speaks", "needs", "cost", "state"):
+                self.assertIn(key, row, f"{name} is missing {key}")
+            self.assertTrue(row["needs"], f"{name} needs nothing, which cannot be true")
+            self.assertEqual(row["state"], "designed")
+            self.assertNotEqual(row["state"], "verified", f"{name} is not proven")
+
+    def test_only_two_shapes_give_the_agent_ears(self):
+        self.assertEqual(mobile.answers_with_audio(), ["host-softphone", "our-own-app-in-a-room"])
+
+    def test_the_phone_tap_row_admits_it_cannot_hear(self):
+        row = mobile.ANSWER_PATH["phone-taps-answer"]
+        self.assertTrue(row["agent_hears"].startswith("no"))
+        self.assertTrue(row["agent_speaks"].startswith("no"))
+        self.assertIn("adb", row["agent_hears"])
+
+    def test_waking_is_answered_separately_from_answering(self):
+        android = mobile.WAKE["android-app"]
+        self.assertIn("deviceidle whitelist", android["wake_on_ring"])
+        self.assertIn("full screen intent", android["wake_on_ring"])
+        self.assertEqual(android["answer"], "phone-taps-answer")
+        self.assertTrue(mobile.WAKE["ios-app"]["wake_on_ring"].startswith("no"))
+        self.assertIsNone(mobile.WAKE["ios-app"]["answer"])
+        self.assertIsNone(mobile.WAKE["pstn-handset"]["answer"])
+        for name, row in mobile.WAKE.items():
+            self.assertIn("wake_on_ring", row, f"{name} lost the ring question")
+            self.assertIn("answer", row, f"{name} lost the answer pointer")
+
+    def test_every_answer_pointer_names_a_real_path(self):
+        for name, row in mobile.WAKE.items():
+            if row["answer"]:
+                self.assertIn(row["answer"], mobile.ANSWER_PATH, f"{name} points at {row['answer']}")
+
+    def test_the_command_and_the_page_carry_it(self):
+        done = subprocess.run([str(ROOT / "bin" / "mobile"), "answer"],
+                              capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        payload = json.loads(done.stdout)
+        self.assertEqual(len(payload["paths"]), len(mobile.ANSWER_PATH))
+        self.assertIn("a call the agent cannot hear", payload["short"])
+        page = (ROOT / "readme.md").read_text()
+        for needle in ("waking it is solvable on a phone we own", "the host softphone answers",
+                       "the phone taps answer", "an app we ship that joins a room",
+                       "waking it is the cheap part"):
+            self.assertIn(needle, page, f"the page lost {needle!r}")
 
 
 if __name__ == "__main__":

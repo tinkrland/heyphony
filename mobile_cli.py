@@ -21,6 +21,8 @@ def main(argv=None):
     w = sub.add_parser("wake")
     w.add_argument("--row")
 
+    sub.add_parser("answer")
+
     r = sub.add_parser("routes")
     r.add_argument("--route")
 
@@ -50,6 +52,12 @@ def main(argv=None):
               "first_success": ("one app opened and one screen read on an android we hold, then a tap that "
                                 "came out of a real dump, then the same look on an iphone where only screen "
                                 "is offered, and only then a hardware check a guest would fail")})
+    elif a.cmd == "answer":
+        _out({"paths": mobile.answer_paths(),
+              "with_audio": mobile.answers_with_audio(),
+              "short": ("waking the phone is solvable and answering is not the same question: a tapped answer on "
+                        "a stock sip client is a call the agent cannot hear, so an agent that answers lives on "
+                        "the host until we ship a client that joins a room")})
     elif a.cmd == "wake":
         if getattr(a, "row", None):
             _out(mobile.wake(a.row))
