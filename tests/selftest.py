@@ -16,6 +16,7 @@ sys.dont_write_bytecode = True
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+import client  # noqa: E402
 import mobile  # noqa: E402
 
 DUMP = """<?xml version='1.0' encoding='UTF-8'?>
@@ -277,7 +278,7 @@ class TestTheSetupPlan(unittest.TestCase):
         self.assertIn("no secret", env["note"])
 
     def test_every_area_points_at_a_subcommand_that_exists(self):
-        known = {"status", "prove", "wake", "answer", "routes", "verbs", "checks", "plan"}
+        known = {"status", "prove", "wake", "answer", "client", "routes", "verbs", "checks", "plan"}
         for name, row in self.plan["areas"].items():
             self.assertTrue(row["asks"] and row["answers"], f"the area {name!r} is half written")
             command = row["command"].split()
@@ -451,6 +452,78 @@ class TestTheAnswerQuestion(unittest.TestCase):
                        "the phone taps answer", "an app we ship that joins a room",
                        "waking it is the cheap part"):
             self.assertIn(needle, page, f"the page lost {needle!r}")
+
+
+class TestTheClient(unittest.TestCase):
+    """two shapes, five components, and nothing claimed: the build this branch could not do."""
+
+    def test_the_shapes_carry_what_a_build_needs(self):
+        self.assertEqual(sorted(client.SHAPES), ["host-bridge", "phone-app"])
+        for name, row in client.SHAPES.items():
+            for key in ("what", "components", "with_a_remote_brain", "wins", "costs", "proves_here",
+                        "needs", "state"):
+                self.assertIn(key, row, f"{name} is missing {key}")
+            self.assertFalse(row["proves_here"], f"{name} claims it was proven here")
+            self.assertEqual(row["state"], "designed")
+            for component in row["components"]:
+                self.assertIn(component, client.COMPONENTS, f"{name} names an unknown component")
+
+    def test_the_host_bridge_is_first_and_the_reason_is_a_reason(self):
+        first = client.first_shape()
+        self.assertEqual(first["shape"], "host-bridge")
+        self.assertIn("no phone", first["because"])
+        self.assertIn("no signing identity", first["because"])
+
+    def test_the_room_is_optional_until_the_brain_is_elsewhere(self):
+        alone = [c["name"] for c in client.components_for("host-bridge")]
+        remote = [c["name"] for c in client.components_for("host-bridge", remote_brain=True)]
+        self.assertNotIn("room-leg", alone)
+        self.assertIn("room-leg", remote)
+        self.assertIn("consent", alone, "consent is not optional")
+
+    def test_the_steps_run_in_the_order_the_call_needs(self):
+        for name in client.SHAPES:
+            steps = client.bridge_plan(name)["steps"]
+            does = [step["does"] for step in steps]
+            self.assertEqual(does[0], "sip-leg", f"{name} does not hold the line first")
+            self.assertEqual(does[-1], "consent", f"{name} does not end by saying what it is")
+            for step in steps:
+                self.assertIn(step["does"], client.COMPONENTS)
+                self.assertTrue(step["how"] and step["note"], f"{name} has a half-written step")
+
+    def test_the_refusals_are_the_ones_that_make_a_client_safe(self):
+        for needle in ("agent-hears-itself", "silent-recording", "unlabelled-bot", "cold-answer"):
+            self.assertIn(needle, client.REFUSED)
+        self.assertIn("echo", client.REFUSED["agent-hears-itself"])
+        self.assertIn("what it is", client.REFUSED["unlabelled-bot"])
+
+    def test_the_room_contract_forbids_the_echo_in_one_line(self):
+        contract = client.room_contract()
+        self.assertIn("never", contract["subscribe"])
+        self.assertIn("off unless", contract["records"])
+        self.assertEqual(contract["identity"], "the did, because the call is the identity that matters to the person on it")
+
+    def test_the_first_proof_says_how_it_fails(self):
+        for name in client.SHAPES:
+            proof = client.first_proof(name)
+            self.assertTrue(proof["call_it"] and proof["passes_when"] and proof["fails_loudly_when"])
+
+    def test_the_command_answers_with_the_plan(self):
+        done = subprocess.run([str(ROOT / "bin" / "mobile"), "client"], capture_output=True, text=True,
+                              timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        payload = json.loads(done.stdout)
+        self.assertEqual(payload["first"]["shape"], "host-bridge")
+        self.assertEqual(payload["plan"]["proves_here"], False)
+        self.assertIn("refusals", payload)
+
+    def test_the_page_points_at_it_and_the_room_row_is_no_longer_a_wish(self):
+        page = (ROOT / "readme.md").read_text()
+        for needle in ("the host bridge goes first", "the phone app comes second",
+                       "the agent never subscribes to the mouth it publishes"):
+            self.assertIn(needle, page, f"the page lost {needle!r}")
+        self.assertIn("client.py", page)
+        self.assertIn("client.py", mobile.ANSWER_PATH["our-own-app-in-a-room"]["cost"])
 
 
 if __name__ == "__main__":

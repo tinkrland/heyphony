@@ -81,6 +81,16 @@ two questions live in the sentence "can the agent take the call", and only the f
 
 so the honest order is: the host answers, the phone is hardware, and the phone answers only once there is a client on it that can put the voice somewhere we can reach. waking it is the cheap part.
 
+## the client, and which shape gets built first
+
+the answer table above ends on a client, so here is the client: `client.py` carries two shapes, five components and the contract a build has to be wrong against, and `bin/mobile client` prints all of it with the steps in order.
+
+**the host bridge goes first.** baresip holds the call on the machine that already holds the did, pipewire gives a headless host a mouth (a null sink, remapped as the microphone) and an ear (the same sink's monitor, recorded in segments on voice activity), and the room is skipped entirely unless the agent's brain runs somewhere else. no phone, no signing identity, no app store, and the first thing it proves is a real call to a real handset. the honest cost is that pipewire is the part this branch's suite cannot test, so the shape is written and unproven.
+
+**the phone app comes second.** one android app with a sip leg and a room leg in the same process, ringing through the full screen intent the wake table already describes, publishing its microphone and playing the agent's track into the earpiece. it is the only shape where the phone is the callee and the hardware checks come from the same app, and it is the shape that needs an android toolchain, a signing identity and a device, none of which this branch has.
+
+both refuse the same three things in the same words: the agent never subscribes to the mouth it publishes, nothing records unless the room was told, and the first turn of every call says what the caller has reached. a client that gets those wrong is not a client this repo would ship, whatever its latency.
+
 ### the shell on the phone, which is the idea worth answering
 
 a shell on the phone over ssh is a real door, and termux is how it opens. the honest answer is that it is not the door we need: what is missing is pressing things in apps, and adb already presses. ssh earns its place for moving a file, and `adb push` already moves files. so it stays in the table as a considered route rather than a recommendation, and if a device ever arrives where adb is not available, that row is where the work starts.

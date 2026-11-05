@@ -57,6 +57,10 @@ not been granted to whatever is running the command.
 
 waking the panel and being in the conversation are different problems. `bin/mobile answer` lists the three shapes and what the agent actually gets in each: the host softphone (ears, and the phone is not in the call), the phone tapping answer (ringing solved, audio in the handset and out of reach), and an app we ship that joins a room (ears, and a client to build and keep). until that client exists the host is the callee and the phone is the device.
 
+## the client, in the order to build it
+
+`bin/mobile client` prints both shapes, the component list, the room contract and the ordered steps for the one that needs no phone. the host bridge is first: baresip holding the call on the machine that already holds the did, a pipewire null sink remapped as the microphone for the agent's mouth, and that sink's monitor recorded in segments for the ear. the phone app is second and needs a toolchain this branch does not have. neither is proven, and the readme says so in the same words.
+
 ## where the number goes
 
 `bin/mobile routes` is the decision, and the short version is that the host keeps the password. the phone

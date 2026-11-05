@@ -3,6 +3,7 @@ import argparse
 import json
 import sys
 
+import client
 import mobile
 
 
@@ -17,6 +18,11 @@ def main(argv=None):
 
     sub.add_parser("status")
     sub.add_parser("prove")
+
+    cl = sub.add_parser("client")
+    cl.add_argument("--shape", default="host-bridge")
+    cl.add_argument("--remote-brain", action="store_true")
+    cl.add_argument("--first-proof", action="store_true")
 
     w = sub.add_parser("wake")
     w.add_argument("--row")
@@ -58,6 +64,13 @@ def main(argv=None):
               "short": ("waking the phone is solvable and answering is not the same question: a tapped answer on "
                         "a stock sip client is a call the agent cannot hear, so an agent that answers lives on "
                         "the host until we ship a client that joins a room")})
+    elif a.cmd == "client":
+        if a.first_proof:
+            _out(client.first_proof(a.shape))
+        else:
+            _out({**client.choices(),
+                  "plan": client.bridge_plan(a.shape, remote_brain=a.remote_brain),
+                  "first_proof": client.first_proof(a.shape)})
     elif a.cmd == "wake":
         if getattr(a, "row", None):
             _out(mobile.wake(a.row))

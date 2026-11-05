@@ -371,6 +371,11 @@ AREAS = {
                                                  "answers": ("three shapes: the host softphone answers, the phone "
                                                              "taps answer and the audio stays in the handset, or an "
                                                              "app we ship joins a room")},
+    "how does the agent hear the call": {"asks": "which client, and what is the first shape to build",
+                                         "command": "bin/mobile client",
+                                         "answers": ("the two shapes with what each costs, the component list, "
+                                                     "the room contract and the ordered steps for the one that "
+                                                     "needs no phone")},
     "how do i prove it works": {
         "asks": "the cheapest first success on a phone somebody is holding",
         "command": "bin/mobile prove",
@@ -548,7 +553,8 @@ ANSWER_PATH = {
         "agent_hears": "yes, through the room rather than the handset",
         "agent_speaks": "yes, publish tts into the same room",
         "needs": ["an app we ship and sign", "the room keys", "the sip leg inside that app"],
-        "cost": "this is a client to build and maintain, not a verb to call, which is why it is named and not claimed",
+        "cost": ("a client to build and maintain rather than a verb to call. the shapes, the steps and the "
+                 "refusals are in client.py, and the host bridge is the one to attempt first"),
         "state": "designed",
     },
 }
