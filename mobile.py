@@ -325,3 +325,117 @@ def status():
         "adopted_from": ("phone-harness's local mode (mit): open_app, tap_text, type_text, screen, on a "
                          "phone we hold"),
     }
+
+
+# the acts that belong to a person: the phone is a device somebody holds, not a service we rent
+FROM_OWNER = [
+    {"act": "connect the phone and accept the debugging prompt",
+     "why": ("adb, over a cable or the same wifi, needs an authorization the owner taps on the phone, and "
+             "an unauthorized device refuses every verb below")},
+    {"act": "unlock the phone, and leave it awake while a job runs",
+     "why": ("a locked android blocks the accessibility dump and a locked iphone stops mirroring. the "
+             "verbs are not wrong in that state, the screen is asleep")},
+    {"act": "sign into the app the phone has to carry",
+     "why": ("installing is ours and an account is the owner's, including whatever verification the "
+             "service wants for it")},
+    {"act": "be present for a check that wants a face or a camera",
+     "why": ("the four verbs are taps and typing. a flow that opens the camera gets a person, and this "
+             "branch says so instead of pretending the screenshot is a liveness test")},
+]
+
+AREAS = {
+    "what can this phone do": {
+        "asks": "which verbs a backend offers, and why one of them has fewer",
+        "command": "bin/mobile verbs --backend android-adb",
+        "answers": "the verb list for the backend plus the reason it is shorter on ios"},
+    "where does the number live": {
+        "asks": "whether the did's password goes on the phone at all",
+        "command": "bin/mobile routes",
+        "answers": "every route with where the secret ends up, and the one this branch recommends"},
+    "what can a flow actually see": {
+        "asks": "which device checks a guest phone cannot pass",
+        "command": "bin/mobile checks",
+        "answers": "the check table and the list a guest fails, which is why a phone we hold is the point"},
+    "how do i prove it works": {
+        "asks": "the cheapest first success on a phone somebody is holding",
+        "command": "bin/mobile prove",
+        "answers": "the ladder in order, each step with the argv and the thing to watch out for"},
+}
+
+
+def _argv(out):
+    """plan() answers a list when the verb is possible and an object when it has something to say."""
+    return out["argv"] if isinstance(out, dict) and "argv" in out else out
+
+
+def prove_plan():
+    """the first success, cheapest first, with argv taken from plan() rather than retyped here."""
+    iphone_screen = _argv(plan("screen", backend="ios-mirroring"))
+    return [
+        {"step": "one authorized device",
+         "backend": "android-adb",
+         "proves": "the host can see the phone at all",
+         "argv": ["adb", "devices"],
+         "watch_out": ("the word after the serial has to be device, not unauthorized: unauthorized means "
+                       "nobody has tapped allow on the phone yet"),
+         "state": "designed"},
+        {"step": "open a stock app",
+         "backend": "android-adb",
+         "proves": "a package launches by name, which is the whole of open_app",
+         "argv": _argv(plan("open_app", pkg="com.android.dialer")),
+         "watch_out": "a renamed or uninstalled package fails here, so name one the phone actually has",
+         "state": "designed"},
+        {"step": "take one frame",
+         "backend": "android-adb",
+         "proves": "a png comes back, which is what an agent looks at when text is not enough",
+         "argv": _argv(plan("screen")),
+         "watch_out": "a locked phone screenshots the lock screen, and that is a pass with nothing to read",
+         "state": "designed"},
+        {"step": "dump the accessibility tree",
+         "backend": "android-adb",
+         "proves": "labels are readable as text before anything is pressed",
+         "argv": [dump_tree(), read_tree()],
+         "watch_out": ("uiautomator writes to /sdcard and can fail on a phone with no writable storage, "
+                       "which looks like an empty dump rather than an error"),
+         "state": "designed"},
+        {"step": "tap a label out of that dump",
+         "backend": "android-adb",
+         "proves": "a label becomes a coordinate, which is the only honest way to press",
+         "needs": ["dump_tree", "read_tree"],
+         "then": "plan('tap_text', label=..., xml_text=<the dump>)",
+         "watch_out": "a tap without a dump is refused here on purpose, and find_node is pure so this is testable first",
+         "state": "designed"},
+        {"step": "type into what has focus",
+         "backend": "android-adb",
+         "proves": "text reaches a field, with spaces and percent signed the way input text wants them",
+         "argv": _argv(plan("type_text", text="hello world")),
+         "watch_out": "nothing focused means the text goes nowhere silently",
+         "state": "designed"},
+        {"step": "the same look on an iphone",
+         "backend": "ios-mirroring",
+         "proves": "mirroring gives a frame, and only a frame",
+         "argv": iphone_screen,
+         "watch_out": "tap_text stays refused on ios, so this step proves the camera and not a hand",
+         "state": "designed"},
+    ]
+
+
+def setup_plan():
+    """the branch in one object, in the shape the rest of the repo answers --setup with."""
+    return {
+        "branch": "mobile",
+        "what_this_is": ("the phone as a device, and the decision about where the number's password may "
+                         "live. a did proves a line; these flows ask what the hardware is"),
+        "linchpin": recommend(),
+        "from_owner": FROM_OWNER,
+        "env": {"required": [],
+                "optional": [],
+                "note": ("no secret enters this branch. adb trusts the cable or the paired host, and the "
+                         "did's password stays where the routes put it, which is the host")},
+        "areas": AREAS,
+        "prove": prove_plan(),
+        "rules": dict(REFUSED),
+        "backends": {k: {"verbs": v["verbs"], "state": v["state"]} for k, v in BACKENDS.items()},
+        "verified": [k for k, v in LINE_ROUTES.items() if v["state"] == "verified"],
+        "state": "designed",
+    }

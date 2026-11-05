@@ -16,6 +16,7 @@ def main(argv=None):
     sub = p.add_subparsers(dest="cmd")
 
     sub.add_parser("status")
+    sub.add_parser("prove")
 
     r = sub.add_parser("routes")
     r.add_argument("--route")
@@ -36,10 +37,16 @@ def main(argv=None):
     a = p.parse_args(argv)
 
     if a.setup:
-        _out(mobile.status())
+        _out(mobile.setup_plan())
         return 0
     if a.cmd == "status":
         _out(mobile.status())
+    elif a.cmd == "prove":
+        steps = mobile.setup_plan()["prove"]
+        _out({"steps": steps, "count": len(steps),
+              "first_success": ("one app opened and one screen read on an android we hold, then a tap that "
+                                "came out of a real dump, then the same look on an iphone where only screen "
+                                "is offered, and only then a hardware check a guest would fail")})
     elif a.cmd == "routes":
         if a.route:
             _out(mobile.route(a.route))

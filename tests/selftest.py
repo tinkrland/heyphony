@@ -209,8 +209,18 @@ class TestTheOneCommand(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         payload = json.loads(done.stdout)
         self.assertEqual(payload["branch"], "mobile")
-        self.assertEqual(payload["line"]["recommended"], "host-holds-the-line")
+        self.assertEqual(payload["linchpin"]["route"], "host-holds-the-line")
         self.assertEqual(payload["verified"], [])
+        self.assertEqual(payload["state"], "designed")
+
+    def test_prove_answers_with_the_ladder_in_order(self):
+        done = subprocess.run([str(ROOT / "bin" / "mobile"), "prove"],
+                              capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        payload = json.loads(done.stdout)
+        self.assertEqual(payload["count"], len(payload["steps"]))
+        self.assertEqual(payload["steps"][0]["argv"], ["adb", "devices"],
+                         "the wire is the first thing that can fail, so it is the first step")
 
     def test_routes_reports_where_the_secret_lives(self):
         done = subprocess.run([str(ROOT / "bin" / "mobile"), "routes"],
@@ -218,6 +228,130 @@ class TestTheOneCommand(unittest.TestCase):
         payload = json.loads(done.stdout)
         self.assertEqual(payload["recommended"]["route"], "host-holds-the-line")
         self.assertFalse(payload["routes"]["host-holds-the-line"]["phone_keeps_it"])
+
+
+class TestTheLanePagePointsAtTheSetup(unittest.TestCase):
+    """a branch whose page does not say how it is driven is a note, not a branch."""
+
+    def test_the_page_names_the_setup_commands_and_the_runbook(self):
+        text = (ROOT / "readme.md").read_text()
+        for needle in ("bin/mobile --setup", "bin/mobile prove", "[docs/setup.md](docs/setup.md)"):
+            self.assertIn(needle, text, f"the page stopped naming {needle!r}")
+        self.assertTrue((ROOT / "docs" / "setup.md").is_file())
+
+    def test_the_page_keeps_the_honest_order_of_the_ladder(self):
+        text = (ROOT / "readme.md").read_text()
+        opened = text.index("one app opened and one screen read")
+        tapped = text.index("a tap that came out of a real dump")
+        iphone = text.index("the same three on an iphone")
+        hardware = text.index("a hardware check that a guest would fail")
+        self.assertLess(opened, tapped)
+        self.assertLess(tapped, iphone)
+        self.assertLess(iphone, hardware)
+
+
+class TestTheSetupPlan(unittest.TestCase):
+    """the plan is what an agent reads before touching a phone, so its shape is the contract."""
+
+    def setUp(self):
+        import mobile
+        self.mobile = mobile
+        self.plan = mobile.setup_plan()
+
+    def test_the_plan_carries_the_keys_the_rest_of_the_repo_answers_with(self):
+        for key in ("branch", "from_owner", "env", "areas", "prove", "rules", "verified", "linchpin"):
+            self.assertIn(key, self.plan, f"the plan lost {key}")
+        self.assertEqual(self.plan["branch"], "mobile")
+
+    def test_the_human_acts_name_the_act_and_the_reason(self):
+        self.assertTrue(self.plan["from_owner"], "a phone needs a person somewhere")
+        for row in self.plan["from_owner"]:
+            self.assertTrue(row["act"] and row["why"], f"an act lost half of itself: {row}")
+        acts = " ".join(r["act"] for r in self.plan["from_owner"]).lower()
+        for needle in ("debugging prompt", "unlock", "sign into", "camera"):
+            self.assertIn(needle, acts, f"the acts stopped naming {needle!r}")
+
+    def test_no_secret_enters_this_branch(self):
+        env = self.plan["env"]
+        self.assertEqual(env["required"], [], "the routes exist so that nothing here needs a credential")
+        self.assertIn("no secret", env["note"])
+
+    def test_every_area_points_at_a_subcommand_that_exists(self):
+        known = {"status", "prove", "routes", "verbs", "checks", "plan"}
+        for name, row in self.plan["areas"].items():
+            self.assertTrue(row["asks"] and row["answers"], f"the area {name!r} is half written")
+            command = row["command"].split()
+            self.assertEqual(command[0], "bin/mobile")
+            self.assertIn(command[1], known, f"{name!r} points at {command[1]!r}, which the cli does not have")
+
+    def test_the_rules_are_the_refusals_and_nothing_is_verified(self):
+        self.assertEqual(sorted(self.plan["rules"]), sorted(self.mobile.REFUSED))
+        self.assertEqual(self.plan["verified"], [])
+        self.assertEqual(self.plan["state"], "designed")
+        self.assertEqual(self.plan["linchpin"]["route"], "host-holds-the-line")
+
+
+class TestTheProveLadder(unittest.TestCase):
+    """a ladder whose rungs are out of order is advice, not a ladder."""
+
+    def setUp(self):
+        import mobile
+        self.mobile = mobile
+        self.steps = mobile.setup_plan()["prove"]
+
+    def test_every_step_says_what_it_proves_and_what_to_watch(self):
+        for step in self.steps:
+            for key in ("step", "backend", "proves", "watch_out", "state"):
+                self.assertIn(key, step, f"a step lost {key}: {step}")
+            self.assertIn(step["state"], ("designed", "verified"))
+            self.assertEqual(step["state"], "designed", "nothing has driven a phone, so nothing is verified")
+
+    def test_a_step_names_an_argv_or_the_two_calls_that_produce_one(self):
+        for step in self.steps:
+            has_argv = "argv" in step
+            has_needs = "needs" in step
+            self.assertTrue(has_argv != has_needs, f"{step['step']} has both or neither")
+
+    def test_the_dump_comes_before_the_tap(self):
+        names = [s["step"] for s in self.steps]
+        dump = next(i for i, n in enumerate(names) if "dump" in n)
+        tap = next(i for i, n in enumerate(names) if "tap" in n)
+        self.assertLess(dump, tap, "a tap with no dump before it is the thing this branch refuses")
+
+    def test_the_wire_is_first_and_the_iphone_is_last(self):
+        self.assertEqual(self.steps[0]["argv"], ["adb", "devices"])
+        self.assertEqual(self.steps[-1]["backend"], "ios-mirroring")
+
+    def test_the_argv_comes_from_plan_rather_than_being_retyped(self):
+        opened = [s for s in self.steps if s["step"] == "open a stock app"][0]
+        self.assertEqual(opened["argv"], self.mobile.plan("open_app", pkg="com.android.dialer"))
+
+
+class TestTheRunbook(unittest.TestCase):
+    """docs/setup.md is what a person follows, so it has to agree with the data it summarises."""
+
+    def setUp(self):
+        self.page = (ROOT / "docs" / "setup.md")
+        self.text = self.page.read_text()
+
+    def test_the_page_exists_and_carries_no_em_dash(self):
+        self.assertTrue(self.page.is_file())
+        self.assertNotIn("\u2014", self.text)
+
+    def test_the_page_names_the_command_the_areas_and_the_iphone_limit(self):
+        for needle in ("bin/mobile --setup", "bin/mobile prove", "bin/mobile routes", "bin/mobile checks",
+                       "unauthorized", "only a frame"):
+            self.assertIn(needle, self.text, f"the runbook lost {needle!r}")
+
+    def test_the_page_keeps_the_ladder_in_the_order_the_data_has(self):
+        import mobile
+        rows = [s["step"] for s in mobile.setup_plan()["prove"]]
+        headings = [line.strip("| ").split(" | ")[0] for line in self.text.splitlines() if line.startswith("| ")]
+        for step in rows:
+            self.assertIn(step, headings, f"the table dropped {step!r}")
+
+    def test_the_page_says_the_word_verified_is_still_unused(self):
+        self.assertIn("nothing on this branch is `verified` yet", self.text)
 
 
 if __name__ == "__main__":

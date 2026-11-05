@@ -81,3 +81,5 @@ the conclusion is not that guests are useless. it is that a guest is the wrong d
 every route and every backend here is `designed`: the verbs are the ones phone-harness documents, the adb argv is the adb argv, and nothing on this branch has driven a phone yet. `verified` is reserved for a phone we own answering `plan('open_app')` and `plan('screen')` successfully, which is a small, cheap first proof and the next thing to do.
 
 after that the honest order is: one app opened and one screen read on an android we hold, then a tap that came out of a real dump, then the same three on an iphone through mirroring where only `screen` is available, and only then a hardware check that a guest would fail.
+
+`bin/mobile prove` prints that ladder with the argv attached, `bin/mobile --setup` is the whole branch as one object, and [docs/setup.md](docs/setup.md) is the same thing written for a person holding a phone, including the four acts that are theirs and what each failure actually means.
