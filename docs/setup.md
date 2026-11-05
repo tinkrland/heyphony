@@ -70,3 +70,7 @@ phone fails, which is the entire reason a phone we hold is in this story.
 
 nothing on this branch is `verified` yet. the word is reserved for a phone we own answering the first two
 steps of the ladder, and `bin/mobile --setup` reports an empty `verified` list until then.
+
+## whether it rings while nobody is looking
+
+`bin/mobile wake` answers the question the ladder cannot: a registration is not a ring. android parks the app's network in doze and lights the panel only if the invite lands, an iphone drops the socket when the screen locks and rings through pushkit and callkit if it rings at all, and the carrier's own forward to the phone's number always rings because a person picks up instead of the agent.

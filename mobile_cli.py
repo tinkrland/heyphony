@@ -18,6 +18,9 @@ def main(argv=None):
     sub.add_parser("status")
     sub.add_parser("prove")
 
+    w = sub.add_parser("wake")
+    w.add_argument("--row")
+
     r = sub.add_parser("routes")
     r.add_argument("--route")
 
@@ -47,6 +50,15 @@ def main(argv=None):
               "first_success": ("one app opened and one screen read on an android we hold, then a tap that "
                                 "came out of a real dump, then the same look on an iphone where only screen "
                                 "is offered, and only then a hardware check a guest would fail")})
+    elif a.cmd == "wake":
+        if getattr(a, "row", None):
+            _out(mobile.wake(a.row))
+        else:
+            _out({"rows": mobile.wake_rows(),
+                  "short": ("registered is not ringing: android parks the app's network in doze and ios closes "
+                            "the socket when the screen locks, so an idle phone rings only through push on ios, "
+                            "a full screen intent plus a wake path on android, or the carrier's own forwarding "
+                            "to the phone's number, where a person picks up instead of the agent")})
     elif a.cmd == "routes":
         if a.route:
             _out(mobile.route(a.route))

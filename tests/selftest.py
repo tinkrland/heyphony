@@ -277,7 +277,7 @@ class TestTheSetupPlan(unittest.TestCase):
         self.assertIn("no secret", env["note"])
 
     def test_every_area_points_at_a_subcommand_that_exists(self):
-        known = {"status", "prove", "routes", "verbs", "checks", "plan"}
+        known = {"status", "prove", "wake", "routes", "verbs", "checks", "plan"}
         for name, row in self.plan["areas"].items():
             self.assertTrue(row["asks"] and row["answers"], f"the area {name!r} is half written")
             command = row["command"].split()
@@ -352,6 +352,54 @@ class TestTheRunbook(unittest.TestCase):
 
     def test_the_page_says_the_word_verified_is_still_unused(self):
         self.assertIn("nothing on this branch is `verified` yet", self.text)
+
+
+class TestTheWakeQuestion(unittest.TestCase):
+    """registered is not ringing: the branch overstated this and the table is the correction."""
+
+    def test_every_wake_row_carries_the_answer_and_the_lever(self):
+        self.assertEqual(set(mobile.WAKE), {"android-app", "ios-app", "pstn-handset"})
+        for name, row in mobile.WAKE.items():
+            for key in ("what", "invite_while_idle", "lights_the_screen", "lever_we_hold", "honest", "state"):
+                self.assertIn(key, row, f"{name} is missing {key}")
+                self.assertTrue(str(row[key]).strip(), f"{name}.{key} is empty")
+            self.assertEqual(row["state"], "designed", f"{name} claims more than a shape")
+
+    def test_only_the_routes_whose_phone_answers_carry_a_wake_row(self):
+        self.assertEqual(mobile.routes_that_can_ring(),
+                         ["app-registers-the-did", "provision-onto-phone"])
+        for name, row in mobile.LINE_ROUTES.items():
+            self.assertIn("wake", row, f"{name} does not say whether it rings")
+            for woken in (row["wake"] or ()):
+                self.assertIn(woken, mobile.WAKE, f"{name} points at a wake row that is not there")
+        self.assertIsNone(mobile.LINE_ROUTES["host-holds-the-line"]["wake"])
+
+    def test_the_three_answers_are_the_ones_that_matter(self):
+        self.assertIn("doze", mobile.WAKE["android-app"]["invite_while_idle"])
+        self.assertIn("full screen intent", mobile.WAKE["android-app"]["lights_the_screen"])
+        self.assertIn("callkit", mobile.WAKE["ios-app"]["lights_the_screen"])
+        self.assertIn("pushkit", mobile.WAKE["ios-app"]["lights_the_screen"])
+        self.assertIn("cannot wake a locked iphone", mobile.WAKE["ios-app"]["lights_the_screen"])
+        self.assertIn("person picks up", mobile.WAKE["pstn-handset"]["honest"])
+
+    def test_the_overstatement_is_gone(self):
+        what = mobile.LINE_ROUTES["app-registers-the-did"]["what"]
+        self.assertIn("while the app is awake", what)
+        self.assertNotIn("so the phone rings and talks", what)
+
+    def test_the_command_answers_it_and_the_pages_agree(self):
+        done = subprocess.run([str(ROOT / "bin" / "mobile"), "wake"],
+                              capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        payload = json.loads(done.stdout)
+        self.assertEqual([r["name"] for r in payload["rows"]], list(mobile.WAKE))
+        self.assertIn("registered is not ringing", payload["short"])
+        page = (ROOT / "readme.md").read_text()
+        self.assertIn("registered is not ringing", page)
+        for needle in ("an android app", "an iphone", "the carrier's own forward",
+                       "doze parks the app's network", "suspends the app", "telephony stack answers"):
+            self.assertIn(needle, page, f"the page lost the {needle!r} answer")
+        self.assertIn("bin/mobile wake", (ROOT / "docs/setup.md").read_text())
 
 
 if __name__ == "__main__":

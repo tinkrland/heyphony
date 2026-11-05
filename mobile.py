@@ -53,6 +53,7 @@ LINE_ROUTES = {
     "host-holds-the-line": {
         "what": ("the did stays registered on the host that heyphony already runs, and the phone is "
                  "only ever the device: the app that wants hardware, the screen, the sensors"),
+        "wake": None,
         "secret_on": "the host, where it already lives",
         "phone_keeps_it": False,
         "secrets_to_rotate": 0,
@@ -65,7 +66,8 @@ LINE_ROUTES = {
     },
     "app-registers-the-did": {
         "what": ("a sip client on the phone (linphone, or baresip on android) registers the did itself, "
-                 "so the phone rings and talks without the host in the path"),
+                 "so the phone can ring and talk without the host in the path, while the app is awake"),
+        "wake": ("android-app", "ios-app"),
         "secret_on": "the phone, in the client's own config",
         "phone_keeps_it": True,
         "secrets_to_rotate": 1,
@@ -80,6 +82,7 @@ LINE_ROUTES = {
     "provision-onto-phone": {
         "what": ("the config is pushed to the phone over adb instead of typed into it: one push, one "
                  "app restart, and no human typing a password on a screen"),
+        "wake": ("android-app", "ios-app"),
         "secret_on": "the phone, pushed from the host",
         "phone_keeps_it": True,
         "secrets_to_rotate": 1,
@@ -93,6 +96,7 @@ LINE_ROUTES = {
     "termux-ssh": {
         "what": ("a shell on the phone over ssh (termux's sshd), so the host can run commands there. a "
                  "desktop ssh client on the phone is the same door seen from the other side"),
+        "wake": None,
         "secret_on": "the phone, in whatever the shell writes",
         "phone_keeps_it": True,
         "secrets_to_rotate": 1,
@@ -107,6 +111,7 @@ LINE_ROUTES = {
     "phone-holds-the-account": {
         "what": ("the phone owns the account and the session (the app is logged in on it), and the "
                  "number stays where it is. two different things, on purpose"),
+        "wake": None,
         "secret_on": "the phone holds a session, not the sip password",
         "phone_keeps_it": False,
         "secrets_to_rotate": 0,
@@ -356,6 +361,11 @@ AREAS = {
         "asks": "which device checks a guest phone cannot pass",
         "command": "bin/mobile checks",
         "answers": "the check table and the list a guest fails, which is why a phone we hold is the point"},
+    "does the phone ring when it is idle": {"asks": "will the screen light up, and where does the answer differ",
+                                            "command": "bin/mobile wake",
+                                            "answers": ("three rows: the android app, the iphone app, and the "
+                                                        "carrier forwarding to the phone's own number, with what "
+                                                        "wakes each one and what we can force")},
     "how do i prove it works": {
         "asks": "the cheapest first success on a phone somebody is holding",
         "command": "bin/mobile prove",
@@ -439,3 +449,56 @@ def setup_plan():
         "verified": [k for k, v in LINE_ROUTES.items() if v["state"] == "verified"],
         "state": "designed",
     }
+
+
+# whether a phone actually wakes for a call, which is a different question from whether it registered
+WAKE = {
+    "android-app": {
+        "what": "a sip app on android, registered, holding a foreground service",
+        "invite_while_idle": ("not reliably: doze parks the app's network and stops its keepalive, so the carrier "
+                              "believes the registration is live while the invite never reaches the phone"),
+        "lights_the_screen": ("yes, once the invite lands: an incoming call is one of the few cases android still "
+                              "allows a full screen intent, so the app can light the panel over the lock screen"),
+        "lever_we_hold": ("on a phone we control, adb: svc power stayon keeps the panel alive while charging and "
+                          "dumpsys deviceidle shows what doze actually did, but both trade the thing that makes it "
+                          "a phone for a handset that behaves like a desk terminal"),
+        "honest": ("registered is not ringing. the gap between them is doze, and nothing in the four verbs closes "
+                   "it"),
+        "state": "designed",
+    },
+    "ios-app": {
+        "what": "a sip app on an iphone, backgrounded",
+        "invite_while_idle": ("no: ios suspends the app and closes the socket within seconds of the screen locking, "
+                              "so the registration the app made is gone by the time a call arrives"),
+        "lights_the_screen": ("only through callkit, which means the system draws the call screen. an app ringing "
+                              "without pushkit and callkit cannot wake a locked iphone at all"),
+        "lever_we_hold": ("none from this branch: the wake path is apns plus the app's own push entitlement, which "
+                          "is a signing and server decision rather than an adb one"),
+        "honest": ("on ios the ring is a push notification wearing a phone call's clothes, and the sender is not us"),
+        "state": "designed",
+    },
+    "pstn-handset": {
+        "what": "the carrier forwards the did to the phone's own mobile number",
+        "invite_while_idle": ("yes: the handset's own telephony stack answers, not an app, so neither doze nor "
+                              "suspension applies"),
+        "lights_the_screen": "yes, always, because it is a real call to the sim",
+        "lever_we_hold": ("a forwarding rule on the number record at the carrier, which is the other branch's "
+                          "errand rather than this one's"),
+        "honest": "the phone rings and a person picks up. the agent is no longer the callee, which is the price",
+        "state": "designed",
+    },
+}
+
+
+def wake(name):
+    return WAKE[name]
+
+
+def wake_rows():
+    return [{"name": k, "lights_the_screen": v["lights_the_screen"],
+             "invite_while_idle": v["invite_while_idle"], "state": v["state"]} for k, v in WAKE.items()]
+
+
+def routes_that_can_ring():
+    """the routes whose phone is meant to answer, so the wake question applies to them at all."""
+    return [k for k, v in LINE_ROUTES.items() if v.get("wake")]

@@ -53,9 +53,19 @@ the route is not a compromise, it is the shape the two halves want. the host is 
 
 ### putting the did on the phone instead
 
-`app-registers-the-did` is real and sometimes right: a phone that rings the number itself needs no host in the path. it costs the thing this repo refuses everywhere else, which is a long-lived sip password sitting inside a machine that gets thrown away. if the phone is the owner's own and stays, the cost is fair. if the phone is a guest that is recreated per task, the password has to be re-issued every spawn, and that is a job nobody wants.
+`app-registers-the-did` is real and sometimes right: a phone that rings the number itself, while the app is awake, needs no host in the path. it costs the thing this repo refuses everywhere else, which is a long-lived sip password sitting inside a machine that gets thrown away. if the phone is the owner's own and stays, the cost is fair. if the phone is a guest that is recreated per task, the password has to be re-issued every spawn, and that is a job nobody wants.
 
 `provision-onto-phone` is the same placement with less typing: the config is pushed over adb and the app reads it on next launch, so no human types a password on a screen. it removes the human, not the exposure.
+
+### whether the screen lights up, which is a different question
+
+a phone that registered is not a phone that rang. three answers, and only one of them is ours to force:
+
+- **an android app.** the invite can light the panel, because an incoming call is still one of the few cases android allows a full screen intent, drawn over the lock screen. the invite is the part that goes missing: doze parks the app's network, so the carrier goes on believing the registration is live while nothing reaches the phone. on a handset we control, `svc power stayon` while plugged and `dumpsys deviceidle` make that failure rare and visible, at the price of a phone that behaves like a desk terminal.
+- **an iphone.** no. ios suspends the app and closes the socket within seconds of the screen locking, so the registration is gone long before a call arrives. the ringing that does work is pushkit plus callkit, which means the system draws the call screen and the sender is a push service rather than this branch.
+- **the carrier's own forward.** yes, always, because the handset's telephony stack answers instead of an app. it costs the thing that made the phone useful here: a person picks up, and the agent is no longer the callee.
+
+so `registered is not ringing`, and that is one more reason the recommended route keeps the line on the host: an awake host is something we have, and an awake phone is something we can only ask for.
 
 ### the shell on the phone, which is the idea worth answering
 
