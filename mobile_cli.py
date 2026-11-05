@@ -1,0 +1,74 @@
+"""the command surface for the mobile branch: one json object out, no prompts."""
+import argparse
+import json
+import sys
+
+import mobile
+
+
+def _out(obj):
+    print(json.dumps(obj, indent=2, sort_keys=True))
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="mobile")
+    p.add_argument("--setup", action="store_true", help="the branch in one json object")
+    sub = p.add_subparsers(dest="cmd")
+
+    sub.add_parser("status")
+
+    r = sub.add_parser("routes")
+    r.add_argument("--route")
+
+    v = sub.add_parser("verbs")
+    v.add_argument("--backend", default="android-adb")
+
+    c = sub.add_parser("checks")
+    c.add_argument("--check")
+
+    pl = sub.add_parser("plan")
+    pl.add_argument("verb")
+    pl.add_argument("--backend", default="android-adb")
+    pl.add_argument("--pkg")
+    pl.add_argument("--label")
+    pl.add_argument("--text")
+
+    a = p.parse_args(argv)
+
+    if a.setup:
+        _out(mobile.status())
+        return 0
+    if a.cmd == "status":
+        _out(mobile.status())
+    elif a.cmd == "routes":
+        if a.route:
+            _out(mobile.route(a.route))
+        else:
+            _out({"recommended": mobile.recommend(),
+                  "routes": {k: {"secret_on": v["secret_on"],
+                                 "phone_keeps_it": v["phone_keeps_it"],
+                                 "survives_phone_burn": v["survives_phone_burn"],
+                                 "registrations": v["registrations"],
+                                 "state": v["state"]} for k, v in mobile.LINE_ROUTES.items()}})
+    elif a.cmd == "verbs":
+        spec = mobile.BACKENDS.get(a.backend)
+        if not spec:
+            _out({"known": False, "known_backends": sorted(mobile.BACKENDS)})
+            return 2
+        _out({"backend": a.backend, "verbs": spec["verbs"], "why": spec["why"],
+              "all_verbs": list(mobile.VERBS)})
+    elif a.cmd == "checks":
+        if a.check:
+            _out(mobile.check(a.check))
+        else:
+            _out({"checks": mobile.CHECKS, "a_guest_fails": mobile.checks_a_guest_fails()})
+    elif a.cmd == "plan":
+        kw = {k: v for k, v in (("pkg", a.pkg), ("label", a.label), ("text", a.text)) if v}
+        _out(mobile.plan(a.verb, backend=a.backend, **kw))
+    else:
+        _out(mobile.status())
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

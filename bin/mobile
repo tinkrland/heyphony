@@ -1,0 +1,7 @@
+#!/bin/sh
+# mobile, from a clone. the module is the thing you can read, so this stays a shim over it.
+#
+# a shell here is a convenience for a human at a terminal. an agent drives the phone over adb,
+# which is the four verbs, not this script.
+here=$(cd "$(dirname "$0")/.." && pwd)
+PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}" PYTHONDONTWRITEBYTECODE=1 exec python3 -m mobile_cli "$@"
