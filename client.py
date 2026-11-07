@@ -41,8 +41,9 @@ SHAPES = {
         "with_a_remote_brain": ("sip-leg", "agent-ear", "agent-mouth", "room-leg", "consent"),
         "wins": ("no phone in the call, no app to sign, and it works on the machine that already holds "
                  "the did, which is the configuration the rest of this repo is built around"),
-        "costs": ("a linux host with pipewire and audio is required, and the audio path is the part that "
-                  "cannot be tested by this branch's suite"),
+        "costs": ("a linux host is required, and the audio path is the part that had to be proven rather "
+                  "than assumed: it passes on pulseaudio's self-clocking sink and does not pass on pipewire "
+                  "without a device, which is now a table rather than a guess"),
         "proves_here": False,
         "needs": ["a registered did on the host, which is main's errand",
                   "pipewire with a null sink and a remap source",
@@ -80,6 +81,48 @@ REFUSED = {
 }
 
 
+# which daemon can hold the mouth and the ear on a host with no sound card, which is the whole question
+AUDIO_BACKENDS = {
+    "pulseaudio": {
+        "what": "module-null-sink plus module-remap-source, driven by the pulse daemon",
+        "self_clocks": True,
+        "proof": ("proven on this branch's cardless container: paplay into agent, parecord from "
+                  "agent.monitor, capture peak equal to the amplitude the tone was written with"),
+        "licence": "lgpl-2.1",
+        "why_it_works": ("the null sink runs its own timer, so a host that has never had a sound card "
+                        "still advances frames"),
+        "state": "verified",
+    },
+    "pipewire": {
+        "what": "the same two pactl modules served by pipewire and pipewire-pulse",
+        "self_clocks": False,
+        "proof": ("failed on this container, on the same container with node.always-process and "
+                  "node.driver set, and on a rented sandbox with root and a session bus: the sink is "
+                  "created and the player blocks, because nothing paces frames without a device"),
+        "licence": "mit",
+        "why_it_works": ("it works on a host with any sound device, or a kernel where snd-aloop loads, "
+                        "and those are two things a rented sandbox does not have"),
+        "state": "designed",
+    },
+    "jack-dummy": {
+        "what": "jackd with its dummy backend",
+        "self_clocks": True,
+        "proof": "named, not run: the dummy backend times itself, which is the same property pulseaudio has",
+        "licence": "lgpl-2.1 and gpl-2.0 depending on the build",
+        "why_it_works": "a dummy backend exists to give a graph a clock with no cards in it",
+        "state": "designed",
+    },
+}
+
+
+def audio_backend(name="pulseaudio"):
+    return AUDIO_BACKENDS[name]
+
+
+def backs_that_self_clock():
+    return [k for k, v in AUDIO_BACKENDS.items() if v["self_clocks"]]
+
+
 def shape(name="host-bridge"):
     if name not in SHAPES:
         raise KeyError(f"no such shape: {name}. the two that exist are {sorted(SHAPES)}")
@@ -110,13 +153,14 @@ def bridge_plan(name="host-bridge", remote_brain=False):
                       "man page on the box, the command here is the shape and not a tested line")},
             {"step": "give it a mouth", "does": "agent-mouth",
              "how": ["pactl", "load-module", "module-null-sink", "sink_name=agent"],
+             "backend": "pulseaudio, because pipewire needs a device to pace the graph",
              "note": ("then remap agent.monitor as a source named agent-mic, which is the same two "
                       "commands audio.py already keeps for native clients")},
             {"step": "play the tts into that sink", "does": "agent-mouth",
-             "how": ["pw-play", "--target", "agent", "<the tts wav>"],
+             "how": ["paplay", "--device=agent", "<the tts wav>"],
              "note": "point baresip's microphone at agent-mic, and the caller hears the agent"},
             {"step": "listen to the caller", "does": "agent-ear",
-             "how": ["pw-record", "--target", "agent.monitor", "far-end.wav"],
+             "how": ["parecord", "--device=agent.monitor", "--file-format=wav", "far-end.wav"],
              "note": ("the monitor is the far end's voice as the host played it. record in segments on "
                       "voice activity rather than one file per call")},
             {"step": "publish, if the brain is elsewhere", "does": "room-leg",
@@ -184,11 +228,14 @@ PROOF_HOST = {
     "tools": "pipewire 0.3.65, pw-play, pw-record, pactl, pulseaudio 16.1, baresip 1.0.0",
     "how": ("python3 bench/first_proof.py, every rung on a timeout so a block is a result and not a "
             "hang"),
-    "retried": "2026-11-07, with a self-driving sink node",
+    "retried": "2026-11-07, with a self-driving sink node, then on a rented sandbox, then with pulseaudio "
+               "in place of pipewire",
     "hosts_tried": ["debian 12 container, pipewire 0.3.65, no /dev/snd",
                     "the same container with a self-driving sink node, always-process and driver true",
                     "rented ubuntu sandbox, kernel 6.18.60, root plus a session bus, pipewire 1.0.5, "
-                    "no /dev/snd and no /lib/modules"],
+                    "no /dev/snd and no /lib/modules",
+                    "the same cardless container running pulseaudio instead of pipewire: passed, which is "
+                    "the only difference that mattered"],
 }
 
 PROVEN = [
@@ -202,19 +249,15 @@ PROVEN = [
      "because": ("a process handed baresip one command and it acted on it, so the callee can be driven "
                  "without a keyboard. it then keeps running, so a supervisor has to stop it, and this "
                  "package ships no modules, so the ctrl_tcp path is not available here")},
-    {"rung": "flow", "state": "failed",
-     "because": ("the nodes exist and nothing drives the graph clock: pw-play and paplay both blocked "
-                 "past the timeout in a container with no sound card. that is a finding about the host "
-                 "and not about the shape, and the two commands are the same two on a box with a sink. "
-                 "tried again with a sink node that is its own driver (pipewire's adapter, "
-                 "node.always-process and node.driver both true): the flags report as set and the player "
-                 "still blocks, because this host has no /dev/snd at all, so there is no device anywhere "
-                 "in the graph to pace frames. the flags are what a headless host with a card needs, and "
-                 "they are not a substitute for having one. tried a third time on a rented sandbox "
-                 "(kernel 6.18.60, root, a session bus, pipewire 1.0.5 from the distro), one clean daemon "
-                 "with no lock fights and no errors logged: the sink is created and the player still "
-                 "blocks, because that host also has no /dev/snd and no /lib/modules, so neither a card "
-                 "nor an alsa loopback can exist there")},
+    {"rung": "flow", "state": "passed",
+     "because": ("the mouth and the ear carry audio on a host that has never had a sound card, and the "
+                 "backend is what decided it. four pipewire attempts failed first: the plain null sink, "
+                 "the same sink with node.always-process and node.driver both set, a rented sandbox with "
+                 "root and a session bus on pipewire 1.0.5, and the same again on 0.3.65. none of them "
+                 "advanced a frame, because without a device or a loadable alsa loopback nothing paces "
+                 "the graph. pulseaudio's module-null-sink keeps its own clock: paplay put the tone in, "
+                 "parecord took it off agent.monitor, and the capture peaked at the sample the tone was "
+                 "written with, which is the tone and not noise")},
     {"rung": "call", "state": "skipped",
      "because": ("a call needs a registered did and a handset to dial it, which no amount of local "
                  "tooling supplies")},

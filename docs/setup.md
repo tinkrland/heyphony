@@ -59,7 +59,7 @@ not been granted to whatever is running the command.
 
 the result it recorded on a container with no sound card: the three node names exist, baresip takes a command from a process, and the audio never flows because nothing drives the graph clock. the last one is the rung that needs a machine with a sink, which is the one thing to check before trusting any of the rest.
 
-a cardless host cannot pass it, and that is measured rather than assumed: pipewire's null sink does not advance frames without a device to pace it, on 0.3.65 or 1.0.5, with or without a session bus and root. run it on a machine with any sound device, or on a kernel where `snd-aloop` can be loaded. if neither is available the mouth and the ear stay node names, and the page already says so.
+a cardless host can pass it, but only on the right daemon, and that is measured rather than assumed. pipewire's null sink does not advance frames without a device to pace it, on 0.3.65 or 1.0.5, with or without a session bus and root, and no node flag changes that. pulseaudio's does: `module-null-sink` keeps its own clock, `paplay` puts the tone in, `parecord` takes it off the monitor, and the capture peaks at the sample the tone was written with. so the plan names pulseaudio first and the harness falls back to it, and a machine with any sound device is no longer a requirement for proving the audio path.
 
 ## who answers, once it rings
 

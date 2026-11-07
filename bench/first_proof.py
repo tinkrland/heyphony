@@ -92,41 +92,134 @@ def rung_nodes():
     return "skipped", "neither a working pulse socket nor pw-cli, so the null sink cannot be asked for"
 
 
-def rung_flow():
-    """play a tone into the sink while recording its monitor, then look for energy in the file."""
-    if not (_have("pw-play") and _have("pw-record") and _have("ffmpeg")):
-        return "skipped", "pw-play, pw-record and ffmpeg are needed together"
-    sink = _pactl("load-module", "module-null-sink", "sink_name=agent_flow")
-    if not sink["ok"]:
-        return "skipped", "no null sink to speak into"
-    tmp = tempfile.mkdtemp(prefix="proof-")
-    speech, ear = os.path.join(tmp, "tts.wav"), os.path.join(tmp, "ear.wav")
-    made = _run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"sine=frequency={TONE}:duration=1",
-                 "-ar", "48000", "-ac", "1", speech, "-y"])
-    if not made["ok"]:
-        return "skipped", "could not make a tone to speak"
-    rec = subprocess.Popen(["pw-record", "--target", "agent_flow.monitor", ear],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(1)
-    play = _run(["pw-play", "--target", "agent_flow", speech])
-    time.sleep(1)
-    rec.terminate()
+def _write_tone(path, seconds=2, rate=44100, freq=TONE, amplitude=12000):
+    """a tone with no external tool, so the flow rung does not depend on ffmpeg being installed."""
+    import math
+    import struct
+    import wave
+
+    frames = rate * seconds
+    data = b"".join(struct.pack("<h", int(amplitude * math.sin(2 * math.pi * freq * i / rate)))
+                    for i in range(frames))
+    with wave.open(path, "w") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(rate)
+        handle.writeframes(data)
+
+
+def _peak(path):
+    """the loudest sample in the file, or 0 when it holds nothing."""
+    import wave
+
     try:
-        rec.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        rec.kill()
-    if sink["out"].strip().isdigit():
-        _pactl("unload-module", sink["out"].strip())
-    if play.get("timeout"):
-        return "failed", ("the player blocked: the nodes exist and nothing drives the graph clock, which "
-                          "is what a container without a sound card does")
-    level = _run(["ffmpeg", "-v", "error", "-i", ear, "-af", "volumedetect", "-f", "null", "-"])
-    if not os.path.exists(ear):
-        return "failed", "the recorder wrote nothing"
-    energy = [line for line in level["err"].splitlines() if "max_volume" in line]
-    if not energy:
-        return "failed", "the recording has no measurable level, so the mouth did not reach the ear"
-    return "passed", f"recorded the sink monitor: {energy[0].split(']')[-1].strip()}"
+        with wave.open(path) as handle:
+            raw = handle.readframes(handle.getnframes())
+    except Exception:  # noqa: BLE001 - an unreadable capture is a zero, not a crash
+        return 0
+    peak = 0
+    for i in range(0, len(raw), 2):
+        sample = abs(int.from_bytes(raw[i:i + 2], "little", signed=True))
+        peak = sample if sample > peak else peak
+    return peak
+
+
+def _pulse_flow():
+    """the same mouth and ear through pulseaudio, which keeps its own clock without a card.
+
+    this is the finding the four failed pipewire attempts bought: pulseaudio's module-null-sink
+    advances by itself, so on a host with no /dev/snd the tone arrives and the monitor has energy.
+    pipewire's null sink does not, and no node flag changes that.
+    """
+    for tool in ("pulseaudio", "paplay", "parecord"):
+        if not shutil.which(tool):
+            return None, f"{tool} is not installed, so the pulse fallback cannot be tried"
+
+    tmp = tempfile.mkdtemp(prefix="pa-proof-")
+    runtime = os.path.join(tmp, "runtime")
+    os.makedirs(runtime, exist_ok=True)
+    env = dict(os.environ, XDG_RUNTIME_DIR=runtime, PULSE_RUNTIME_PATH=runtime)
+    speech, ear = os.path.join(tmp, "tone.wav"), os.path.join(tmp, "ear.wav")
+    _write_tone(speech)
+
+    server = None
+    answering = subprocess.run(["pactl", "info"], env=env, capture_output=True, timeout=TIMEOUT)
+    if answering.returncode != 0:
+        server = subprocess.Popen(
+            ["pulseaudio", "-n", "--exit-idle-time=-1", "--disallow-exit",
+             "--log-target=file:" + os.path.join(tmp, "pa.log"),
+             "--load=module-native-protocol-unix",
+             "--load=module-null-sink sink_name=agent_probe",
+             "--load=module-remap-source master=agent_probe.monitor source_name=agent_probe_mic"],
+            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        time.sleep(4)
+    try:
+        rec = subprocess.Popen(["parecord", "--device=agent_probe.monitor", "--file-format=wav", ear],
+                               env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(1.5)
+        played = subprocess.run(["paplay", "--device=agent_probe", speech], env=env,
+                                capture_output=True, timeout=TIMEOUT)
+        time.sleep(1.5)
+        rec.terminate()
+        try:
+            rec.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            rec.kill()
+        if played.returncode != 0:
+            return False, f"paplay refused the tone: {played.stderr.decode()[:120]}"
+        peak = _peak(ear)
+        if peak <= 100:
+            return False, "the monitor recorded silence, so the mouth did not reach the ear"
+        return True, f"pulseaudio carried the tone into the monitor, peak sample {peak}"
+    finally:
+        if server is not None:
+            server.terminate()
+            try:
+                server.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                server.kill()
+
+
+def rung_flow():
+    """play a tone into a sink while recording its monitor, then look for energy in the file.
+
+    pipewire goes first because that is the backend the plan names. when its player blocks, which is
+    what a cardless host does to it, the pulse fallback is tried and the answer says which one
+    carried the audio, because that difference is the whole result.
+    """
+    pipewire_note = None
+    if _have("pw-play") and _have("pw-record"):
+        sink = _pactl("load-module", "module-null-sink", "sink_name=agent_flow")
+        if sink["ok"]:
+            tmp = tempfile.mkdtemp(prefix="proof-")
+            speech, ear = os.path.join(tmp, "tone.wav"), os.path.join(tmp, "ear.wav")
+            _write_tone(speech)
+            rec = subprocess.Popen(["pw-record", "--target", "agent_flow.monitor", ear],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(1)
+            play = _run(["pw-play", "--target", "agent_flow", speech])
+            time.sleep(1)
+            rec.terminate()
+            try:
+                rec.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                rec.kill()
+            if sink["out"].strip().isdigit():
+                _pactl("unload-module", sink["out"].strip())
+            if not play.get("timeout") and _peak(ear) > 100:
+                return "passed", f"pipewire carried the tone, peak sample {_peak(ear)}"
+            pipewire_note = ("pipewire blocked: the sink exists and nothing there drives the graph clock "
+                             "without a card")
+        else:
+            pipewire_note = "pipewire has no working null sink here"
+
+    carried, reason = _pulse_flow()
+    if carried:
+        return "passed", (f"{reason}. pipewire did not: {pipewire_note}, which is why the fallback is "
+                          f"the backend this branch actually proves on a cardless host")
+    if carried is None:
+        return "skipped", f"{reason}. pipewire also did not carry it: {pipewire_note}"
+    return "failed", f"neither backend carried the tone. pulse: {reason}. pipewire: {pipewire_note}"
 
 
 def rung_console():

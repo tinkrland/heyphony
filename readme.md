@@ -85,7 +85,7 @@ so the honest order is: the host answers, the phone is hardware, and the phone a
 
 the answer table above ends on a client, so here is the client: `client.py` carries two shapes, five components and the contract a build has to be wrong against, and `bin/mobile client` prints all of it with the steps in order.
 
-**the host bridge goes first.** baresip holds the call on the machine that already holds the did, pipewire gives a headless host a mouth (a null sink, remapped as the microphone) and an ear (the same sink's monitor, recorded in segments on voice activity), and the room is skipped entirely unless the agent's brain runs somewhere else. no phone, no signing identity, no app store, and the first thing it proves is a real call to a real handset. the honest cost is that pipewire is the part this branch's suite cannot test, so the shape is written and unproven.
+**the host bridge goes first.** baresip holds the call on the machine that already holds the did, a null sink gives a headless host a mouth (remapped as the microphone) and an ear (the same sink's monitor, recorded in segments on voice activity), and the room is skipped entirely unless the agent's brain runs somewhere else. no phone, no signing identity, no app store, and the first thing it proves is a real call to a real handset. the audio half is proven and the daemon was the deciding detail: pulseaudio's sink keeps its own clock, so it carries audio on a machine with no sound card, while pipewire's does not. what is still unproven is the call itself.
 
 **the phone app comes second.** one android app with a sip leg and a room leg in the same process, ringing through the full screen intent the wake table already describes, publishing its microphone and playing the agent's track into the earpiece. it is the only shape where the phone is the callee and the hardware checks come from the same app, and it is the shape that needs an android toolchain, a signing identity and a device, none of which this branch has.
 
@@ -94,40 +94,37 @@ both refuse the same three things in the same words: the agent never subscribes 
 ### the first proof, attempted once for real
 
 the shape was written and then run, in a debian container with no sound card, and `bench/first_proof.py` is
-how: every rung on a timeout, so a block is recorded as a result instead of hanging the harness. three of
-the six rungs passed and they are the three nobody has to take on faith any more.
+how: every rung on a timeout, so a block is recorded as a result instead of hanging the harness. four of
+the six rungs pass, and the two that skip need a number and a handset.
 
 **the nodes are real.** `module-null-sink` plus `module-remap-source` produced exactly the three names this
-page asks for: `agent`, `agent.monitor` and `agent-mic`. the mouth and the ear exist as node names on any
-pipewire host, and the commands in the plan are the commands.
+page asks for: `agent`, `agent.monitor` and `agent-mic`. the mouth and the ear exist as node names, and the
+commands in the plan are the commands.
 
 **the callee can be driven.** a process handed baresip one command and it acted on it, which is the half of
 the host bridge that has nothing to do with audio. it then keeps running, so a supervisor has to stop it,
 and the debian package ships no modules, so `ctrl_tcp` is not the door here and stdin with `-e` is.
 
-**the audio flow did not pass, and the reason is the host.** the nodes exist and nothing drives the graph
-clock in a container without a sound card: `pw-play` and `paplay` both sat past the timeout. that is a
-finding about a box with no audio device, not about the shape, and the two commands are unchanged on a
-machine with a real sink.
+**the audio flow passes, and it took four attempts to learn why it had not.** pipewire's null sink does not
+advance a graph on a host with no audio device: `pw-play` and `paplay` sat past the timeout with the nodes
+sitting there, on 0.3.65 and on 1.0.5, with `node.always-process` and `node.driver` both set, in our
+container and in a rented sandbox with root and a session bus. the flags are what a host with a card needs
+and they are not a substitute for having one.
 
-it was tried a second time the other way round, with a sink node that is its own driver (pipewire's
-adapter, `node.always-process` and `node.driver` both true), because that is the configuration a headless
-host is supposed to need. the flags report as set and the player still blocks: this host has no `/dev/snd`
-at all, so there is no device anywhere in the graph to pace frames. the lesson worth keeping is that the
-flags are what a headless host with a card needs, and they are not a substitute for having one.
+**so the backend changed, not the shape.** pulseaudio's `module-null-sink` keeps its own clock, so on the
+same cardless host the tone goes in with `paplay`, comes back out of `agent.monitor` through `parecord`, and
+the capture peaks at the sample the tone was written with. the mouth and the ear work on a machine that has
+never had a sound card, and the only thing that had to move was which daemon owns the sink.
 
-it was tried a third time on a rented sandbox, because a container of our own is the least convincing
-witness: kernel 6.18.60, root, a session bus, pipewire 1.0.5 from the distro, one clean daemon with no
-lock fights and nothing in the log. the null sink is created and the player still blocks, for the same
-reason twice over: no `/dev/snd` and no `/lib/modules`, so that host can have neither a sound card nor
-an alsa loopback. the rung needs a machine with an audio device, and it is the one part of this branch
-that a rented sandbox cannot fake.
+that is the useful shape of this result: pipewire is mit and pulseaudio is lgpl-2.1, so the licence was never
+the constraint. the constraint is whether the daemon self-clocks, and only one of the two does. `client.py`
+carries both as `AUDIO_BACKENDS`, the plan names pulseaudio first for a cardless host, and the harness tries
+pipewire first because that is what the plan used to say, then falls back and reports which one carried it.
 
-the other three rungs skipped themselves for the honest reason. a call needs a registered did and a handset
-to dial it, the phone app needs a device and a toolchain, and neither is something a container supplies. so
-the branch now has a proof harness and a recorded result: [`bench/first_proof.py`](bench/first_proof.py),
-`bin/mobile client --proven`, and `PROOF_HOST` in `client.py` carrying the host, the date and the tools,
-because a measurement without those three is a rumour.
+the other two rungs skip themselves for the honest reason: a call needs a registered did and a handset to
+dial it, and the phone app needs a device and a toolchain. neither is something a container supplies, so
+the branch has a proof harness, a recorded result, and `bin/mobile client --proven` to read it without
+opening the code.
 
 ### the shell on the phone, which is the idea worth answering
 

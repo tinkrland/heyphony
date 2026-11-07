@@ -520,7 +520,8 @@ class TestTheClient(unittest.TestCase):
     def test_the_page_points_at_it_and_the_room_row_is_no_longer_a_wish(self):
         page = (ROOT / "readme.md").read_text()
         for needle in ("the host bridge goes first", "the phone app comes second",
-                       "the agent never subscribes to the mouth it publishes"):
+                       "the agent never subscribes to the mouth it publishes",
+                       "pulseaudio's sink keeps its own clock"):
             self.assertIn(needle, page, f"the page lost {needle!r}")
         self.assertIn("client.py", page)
         self.assertIn("client.py", mobile.ANSWER_PATH["our-own-app-in-a-room"]["cost"])
@@ -544,14 +545,24 @@ class TestTheRecordedProof(unittest.TestCase):
 
     def test_the_counts_match_what_the_harness_reported(self):
         run = client.attempt()
-        self.assertEqual(run["counts"], {"passed": 3, "failed": 1, "skipped": 2})
+        self.assertEqual(run["counts"], {"passed": 4, "skipped": 2})
         self.assertEqual([r["rung"] for r in run["rows"]], [r["rung"] for r in client.PROVEN])
 
-    def test_the_audio_flow_stays_failed_until_a_host_with_a_sink_runs_it(self):
-        """the tempting edit is flipping this to passed because the nodes exist. they are not the flow."""
+    def test_the_audio_flow_names_the_daemon_that_carried_it(self):
+        """it passes, and the whole value is knowing why: pulseaudio self-clocks and pipewire does not."""
         flow = [r for r in client.PROVEN if r["rung"] == "flow"][0]
-        self.assertEqual(flow["state"], "failed")
-        self.assertIn("clock", flow["because"])
+        self.assertEqual(flow["state"], "passed")
+        for needle in ("pulseaudio", "module-null-sink", "pipewire", "device"):
+            self.assertIn(needle, flow["because"], f"the flow result lost {needle!r}")
+
+    def test_the_audio_backends_say_which_one_clocks_itself(self):
+        self.assertEqual(client.backs_that_self_clock(), ["pulseaudio", "jack-dummy"])
+        self.assertTrue(client.audio_backend("pulseaudio")["self_clocks"])
+        self.assertFalse(client.audio_backend("pipewire")["self_clocks"])
+        self.assertEqual(client.audio_backend("pulseaudio")["state"], "verified")
+        self.assertEqual(client.audio_backend("pipewire")["state"], "designed")
+        self.assertEqual(client.audio_backend("jack-dummy")["state"], "designed",
+                         "jack is named and not run")
 
     def test_the_two_rungs_that_need_the_world_skip_with_a_reason(self):
         by_rung = {r["rung"]: r for r in client.PROVEN}
@@ -571,17 +582,17 @@ class TestTheRecordedProof(unittest.TestCase):
             self.assertIn(f"def rung_{row['rung']}(", bench, f"the harness lost the {row['rung']} rung")
         self.assertIn("TimeoutExpired", bench, "a blocked step has to be a result, not a hang")
         page = (ROOT / "readme.md").read_text()
-        self.assertEqual(len(client.PROOF_HOST["hosts_tried"]), 3,
+        self.assertEqual(len(client.PROOF_HOST["hosts_tried"]), 4,
                          "every host the flow rung was tried on belongs in the record")
-        self.assertIn("/dev/snd", page,
-                      "the retry finding belongs on the page: a sink with no card behind it ticks nothing")
+        for needle in ("pulseaudio's `module-null-sink` keeps its own clock", "which daemon owns the sink"):
+            self.assertIn(needle, page, f"the page lost {needle!r}")
         self.assertIn("node.always-process", bench,
                       "the headless lesson belongs in the harness: a sink without a card has to be its own driver")
 
     def test_the_pages_say_what_the_attempt_got(self):
         page = (ROOT / "readme.md").read_text()
         for needle in ("the first proof, attempted once for real", "the nodes are real",
-                       "the callee can be driven", "the audio flow did not pass",
+                       "the callee can be driven", "the audio flow passes",
                        "bench/first_proof.py"):
             self.assertIn(needle, page, f"the page lost {needle!r}")
         runbook = (ROOT / "docs" / "setup.md").read_text()
