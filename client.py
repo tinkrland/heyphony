@@ -183,7 +183,12 @@ PROOF_HOST = {
     "at": "2026-11-05",
     "tools": "pipewire 0.3.65, pw-play, pw-record, pactl, pulseaudio 16.1, baresip 1.0.0",
     "how": ("python3 bench/first_proof.py, every rung on a timeout so a block is a result and not a "
-            "hang"), "retried": "2026-11-07, with a self-driving sink node",
+            "hang"),
+    "retried": "2026-11-07, with a self-driving sink node",
+    "hosts_tried": ["debian 12 container, pipewire 0.3.65, no /dev/snd",
+                    "the same container with a self-driving sink node, always-process and driver true",
+                    "rented ubuntu sandbox, kernel 6.18.60, root plus a session bus, pipewire 1.0.5, "
+                    "no /dev/snd and no /lib/modules"],
 }
 
 PROVEN = [
@@ -205,7 +210,11 @@ PROVEN = [
                  "node.always-process and node.driver both true): the flags report as set and the player "
                  "still blocks, because this host has no /dev/snd at all, so there is no device anywhere "
                  "in the graph to pace frames. the flags are what a headless host with a card needs, and "
-                 "they are not a substitute for having one")},
+                 "they are not a substitute for having one. tried a third time on a rented sandbox "
+                 "(kernel 6.18.60, root, a session bus, pipewire 1.0.5 from the distro), one clean daemon "
+                 "with no lock fights and no errors logged: the sink is created and the player still "
+                 "blocks, because that host also has no /dev/snd and no /lib/modules, so neither a card "
+                 "nor an alsa loopback can exist there")},
     {"rung": "call", "state": "skipped",
      "because": ("a call needs a registered did and a handset to dial it, which no amount of local "
                  "tooling supplies")},

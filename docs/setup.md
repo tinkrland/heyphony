@@ -59,6 +59,8 @@ not been granted to whatever is running the command.
 
 the result it recorded on a container with no sound card: the three node names exist, baresip takes a command from a process, and the audio never flows because nothing drives the graph clock. the last one is the rung that needs a machine with a sink, which is the one thing to check before trusting any of the rest.
 
+a cardless host cannot pass it, and that is measured rather than assumed: pipewire's null sink does not advance frames without a device to pace it, on 0.3.65 or 1.0.5, with or without a session bus and root. run it on a machine with any sound device, or on a kernel where `snd-aloop` can be loaded. if neither is available the mouth and the ear stay node names, and the page already says so.
+
 ## who answers, once it rings
 
 waking the panel and being in the conversation are different problems. `bin/mobile answer` lists the three shapes and what the agent actually gets in each: the host softphone (ears, and the phone is not in the call), the phone tapping answer (ringing solved, audio in the handset and out of reach), and an app we ship that joins a room (ears, and a client to build and keep). until that client exists the host is the callee and the phone is the device.

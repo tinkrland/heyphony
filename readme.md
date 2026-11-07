@@ -116,6 +116,13 @@ host is supposed to need. the flags report as set and the player still blocks: t
 at all, so there is no device anywhere in the graph to pace frames. the lesson worth keeping is that the
 flags are what a headless host with a card needs, and they are not a substitute for having one.
 
+it was tried a third time on a rented sandbox, because a container of our own is the least convincing
+witness: kernel 6.18.60, root, a session bus, pipewire 1.0.5 from the distro, one clean daemon with no
+lock fights and nothing in the log. the null sink is created and the player still blocks, for the same
+reason twice over: no `/dev/snd` and no `/lib/modules`, so that host can have neither a sound card nor
+an alsa loopback. the rung needs a machine with an audio device, and it is the one part of this branch
+that a rented sandbox cannot fake.
+
 the other three rungs skipped themselves for the honest reason. a call needs a registered did and a handset
 to dial it, the phone app needs a device and a toolchain, and neither is something a container supplies. so
 the branch now has a proof harness and a recorded result: [`bench/first_proof.py`](bench/first_proof.py),
