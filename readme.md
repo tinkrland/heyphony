@@ -91,6 +91,31 @@ the answer table above ends on a client, so here is the client: `client.py` carr
 
 both refuse the same three things in the same words: the agent never subscribes to the mouth it publishes, nothing records unless the room was told, and the first turn of every call says what the caller has reached. a client that gets those wrong is not a client this repo would ship, whatever its latency.
 
+### the first proof, attempted once for real
+
+the shape was written and then run, in a debian container with no sound card, and `bench/first_proof.py` is
+how: every rung on a timeout, so a block is recorded as a result instead of hanging the harness. three of
+the six rungs passed and they are the three nobody has to take on faith any more.
+
+**the nodes are real.** `module-null-sink` plus `module-remap-source` produced exactly the three names this
+page asks for: `agent`, `agent.monitor` and `agent-mic`. the mouth and the ear exist as node names on any
+pipewire host, and the commands in the plan are the commands.
+
+**the callee can be driven.** a process handed baresip one command and it acted on it, which is the half of
+the host bridge that has nothing to do with audio. it then keeps running, so a supervisor has to stop it,
+and the debian package ships no modules, so `ctrl_tcp` is not the door here and stdin with `-e` is.
+
+**the audio flow did not pass, and the reason is the host.** the nodes exist and nothing drives the graph
+clock in a container without a sound card: `pw-play` and `paplay` both sat past the timeout. that is a
+finding about a box with no audio device, not about the shape, and the two commands are unchanged on a
+machine with a real sink.
+
+the other three rungs skipped themselves for the honest reason. a call needs a registered did and a handset
+to dial it, the phone app needs a device and a toolchain, and neither is something a container supplies. so
+the branch now has a proof harness and a recorded result: [`bench/first_proof.py`](bench/first_proof.py),
+`bin/mobile client --proven`, and `PROOF_HOST` in `client.py` carrying the host, the date and the tools,
+because a measurement without those three is a rumour.
+
 ### the shell on the phone, which is the idea worth answering
 
 a shell on the phone over ssh is a real door, and termux is how it opens. the honest answer is that it is not the door we need: what is missing is pressing things in apps, and adb already presses. ssh earns its place for moving a file, and `adb push` already moves files. so it stays in the table as a considered route rather than a recommendation, and if a device ever arrives where adb is not available, that row is where the work starts.

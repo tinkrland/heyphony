@@ -175,3 +175,52 @@ def choices():
     return {"first": first_shape(), "shapes": {k: {"state": v["state"], "proves_here": v["proves_here"]}
                                               for k, v in SHAPES.items()},
             "contract": room_contract(), "refusals": sorted(REFUSED)}
+
+
+# what the harness got when it was actually run, rather than what the spec hopes
+PROOF_HOST = {
+    "host": "debian 12 container, no sound card, root",
+    "at": "2026-11-05",
+    "tools": "pipewire 0.3.65, pw-play, pw-record, pactl, pulseaudio 16.1, baresip 1.0.0",
+    "how": "python3 bench/first_proof.py, every rung on a timeout so a block is a result and not a hang",
+}
+
+PROVEN = [
+    {"rung": "tools", "state": "passed",
+     "because": "the audio and sip binaries are on the host and every later rung can be attempted"},
+    {"rung": "nodes", "state": "passed",
+     "because": ("module-null-sink plus module-remap-source produced exactly the three names the spec "
+                 "asks for: agent, agent.monitor and agent-mic, which is the mouth, the ear, and the "
+                 "source something else can read")},
+    {"rung": "console", "state": "passed",
+     "because": ("a process handed baresip one command and it acted on it, so the callee can be driven "
+                 "without a keyboard. it then keeps running, so a supervisor has to stop it, and this "
+                 "package ships no modules, so the ctrl_tcp path is not available here")},
+    {"rung": "flow", "state": "failed",
+     "because": ("the nodes exist and nothing drives the graph clock: pw-play and paplay both blocked "
+                 "past the timeout in a container with no sound card. that is a finding about the host "
+                 "and not about the shape, and the two commands are the same two on a box with a sink")},
+    {"rung": "call", "state": "skipped",
+     "because": ("a call needs a registered did and a handset to dial it, which no amount of local "
+                 "tooling supplies")},
+    {"rung": "phone", "state": "skipped",
+     "because": "the phone app rung needs a device we hold and a toolchain this host does not have"},
+]
+
+
+def proved(rung):
+    """one rung's result, so a caller can ask without walking the list."""
+    for row in PROVEN:
+        if row["rung"] == rung:
+            return dict(row, **PROOF_HOST)
+    raise KeyError(f"no such rung: {rung}")
+
+
+def attempt():
+    """what the harness actually got, which is not the same thing as what a shape would prove."""
+    counts = {}
+    for row in PROVEN:
+        counts[row["state"]] = counts.get(row["state"], 0) + 1
+    return {"rows": PROVEN, "counts": counts, "host": PROOF_HOST,
+            "means": ("passed is evidence, failed is a finding, skipped is an honest gap, and the call "
+                      "rung is still the one that decides whether any of this was worth it")}

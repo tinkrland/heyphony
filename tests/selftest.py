@@ -526,6 +526,65 @@ class TestTheClient(unittest.TestCase):
         self.assertIn("client.py", mobile.ANSWER_PATH["our-own-app-in-a-room"]["cost"])
 
 
+class TestTheRecordedProof(unittest.TestCase):
+    """the run is a measurement, so its shape is pinned and its failures stay failures."""
+
+    def test_the_host_is_named_because_a_measurement_without_one_is_a_rumour(self):
+        for key in ("host", "at", "tools", "how"):
+            self.assertTrue(client.PROOF_HOST[key], f"the proof host lost {key!r}")
+        self.assertIn("no sound card", client.PROOF_HOST["host"])
+        self.assertIn("bench/first_proof.py", client.PROOF_HOST["how"])
+
+    def test_every_rung_says_what_happened_and_why(self):
+        states = {"passed", "failed", "skipped"}
+        for row in client.PROVEN:
+            self.assertEqual(set(row), {"rung", "state", "because"})
+            self.assertIn(row["state"], states)
+            self.assertGreater(len(row["because"]), 40, f"{row['rung']} says nothing")
+
+    def test_the_counts_match_what_the_harness_reported(self):
+        run = client.attempt()
+        self.assertEqual(run["counts"], {"passed": 3, "failed": 1, "skipped": 2})
+        self.assertEqual([r["rung"] for r in run["rows"]], [r["rung"] for r in client.PROVEN])
+
+    def test_the_audio_flow_stays_failed_until_a_host_with_a_sink_runs_it(self):
+        """the tempting edit is flipping this to passed because the nodes exist. they are not the flow."""
+        flow = [r for r in client.PROVEN if r["rung"] == "flow"][0]
+        self.assertEqual(flow["state"], "failed")
+        self.assertIn("clock", flow["because"])
+
+    def test_the_two_rungs_that_need_the_world_skip_with_a_reason(self):
+        by_rung = {r["rung"]: r for r in client.PROVEN}
+        self.assertEqual(by_rung["call"]["state"], "skipped")
+        self.assertIn("did", by_rung["call"]["because"])
+        self.assertEqual(by_rung["phone"]["state"], "skipped")
+        self.assertIn("device", by_rung["phone"]["because"])
+
+    def test_no_call_is_verified_by_a_proof_run(self):
+        self.assertEqual(mobile.setup_plan()["verified"], [])
+        for shape in client.SHAPES.values():
+            self.assertFalse(shape["proves_here"], "a local harness cannot stand in for a phone call")
+
+    def test_the_harness_carries_the_same_rungs(self):
+        bench = (ROOT / "bench" / "first_proof.py").read_text()
+        for row in client.PROVEN:
+            self.assertIn(f"def rung_{row['rung']}(", bench, f"the harness lost the {row['rung']} rung")
+        self.assertIn("TimeoutExpired", bench, "a blocked step has to be a result, not a hang")
+
+    def test_the_pages_say_what_the_attempt_got(self):
+        page = (ROOT / "readme.md").read_text()
+        for needle in ("the first proof, attempted once for real", "the nodes are real",
+                       "the callee can be driven", "the audio flow did not pass",
+                       "bench/first_proof.py"):
+            self.assertIn(needle, page, f"the page lost {needle!r}")
+        runbook = (ROOT / "docs" / "setup.md").read_text()
+        self.assertIn("python3 bench/first_proof.py", runbook)
+
+    def test_no_em_dash_in_the_client_or_its_pages(self):
+        for path in (ROOT / "client.py", ROOT / "readme.md", ROOT / "docs" / "setup.md"):
+            self.assertNotIn("\u2014", path.read_text(), f"{path.name} has an em dash")
+
+
 if __name__ == "__main__":
     suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])
     result = unittest.TextTestRunner(verbosity=0).run(suite)

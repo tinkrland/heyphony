@@ -53,6 +53,12 @@ road and not a bug in the step.
 **a black frame from `screencapture`.** the wrong window, or a macos screen recording permission that has
 not been granted to whatever is running the command.
 
+## running the first proof
+
+`python3 bench/first_proof.py` runs the rungs this branch can check and prints where each one stops. it takes no arguments, needs no phone, and every step has a timeout, so a blocked player is a recorded failure rather than a hang. the state of the last run lives in `client.py` as `PROOF_HOST` and `PROVEN`, and `bin/mobile client --proven` prints it.
+
+the result it recorded on a container with no sound card: the three node names exist, baresip takes a command from a process, and the audio never flows because nothing drives the graph clock. the last one is the rung that needs a machine with a sink, which is the one thing to check before trusting any of the rest.
+
 ## who answers, once it rings
 
 waking the panel and being in the conversation are different problems. `bin/mobile answer` lists the three shapes and what the agent actually gets in each: the host softphone (ears, and the phone is not in the call), the phone tapping answer (ringing solved, audio in the handset and out of reach), and an app we ship that joins a room (ears, and a client to build and keep). until that client exists the host is the callee and the phone is the device.

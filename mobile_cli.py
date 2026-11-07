@@ -23,6 +23,7 @@ def main(argv=None):
     cl.add_argument("--shape", default="host-bridge")
     cl.add_argument("--remote-brain", action="store_true")
     cl.add_argument("--first-proof", action="store_true")
+    cl.add_argument("--proven", action="store_true")
 
     w = sub.add_parser("wake")
     w.add_argument("--row")
@@ -65,7 +66,9 @@ def main(argv=None):
                         "a stock sip client is a call the agent cannot hear, so an agent that answers lives on "
                         "the host until we ship a client that joins a room")})
     elif a.cmd == "client":
-        if a.first_proof:
+        if a.proven:
+            _out(client.attempt())
+        elif a.first_proof:
             _out(client.first_proof(a.shape))
         else:
             _out({**client.choices(),
