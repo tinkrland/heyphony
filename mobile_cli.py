@@ -24,6 +24,7 @@ def main(argv=None):
     cl.add_argument("--remote-brain", action="store_true")
     cl.add_argument("--first-proof", action="store_true")
     cl.add_argument("--proven", action="store_true")
+    cl.add_argument("--sourced", action="store_true")
 
     w = sub.add_parser("wake")
     w.add_argument("--row")
@@ -66,7 +67,14 @@ def main(argv=None):
                         "a stock sip client is a call the agent cannot hear, so an agent that answers lives on "
                         "the host until we ship a client that joins a room")})
     elif a.cmd == "client":
-        if a.proven:
+        if a.sourced:
+            _out({"components": client.SOURCED_FROM,
+                  "borrowed": client.borrowed_components(),
+                  "nobody_has": client.NOBODY_HAS,
+                  "short": ("three of the five components already exist on other branches, so the client "
+                            "is assembly rather than a build: callheavy owns the dial socket and the audio "
+                            "rows, meetings owns the room, and what nobody has is the sip to room bridge")})
+        elif a.proven:
             _out(client.attempt())
         elif a.first_proof:
             _out(client.first_proof(a.shape))

@@ -91,6 +91,30 @@ the answer table above ends on a client, so here is the client: `client.py` carr
 
 both refuse the same three things in the same words: the agent never subscribes to the mouth it publishes, nothing records unless the room was told, and the first turn of every call says what the caller has reached. a client that gets those wrong is not a client this repo would ship, whatever its latency.
 
+### what the other branches already own
+
+a client built from nothing would be a second dial stack in a repo that has one. `client.SOURCED_FROM` names
+where each of the five components already lives, and three of them are borrowed rather than built:
+
+- **the sip leg is `callheavy`.** it writes the baresip config and the accounts file for the did, loads the
+  modules with `ctrl_tcp` on 4444, and speaks that socket with dial, answer and hangup. the message shapes
+  were read from baresip's own module source and pinned against a fake transport, and no live call has been
+  placed from there either, which is the same gap this branch has.
+- **the mouth and the ear are `callheavy`'s audio rows plus this branch's proof.** the per platform virtual
+  mic was written there; what was missing was evidence that any of it carries audio on a machine with no
+  sound card, and that is what the harness here supplies.
+- **the room is `meetings`.** the livekit rails and the participant that publishes a track, gated on the
+  three env keys this branch does not hold.
+
+what nobody has is worth writing down as plainly: the sip to room bridge (callheavy's own `bridge_plan`
+says `shipped: false`, two media clocks and two codecs is a project rather than a helper), an android
+toolchain, and a device. `NOBODY_HAS` carries all three so the next reader does not go looking.
+
+the practical consequence is that the call rung does not need a handset, only a far end that answers. the
+plan already has a branch that dials out; a carrier echo or test number answers it, and the media path is
+proven in the direction `callheavy` exists for. inbound ringing is the one part that still wants a person,
+and that is a proof about ringing rather than about audio.
+
 ### the first proof, attempted once for real
 
 the shape was written and then run, in a debian container with no sound card, and `bench/first_proof.py` is

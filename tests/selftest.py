@@ -603,6 +603,48 @@ class TestTheRecordedProof(unittest.TestCase):
             self.assertNotIn("\u2014", path.read_text(), f"{path.name} has an em dash")
 
 
+class TestWhatOtherBranchesOwn(unittest.TestCase):
+    """three of the five components are borrowed, so this folder should never grow a second dial stack."""
+
+    def test_every_component_says_where_it_lives(self):
+        for name, row in client.SOURCED_FROM.items():
+            for key in ("branch", "path", "what", "state", "note"):
+                self.assertIn(key, row, f"{name} is missing {key}")
+            self.assertIn(row["state"], ("designed", "verified"))
+
+    def test_the_borrowed_ones_do_not_include_consent(self):
+        self.assertEqual(sorted(client.borrowed_components()),
+                         ["agent-ear", "agent-mouth", "room-leg", "sip-leg"])
+        self.assertEqual(client.sourced_from("consent")["branch"], "mobile")
+
+    def test_the_gaps_nobody_filled_are_named(self):
+        self.assertEqual(sorted(client.NOBODY_HAS),
+                         ["a-device", "android-toolchain", "sip-to-room-bridge"])
+        self.assertIn("shipped: false", client.NOBODY_HAS["sip-to-room-bridge"])
+
+    def test_the_call_rung_offers_a_far_end_that_is_not_a_person(self):
+        proof = client.first_proof("host-bridge")
+        without = proof["without_a_handset"]
+        self.assertIn("echo or test number", without[1])
+        self.assertIn("ringing", without[2])
+        self.assertIn("registered a did", proof["blocked_on"])
+
+    def test_the_phone_shape_names_what_it_waits_on(self):
+        self.assertIn("sdk and a device", client.SHAPES["phone-app"]["blocked_on"])
+        self.assertIn("emulator", client.SHAPES["phone-app"]["blocked_on"])
+
+    def test_the_command_answers_it(self):
+        done = subprocess.run([str(ROOT / "bin" / "mobile"), "client", "--sourced"],
+                              capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        payload = json.loads(done.stdout)
+        self.assertEqual(len(payload["components"]), 5)
+        self.assertIn("assembly rather than a build", payload["short"])
+        page = (ROOT / "readme.md").read_text()
+        self.assertIn("what the other branches already own", page)
+        self.assertIn("the sip leg is `callheavy`", page)
+
+
 if __name__ == "__main__":
     suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])
     result = unittest.TextTestRunner(verbosity=0).run(suite)

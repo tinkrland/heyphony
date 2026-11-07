@@ -59,6 +59,8 @@ SHAPES = {
                  "app on the same device, which is the only shape that survives the phone being the callee"),
         "costs": ("an android build, a signing identity and a device to test on, none of which this branch "
                   "can do, so it stays a spec rather than progress"),
+        "blocked_on": ("an sdk and a device. no branch carries either: this one is the only one that "
+                       "mentions a phone at all, and an emulator answers a different question"),
         "proves_here": False,
         "needs": ["an android toolchain and a signing identity",
                   "the linphone or pjsip sdk for the sip leg, and the livekit android sdk for the room",
@@ -66,6 +68,71 @@ SHAPES = {
         "state": "designed",
     },
 }
+
+# the five components are not all new work: three of them already exist on other branches, and the
+# honest thing is to name where rather than build a second dial client in this folder
+SOURCED_FROM = {
+    "sip-leg": {
+        "branch": "callheavy",
+        "path": "callheavy/src/host.py and callheavy/src/dial.py",
+        "what": ("writes the baresip config and accounts file for the did, loads the modules including "
+                 "ctrl_tcp on 4444, and speaks the control socket: dial, answer, hangup"),
+        "state": "designed",
+        "note": ("the socket shapes were read from baresip's own module source and pinned against a fake "
+                 "transport, and no live call has been placed from that branch either"),
+    },
+    "agent-ear": {
+        "branch": "callheavy and mobile",
+        "path": "callheavy/src/audio.py, bench/first_proof.py",
+        "what": ("the capture side of the virtual mic per platform, and the proof that a cardless host "
+                 "carries audio at all"),
+        "state": "verified",
+        "note": "mobile's harness is what turned the audio rows from verified:false into a measurement",
+    },
+    "agent-mouth": {
+        "branch": "callheavy and mobile",
+        "path": "callheavy/src/audio.py (MIC, virtual_mic), bench/first_proof.py",
+        "what": "the null sink remapped as a microphone, per platform, with the licence named",
+        "state": "verified",
+        "note": "pulseaudio on linux self-clocks, which is the finding the mouth depends on",
+    },
+    "room-leg": {
+        "branch": "meetings and callheavy",
+        "path": "meetings/rails.py, callheavy/src/audio.py (publish, room_state)",
+        "what": "the livekit rails and the participant that publishes a track",
+        "state": "designed",
+        "note": "gated on LIVEKIT_URL and the two keys, which this branch does not hold",
+    },
+    "consent": {
+        "branch": "mobile",
+        "path": "this file, callheavy/readme.md, meetings/readme.md",
+        "what": "the same refusals written down three times: say what you are, do not record unannounced",
+        "state": "designed",
+        "note": ("callheavy and meetings repeat it on purpose, because a refusal that lives in one branch "
+                 "is a refusal the next one forgets"),
+    },
+}
+
+# what no branch has, stated once so it is not rediscovered as a surprise
+NOBODY_HAS = {
+    "sip-to-room-bridge": ("callheavy's own bridge_plan says shipped: false: a participant joined to both "
+                           "ends means two media clocks and two codecs, which is a project rather than a "
+                           "helper"),
+    "android-toolchain": ("an sdk, an apk build and a signing identity. no branch carries any of them, and "
+                          "an emulator would be a guest, which this branch's own checks table already says "
+                          "fails the hardware question"),
+    "a-device": "hardware. no branch supplies one, so the phone app rung waits on somebody holding a phone",
+}
+
+
+def sourced_from(component):
+    return SOURCED_FROM[component]
+
+
+def borrowed_components():
+    """the ones another branch already builds, so this folder should not build them again."""
+    return [k for k, v in SOURCED_FROM.items() if v["branch"] != "mobile"]
+
 
 REFUSED = {
     "agent-hears-itself": ("a bridge that subscribes to the track it publishes is an echo loop, so the "
@@ -204,6 +271,15 @@ def room_contract():
 def first_proof(name="host-bridge"):
     if name == "host-bridge":
         return {"call_it": "dial the did from a handset",
+                "without_a_handset": ("dial the did from a handset",
+                                      "let callheavy dial out to a carrier echo or test number instead, "
+                                      "which proves the same media path in the direction that branch "
+                                      "exists for. the far end has to answer, and it does not have to "
+                                      "be a person",
+                                      "inbound ringing is the only part that still needs somebody, and "
+                                      "that is a proof about ringing rather than about audio"),
+                "blocked_on": ("nobody has registered a did on a host and placed one call. that is one "
+                               "human with a number and five minutes, not a missing branch"),
                 "passes_when": ("baresip answers, the handset hears the tts, and a sentence spoken into "
                                 "the handset comes back as a transcript"),
                 "fails_loudly_when": ("the handset hears silence, which is a wrong source in the accounts "
