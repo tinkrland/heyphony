@@ -5,6 +5,7 @@ import sys
 
 import client
 import mobile
+import ring as ring_rail
 
 
 def _out(obj):
@@ -25,6 +26,10 @@ def main(argv=None):
     cl.add_argument("--first-proof", action="store_true")
     cl.add_argument("--proven", action="store_true")
     cl.add_argument("--sourced", action="store_true")
+
+    rg = sub.add_parser("ring")
+    rg.add_argument("--channel", default="catcher")
+    rg.add_argument("--proof", action="store_true")
 
     w = sub.add_parser("wake")
     w.add_argument("--row")
@@ -82,6 +87,16 @@ def main(argv=None):
             _out({**client.choices(),
                   "plan": client.bridge_plan(a.shape, remote_brain=a.remote_brain),
                   "first_proof": client.first_proof(a.shape)})
+    elif a.cmd == "ring":
+        if a.proof:
+            _out(ring_rail.first_proof())
+        else:
+            _out({"plan": ring_rail.ring_plan(a.channel), "events": ring_rail.RING_EVENTS,
+                  "channels": ring_rail.NOTIFY, "pickup": ring_rail.PICKUP,
+                  "refusals": ring_rail.REFUSED, "first_proof": ring_rail.first_proof(),
+                  "short": ("the host sees the invite and answers at once, because a caller gives up in "
+                            "thirty seconds and email is minutes. the notification rides beside the "
+                            "answer rather than before it, and the agent takes over once it wakes")})
     elif a.cmd == "wake":
         if getattr(a, "row", None):
             _out(mobile.wake(a.row))

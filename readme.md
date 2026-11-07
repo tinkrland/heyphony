@@ -81,6 +81,38 @@ two questions live in the sentence "can the agent take the call", and only the f
 
 so the honest order is: the host answers, the phone is hardware, and the phone answers only once there is a client on it that can put the voice somewhere we can reach. waking it is the cheap part.
 
+### a call it can see, which is the half that does not need a phone
+
+the phone ringing itself is the unreliable half, and it turns out not to matter: the invite goes to the
+number, the number is registered on the host, and the host is awake whenever the agent is doing anything.
+so a ringing call is something we can always observe, and `ring.py` is that observation turned into a rail.
+
+what it observes is baresip's own event bus over `ctrl_tcp`: `CALL_INCOMING` arrives while the call can
+still be answered, `CALL_ESTABLISHED` says the agent's voice is now audible to a person, `CALL_CLOSED`
+says the decision expired. the first one is the only event a pickup can be built on.
+
+**the race decides the design, not the channel list.** a caller gives up in twenty five to forty five
+seconds. the honest latencies of the ways an idle agent can be reached are: push, a second or two and it
+costs a client we do not have; sms, seconds and per message; email, minutes; a catcher queue on the host,
+until the agent's next poll. so `tell then answer` loses on almost every channel a sleeping agent
+actually has, and it loses silently, which is worse.
+
+**so the host answers first and tells at the same time.** the caller gets a voice instead of thirty
+seconds of ringing, the notification goes out in the same breath, and the agent takes the conversation
+over whenever it wakes, because the media is on the host and this branch proved that audio path on
+pulseaudio. the price is that the first line has to be true on its own, which is the `answer-blind`
+refusal: the host says what it is and offers to take a message, and a confused silence is not a greeting.
+
+`tell then answer` stays in the table as a policy, marked `beats_the_race: false`, because on a push that
+works it is fine and pretending otherwise would be tidy rather than true. everything else is
+`answer-then-tell`.
+
+**and it is proven, up to the part that needs a number.** the listener, the answer and the notification
+are exercised end to end over a socket pair in the suite: a fake baresip emits `CALL_INCOMING`, the rail
+answers it and hands the agent a notification carrying the peer uri and the call id, and the patient
+policy is tested to prove it does *not* answer on its own. what is not proven is a real registration,
+which is the same gap the call rung has and the same one a number closes.
+
 ## the client, and which shape gets built first
 
 the answer table above ends on a client, so here is the client: `client.py` carries two shapes, five components and the contract a build has to be wrong against, and `bin/mobile client` prints all of it with the steps in order.

@@ -53,6 +53,14 @@ road and not a bug in the step.
 **a black frame from `screencapture`.** the wrong window, or a macos screen recording permission that has
 not been granted to whatever is running the command.
 
+## telling the agent a call is ringing
+
+`bin/mobile ring` prints the rail: the events the host sees, the channels an idle agent can be reached on with their real latencies, the two pickup policies and the refusals.
+
+the policy this branch recommends is `answer-then-tell`, because the clock is the caller's rather than ours: a phone rings for half a minute and the agent's inbox is minutes, so the host answers at once and notifies in the same breath. the agent takes over whenever it wakes, since the media is on the host. `tell-then-answer` is available and marked as losing the race on any channel slower than seconds.
+
+the proof that does not need a number is in the suite: a fake baresip on a socket pair emits `CALL_INCOMING`, the rail answers it over the same socket and produces a notification with the peer uri and the call id. the proof that does need a number is `bin/mobile ring --proof`, which is one call to the did from any line.
+
 ## running the first proof
 
 `python3 bench/first_proof.py` runs the rungs this branch can check and prints where each one stops. it takes no arguments, needs no phone, and every step has a timeout, so a blocked player is a recorded failure rather than a hang. the state of the last run lives in `client.py` as `PROOF_HOST` and `PROVEN`, and `bin/mobile client --proven` prints it.

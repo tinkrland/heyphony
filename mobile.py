@@ -376,6 +376,11 @@ AREAS = {
                                          "answers": ("the two shapes with what each costs, the component list, "
                                                      "the room contract and the ordered steps for the one that "
                                                      "needs no phone")},
+    "can it tell me a call is ringing": {"asks": "how an idle agent learns a call arrived, in time",
+                                        "command": "bin/mobile ring",
+                                        "answers": ("the host sees the invite, the two pickup policies and "
+                                                    "the honest latency of every channel an idle agent can "
+                                                    "be reached on")},
     "how do i prove it works": {
         "asks": "the cheapest first success on a phone somebody is holding",
         "command": "bin/mobile prove",

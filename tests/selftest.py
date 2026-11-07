@@ -7,8 +7,10 @@ claiming a phone has been driven when nothing has been.
 import json
 import os
 import pathlib
+import socket
 import subprocess
 import sys
+import tempfile
 import unittest
 
 sys.dont_write_bytecode = True
@@ -18,6 +20,7 @@ sys.path.insert(0, str(ROOT))
 
 import client  # noqa: E402
 import mobile  # noqa: E402
+import ring as ring_rail  # noqa: E402
 
 DUMP = """<?xml version='1.0' encoding='UTF-8'?>
 <hierarchy rotation="0">
@@ -278,7 +281,7 @@ class TestTheSetupPlan(unittest.TestCase):
         self.assertIn("no secret", env["note"])
 
     def test_every_area_points_at_a_subcommand_that_exists(self):
-        known = {"status", "prove", "wake", "answer", "client", "routes", "verbs", "checks", "plan"}
+        known = {"status", "prove", "wake", "answer", "client", "ring", "routes", "verbs", "checks", "plan"}
         for name, row in self.plan["areas"].items():
             self.assertTrue(row["asks"] and row["answers"], f"the area {name!r} is half written")
             command = row["command"].split()
@@ -643,6 +646,118 @@ class TestWhatOtherBranchesOwn(unittest.TestCase):
         page = (ROOT / "readme.md").read_text()
         self.assertIn("what the other branches already own", page)
         self.assertIn("the sip leg is `callheavy`", page)
+
+
+class TestTheRingRail(unittest.TestCase):
+    """the invite reaches the host, the host answers, and the notification rides beside it."""
+
+    def test_the_event_that_matters_is_the_one_that_can_still_be_answered(self):
+        self.assertIn("CALL_INCOMING", ring_rail.RING_EVENTS)
+        self.assertIn("still ringable", ring_rail.RING_EVENTS["CALL_INCOMING"]["matters"])
+        for name, row in ring_rail.RING_EVENTS.items():
+            for key in ("when", "what_the_agent_gets", "matters"):
+                self.assertIn(key, row, f"{name} is missing {key}")
+
+    def test_the_channels_say_who_actually_reaches_a_sleeping_vm(self):
+        for name, row in ring_rail.NOTIFY.items():
+            for key in ("what", "reaches_a_sleeping_vm", "latency", "needs", "cost", "verdict"):
+                self.assertIn(key, row, f"{name} is missing {key}")
+        self.assertTrue(ring_rail.NOTIFY["push"]["reaches_a_sleeping_vm"])
+        self.assertFalse(ring_rail.NOTIFY["webhook"]["reaches_a_sleeping_vm"],
+                         "a webhook to a sleeping receiver is not a channel")
+        self.assertIn("minutes", ring_rail.NOTIFY["email"]["latency"])
+        self.assertIn("second", ring_rail.NOTIFY["push"]["latency"])
+
+    def test_the_policy_is_the_one_that_beats_the_race(self):
+        self.assertTrue(ring_rail.PICKUP["answer-then-tell"]["beats_the_race"])
+        self.assertFalse(ring_rail.PICKUP["tell-then-answer"]["beats_the_race"])
+        self.assertEqual(ring_rail.PICKUP["answer-then-tell"]["state"], "recommended")
+        self.assertEqual(ring_rail.ring_plan()["policy"], "answer-then-tell")
+
+    def test_the_budget_is_shorter_than_the_callers_patience(self):
+        low, high = ring_rail.RING_BUDGET["caller_patience_s"]
+        self.assertLess(low, high)
+        self.assertLess(ring_rail.RING_BUDGET["decide_by_s"], low)
+        self.assertIn("voicemail", ring_rail.RING_BUDGET["past_it"])
+
+    def test_the_refusals_refuse_the_tempting_version(self):
+        for needle in ("answer-blind", "notify-as-the-plan", "wake-the-phone-to-answer"):
+            self.assertIn(needle, ring_rail.REFUSED)
+        self.assertIn("thirty seconds", ring_rail.REFUSED["notify-as-the-plan"])
+
+    def test_a_command_is_a_netstring_with_a_string_params(self):
+        wire = ring_rail.command("answer")
+        self.assertTrue(wire.endswith(b","))
+        payload = json.loads(wire[wire.index(b":") + 1:-1])
+        self.assertEqual(payload["command"], "answer")
+        self.assertIsInstance(payload["params"], str, "baresip's ctrl_tcp wants params as a string")
+
+    def test_the_decoder_takes_netstrings_bare_json_and_a_split_read(self):
+        one = ring_rail.netstring(json.dumps({"type": "CALL_INCOMING"}).encode())
+        two = json.dumps({"type": "CALL_CLOSED"}).encode()
+        messages, rest = ring_rail.decode(one + two)
+        self.assertEqual([m["type"] for m in messages], ["CALL_INCOMING", "CALL_CLOSED"])
+        self.assertEqual(rest, b"")
+        half = one[:5]
+        messages, rest = ring_rail.decode(half)
+        self.assertEqual(messages, [])
+        messages, rest = ring_rail.decode(rest + one[5:])
+        self.assertEqual([m["type"] for m in messages], ["CALL_INCOMING"])
+
+    def test_the_whole_chain_answers_and_notifies_on_one_socket(self):
+        """the proof this rail can have without a registration: a fake baresip on a socket pair."""
+        host, peer = socket.socketpair()
+        notes = []
+        rail = ring_rail.Ring(host, notify=notes.append)
+        event = {"event": True, "class": "call", "type": "CALL_INCOMING", "id": "call-7",
+                 "peeruri": "sip:caller@example.net"}
+        peer.sendall(ring_rail.netstring(json.dumps(event).encode()))
+        self.assertTrue(rail.pump(until=lambda m: m.get("type") == "CALL_INCOMING", timeout=5))
+        self.assertEqual(len(notes), 1, "a ringing call produced no notification")
+        self.assertEqual(notes[0]["peer"], "sip:caller@example.net")
+        self.assertEqual(notes[0]["call_id"], "call-7")
+        self.assertEqual(notes[0]["kind"], "ringing")
+        peer.settimeout(5)
+        answered, _ = ring_rail.decode(peer.recv(4096))
+        self.assertEqual(answered[0]["command"], "answer", "answer-then-tell did not answer")
+        host.close()
+        peer.close()
+
+    def test_tell_then_answer_does_not_answer_on_its_own(self):
+        host, peer = socket.socketpair()
+        notes = []
+        rail = ring_rail.Ring(host, notify=notes.append, policy="tell-then-answer")
+        peer.sendall(ring_rail.netstring(json.dumps({"class": "call", "type": "CALL_INCOMING",
+                                                     "id": "call-8", "peeruri": "sip:x@y"}).encode()))
+        rail.pump(until=lambda m: m.get("type") == "CALL_INCOMING", timeout=5)
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(rail.sent, [], "the patient policy answered the phone anyway")
+        rail.hangup()
+        self.assertEqual(rail.sent, [ring_rail.command("hangup")])
+        host.close()
+        peer.close()
+
+    def test_the_notification_is_a_line_a_tail_can_read(self):
+        target = pathlib.Path(tempfile.mkdtemp()) / "rings.jsonl"
+        message = ring_rail.notify_message({"type": "CALL_INCOMING", "id": "c1", "peeruri": "sip:a@b"})
+        ring_rail.write_notification(message, str(target))
+        ring_rail.write_notification(message, str(target))
+        lines = target.read_text().strip().splitlines()
+        self.assertEqual(len(lines), 2, "two calls should be two lines")
+        self.assertEqual(json.loads(lines[0])["call_id"], "c1")
+
+    def test_the_command_and_the_page_carry_it(self):
+        done = subprocess.run([str(ROOT / "bin" / "mobile"), "ring"], capture_output=True, text=True,
+                              timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        payload = json.loads(done.stdout)
+        self.assertEqual(payload["plan"]["policy"], "answer-then-tell")
+        self.assertEqual(len(payload["plan"]["steps"]), 7)
+        self.assertIn("thirty seconds", payload["short"])
+        page = (ROOT / "readme.md").read_text()
+        self.assertIn("a call it can see", page)
+        runbook = (ROOT / "docs" / "setup.md").read_text()
+        self.assertIn("bin/mobile ring", runbook)
 
 
 if __name__ == "__main__":
