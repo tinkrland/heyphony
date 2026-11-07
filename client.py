@@ -182,7 +182,8 @@ PROOF_HOST = {
     "host": "debian 12 container, no sound card, root",
     "at": "2026-11-05",
     "tools": "pipewire 0.3.65, pw-play, pw-record, pactl, pulseaudio 16.1, baresip 1.0.0",
-    "how": "python3 bench/first_proof.py, every rung on a timeout so a block is a result and not a hang",
+    "how": ("python3 bench/first_proof.py, every rung on a timeout so a block is a result and not a "
+            "hang"), "retried": "2026-11-07, with a self-driving sink node",
 }
 
 PROVEN = [
@@ -199,7 +200,12 @@ PROVEN = [
     {"rung": "flow", "state": "failed",
      "because": ("the nodes exist and nothing drives the graph clock: pw-play and paplay both blocked "
                  "past the timeout in a container with no sound card. that is a finding about the host "
-                 "and not about the shape, and the two commands are the same two on a box with a sink")},
+                 "and not about the shape, and the two commands are the same two on a box with a sink. "
+                 "tried again with a sink node that is its own driver (pipewire's adapter, "
+                 "node.always-process and node.driver both true): the flags report as set and the player "
+                 "still blocks, because this host has no /dev/snd at all, so there is no device anywhere "
+                 "in the graph to pace frames. the flags are what a headless host with a card needs, and "
+                 "they are not a substitute for having one")},
     {"rung": "call", "state": "skipped",
      "because": ("a call needs a registered did and a handset to dial it, which no amount of local "
                  "tooling supplies")},

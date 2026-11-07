@@ -54,23 +54,42 @@ def rung_tools():
 
 
 def rung_nodes():
-    """the three names the spec asks for, made by the two modules it names."""
-    if not shutil.which("pactl"):
-        return "skipped", "pactl is not here, so the null sink cannot be asked for"
-    sink = _pactl("load-module", "module-null-sink", "sink_name=agent_probe")
-    if not sink["ok"]:
-        return "failed", f"null sink did not load: {sink['err'].strip()[:120]}"
-    remap = _pactl("load-module", "module-remap-source", "master=agent_probe.monitor",
-                   "source_name=agent_probe_mic")
-    listing = _pactl("list", "short", "sinks")["out"] + _pactl("list", "short", "sources")["out"]
-    found = [n for n in ("agent_probe", "agent_probe.monitor", "agent_probe_mic") if n in listing]
-    if remap["ok"]:
-        _pactl("unload-module", remap["out"].strip().splitlines()[-1]) if remap["out"].strip() else None
-    if sink["out"].strip().isdigit():
-        _pactl("unload-module", sink["out"].strip())
-    if len(found) == 3:
-        return "passed", f"the three nodes exist: {', '.join(found)}"
-    return "failed", f"expected three nodes, saw {found or 'none'}"
+    """the three names the spec asks for, made by the two modules it names.
+
+    the pulse module is the path the spec names, so it goes first. the fallback is pipewire's own
+    adapter node with node.driver, which is what a headless host needs when no card supplies the
+    clock, and the difference is worth reporting rather than flattening: on a container with no
+    /dev/snd the adapter made a node that pulse could not see, so the three names stayed
+    unconfirmed even though a sink existed.
+    """
+    if shutil.which("pactl") and _pactl("info")["ok"]:
+        sink = _pactl("load-module", "module-null-sink", "sink_name=agent_probe")
+        if not sink["ok"]:
+            return "failed", f"null sink did not load: {sink['err'].strip()[:120]}"
+        remap = _pactl("load-module", "module-remap-source", "master=agent_probe.monitor",
+                       "source_name=agent_probe_mic")
+        listing = _pactl("list", "short", "sinks")["out"] + _pactl("list", "short", "sources")["out"]
+        found = [n for n in ("agent_probe", "agent_probe.monitor", "agent_probe_mic") if n in listing]
+        if remap["ok"] and remap["out"].strip().isdigit():
+            _pactl("unload-module", remap["out"].strip())
+        if sink["out"].strip().isdigit():
+            _pactl("unload-module", sink["out"].strip())
+        if len(found) == 3:
+            return "passed", f"the three nodes exist: {', '.join(found)}"
+        return "failed", f"expected three nodes, saw {found or 'none'}"
+
+    if shutil.which("pw-cli"):
+        made = _run(["pw-cli", "create-node", "adapter",
+                     "factory.name=support.null-audio-sink node.name=agent_probe "
+                     "media.class=Audio/Sink audio.position=[FL,FR] "
+                     "node.always-process=true node.driver=true object.linger=true"])
+        graph = _run(["pw-cli", "ls", "Node"])
+        if made["ok"] and "agent_probe" in graph["out"]:
+            return "failed", ("a sink node exists in the graph, made by pipewire's adapter as its own "
+                              "driver, and the pulse socket is down, so the monitor and the remap "
+                              "source the spec names cannot be created or confirmed")
+
+    return "skipped", "neither a working pulse socket nor pw-cli, so the null sink cannot be asked for"
 
 
 def rung_flow():

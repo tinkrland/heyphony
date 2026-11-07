@@ -110,6 +110,12 @@ clock in a container without a sound card: `pw-play` and `paplay` both sat past 
 finding about a box with no audio device, not about the shape, and the two commands are unchanged on a
 machine with a real sink.
 
+it was tried a second time the other way round, with a sink node that is its own driver (pipewire's
+adapter, `node.always-process` and `node.driver` both true), because that is the configuration a headless
+host is supposed to need. the flags report as set and the player still blocks: this host has no `/dev/snd`
+at all, so there is no device anywhere in the graph to pace frames. the lesson worth keeping is that the
+flags are what a headless host with a card needs, and they are not a substitute for having one.
+
 the other three rungs skipped themselves for the honest reason. a call needs a registered did and a handset
 to dial it, the phone app needs a device and a toolchain, and neither is something a container supplies. so
 the branch now has a proof harness and a recorded result: [`bench/first_proof.py`](bench/first_proof.py),

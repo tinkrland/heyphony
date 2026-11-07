@@ -570,6 +570,11 @@ class TestTheRecordedProof(unittest.TestCase):
         for row in client.PROVEN:
             self.assertIn(f"def rung_{row['rung']}(", bench, f"the harness lost the {row['rung']} rung")
         self.assertIn("TimeoutExpired", bench, "a blocked step has to be a result, not a hang")
+        page = (ROOT / "readme.md").read_text()
+        self.assertIn("/dev/snd", page,
+                      "the retry finding belongs on the page: a sink with no card behind it ticks nothing")
+        self.assertIn("node.always-process", bench,
+                      "the headless lesson belongs in the harness: a sink without a card has to be its own driver")
 
     def test_the_pages_say_what_the_attempt_got(self):
         page = (ROOT / "readme.md").read_text()
