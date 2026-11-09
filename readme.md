@@ -121,6 +121,8 @@ two toggles sit on top: a listed number gets in whatever the mode says (so a cou
 
 one honest limit: a `+1` number is the north american numbering plan, shared by the united states, canada and a run of caribbean nations, and the digits alone do not say which. so "local" for a `+1` home admits all of it, and asking for the united states only would need an area code table this repo does not pretend to have. the same goes for who is really calling: the sender is the number the carrier reports, and a provider vouches for it, not this page.
 
+one more edge worth knowing: texts from a brand name or a short code (a bank, a courier, a verification service) have no country, so only the open mode lets them through and every other mode refuses them under their own name rather than as a malformed number. that includes verification texts, which is the same line this page draws everywhere else about what a number of this type is for.
+
 refused messages are never stored, but they are counted: the reason, the region and a shortened number, never the text. a policy that is too tight otherwise looks exactly like a broken webhook, and `heyphony allow` prints the tally so you can tell them apart.
 
 ## get it

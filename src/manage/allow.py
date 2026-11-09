@@ -35,7 +35,7 @@ from pathlib import Path
 MODES = ("open", "list", "local", "regions")
 DEFAULT_MODE = "list"
 
-E164 = re.compile(r"^\+[1-9]\d{6,14}$")
+E164 = re.compile(r"\+[1-9][0-9]{6,14}")
 
 # dial codes the repo already talks about, plus the common ones. longest prefix wins, so +370 is
 # lithuania and not +3, and +1 is the whole shared plan. an unlisted code is "unknown", which no region
@@ -74,6 +74,8 @@ REFUSED = {
                                 "not pretend the digits say which"),
     "silent-edit": "every change to the policy says what it changed, so a widened door is never a surprise",
     "list-in-the-message": "a sender cannot add itself: only the owner's command edits the list",
+    "name-as-a-number": ("an alphanumeric sender id (AMAZON, a short code) has no country, so only open mode "
+                        "admits it and every other mode refuses it under its own name"),
     "spoofed-local": ("the sender is the number the carrier reports, which a provider vouches for and this "
                       "file does not verify any further than that"),
 }
@@ -90,13 +92,35 @@ def default_policy():
 
 
 def normalize_number(raw):
-    """a plus and digits, or None. spaces, dashes, dots and brackets are removed first."""
-    if raw is None:
+    """a plus and digits, or None. spaces, dashes, dots and brackets are removed first.
+
+    two shapes beyond a clean e164 are accepted because providers really send them: a leading 00 in
+    place of the plus, and bare digits that already begin with a known dial code (some carriers drop the
+    plus). bare digits are only believed when the front of them is a code this file can place, so a
+    random run of digits is still not a number. a unicode digit is not a digit here: `str.isdigit` would
+    say yes to a fullwidth four, and a sender that only looks like a number is the one to distrust.
+    """
+    if raw is None or isinstance(raw, (list, tuple, dict, bytes)):
         return None
     text = re.sub(r"[\s().\-]", "", str(raw))
     if text.startswith("00"):
         text = "+" + text[2:]
-    return text if E164.match(text) else None
+    if text and not text.startswith("+") and text.isascii() and text.isdigit() and len(text) >= 7:
+        if any(("+" + text).startswith(code) for code in _CODES):
+            text = "+" + text
+    return text if E164.fullmatch(text) else None
+
+
+def is_name(raw):
+    """an alphanumeric sender id like AMAZON or a short code: letters, digits, no plus, not a number."""
+    if raw is None or isinstance(raw, (list, tuple, dict, bytes)):
+        return False
+    text = str(raw).strip()
+    if not text or normalize_number(text) is not None:
+        return False
+    # the gsm alphanumeric sender id is at most eleven characters, and a short code is digits only. no
+    # internal spaces: "not a number" is a sentence, and a sentence is not a sender
+    return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._&-]{0,10}", text))
 
 
 def country_of(number):
@@ -155,6 +179,14 @@ def decide(sender, policy=None, path=None):
     policy = policy or load(path)
     number = normalize_number(sender)
     if number is None:
+        # a brand name or short code has no country to check. only `open` admits it, because a list of
+        # e164 numbers and a set of countries cannot vouch for a name, and saying "no-number" for it
+        # would send the owner looking for a bug in their number format
+        if is_name(sender):
+            if policy["mode"] == "open" and str(sender).strip().upper() not in {
+                    str(n).strip().upper() for n in policy.get("block_numbers", [])}:
+                return True, "open-name"
+            return False, "alphanumeric-sender"
         return False, "no-number"
     place = country_of(number)
 
@@ -297,4 +329,6 @@ def explain(policy=None):
         extras.append(f"{len(policy['block_numbers'])} blocked number(s)")
     if policy["also_allow_list"] and mode != "list" and policy["allow_numbers"]:
         extras.append("listed numbers always get in")
+    extras.append("brand names and short codes get in" if mode == "open"
+                  else "brand names and short codes are refused")
     return base + ("; " + "; ".join(extras) if extras else "")

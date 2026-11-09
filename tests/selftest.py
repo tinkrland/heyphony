@@ -1923,14 +1923,57 @@ class TestWhoTheAgentWillHearFrom(unittest.TestCase):
 
     def test_a_garbage_sender_is_refused_in_every_mode(self):
         for mode in self.allow.MODES:
-            for junk in (None, "", "not a number", "12345", "+0123456"):
+            for junk in (None, "", "not a number", "+0123456", "this is far too long to be a sender",
+                         ["+447700900123"], b"+447700900123", 1234567890123456789,
+                         "+\uff14\uff14\uff17\uff17\uff10\uff10\u2079\uff10\uff10\uff11\uff12\uff13"):
                 self.assertFalse(self.allow.decide(junk, self.policy(mode=mode))[0], f"{mode} admitted {junk!r}")
 
-    def test_numbers_are_normalized_before_they_are_compared(self):
-        self.assertEqual(self.allow.normalize_number("+44 (7700) 900-123"), "+447700900123")
-        self.assertEqual(self.allow.normalize_number("0044 7700 900123"), "+447700900123")
-        p = self.policy(mode="list", allow_numbers=["+447700900123"])
-        self.assertTrue(self.allow.decide("+44.7700.900.123", p)[0])
+    def test_a_short_code_or_brand_name_gets_in_only_through_open(self):
+        """a verification text comes from AMAZON or 12345, which have no country. only open can vouch for one."""
+        for name in ("AMAZON", "VM-BANK", "12345"):
+            self.assertEqual(self.allow.decide(name, self.policy(mode="open")), (True, "open-name"))
+            for mode in ("list", "local", "regions"):
+                p = self.policy(mode=mode, home="GB", allow_countries=["GB"], allow_numbers=["+447700900123"])
+                self.assertEqual(self.allow.decide(name, p), (False, "alphanumeric-sender"),
+                                 f"{mode} admitted {name!r}, which has no country to check")
+
+    def test_a_name_is_refused_under_its_own_reason_not_as_a_malformed_number(self):
+        self.assertEqual(self.allow.decide("AMAZON", self.policy(mode="list"))[1], "alphanumeric-sender")
+        self.assertEqual(self.allow.decide("not a number", self.policy(mode="list"))[1], "no-number")
+        self.assertIn("name-as-a-number", self.allow.REFUSED)
+
+    def test_a_blocked_name_stays_out_even_in_open_mode(self):
+        p = self.policy(mode="open", block_numbers=["amazon"])
+        self.assertEqual(self.allow.decide("AMAZON", p), (False, "alphanumeric-sender"))
+
+    def test_bare_digits_are_a_number_only_when_they_start_with_a_known_dial_code(self):
+        """some carriers drop the plus. 447700900123 is a uk number, 123456789012 is just digits."""
+        self.assertEqual(self.allow.normalize_number("447700900123"), "+447700900123")
+        self.assertEqual(self.allow.normalize_number("919876543210"), "+919876543210")
+        self.assertIsNone(self.allow.normalize_number("999123456789"), "no dial code starts this")
+        listed = self.policy(mode="list", allow_numbers=["+447700900123"])
+        self.assertEqual(self.allow.decide("447700900123", listed), (True, "on-the-list"),
+                         "a listed sender was locked out because the carrier dropped the plus")
+
+    def test_a_unicode_digit_anywhere_in_a_number_is_refused(self):
+        """\\d matches fullwidth and arabic-indic digits in python, so a number that starts with an ascii digit
+        and continues in fullwidth passes `[1-9]\\d{6,14}`. the leading digit hid it for the pure case."""
+        fullwidth = lambda s: "".join(chr(0xFF10 + int(d)) for d in s)
+        arabic = lambda s: "".join(chr(0x0660 + int(d)) for d in s)
+        for sneaky in ("+" + fullwidth("447700900123"),
+                       "+4" + fullwidth("47700900123"),
+                       "+44770090" + fullwidth("0123"),
+                       "+4" + arabic("47700900123"),
+                       fullwidth("447700900123")):
+            self.assertIsNone(self.allow.normalize_number(sender := sneaky), f"accepted {sneaky!r}")
+            self.assertFalse(self.allow.decide(sender, self.policy(mode="open"))[0],
+                             f"open mode admitted a number made of unicode digits: {sneaky!r}")
+        self.assertEqual(self.allow.normalize_number("+447700900123"), "+447700900123", "the real one still works")
+
+    def test_the_e164_pattern_is_ascii_digits_and_a_fullmatch(self):
+        self.assertNotIn("\\d", self.allow.E164.pattern, "\\d is unicode aware in python")
+        self.assertIsNone(self.allow.E164.fullmatch("+447700900123\n"), "a trailing newline is not a number")
+        self.assertTrue(self.allow.E164.fullmatch("+447700900123"))
 
     def test_every_edit_says_what_it_changed_and_refuses_what_it_cannot_do(self):
         p = self.allow.default_policy()
