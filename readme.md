@@ -114,6 +114,60 @@ it is gated like the text rail: `HEYPHONY_CALL=allowed` and `--send`, both, or y
 
 there is no second implementation to drift, and the wrappers cannot get round a gate either, which is the one property worth having twice: the gates live in the python, and both adapters only pass arguments to it. whether this becomes a package of its own, or stays the `main` field of this one, is a question for after the branch lands; nothing here is published from a side branch.
 
+### what comes back, and how a reply is answered
+
+a member's reply arrives as an ordinary one-to-one text from their number, because that is the only kind of text this number can receive: we never started a carrier group, so nothing marks the message as belonging to one. `heyphony open messages` therefore names the group on a row where the sender is a member (`groups: [{id, name, member}]`, with a note saying it is their own text), and it resolves that name **at read time** from your own records rather than writing it into the stored message, so history is never rewritten when a member joins later and a person in two groups gets both names instead of a silently picked one.
+
+`heyphony group show dinner` then prints the thread: your sends and their replies in one order. because the carrier contributes nothing, an inbound row is a member's text matched by membership, and the output says exactly that rather than implying a group message arrived.
+
+`heyphony group reply dinner --text "seven then" --replying +1...` is what "reply to the group" can honestly mean here. it goes to every member through the same one-recipient rail, so the replier receives it in the same thread they used, as if you answered them, and every other member gets their own copy. nobody sees a group, and the command output carries that sentence rather than leaving it to be discovered.
+
+### the code the group carries, so a reply can name itself
+
+membership is a guess, so a group gets a code of its own at the moment it is created: four characters drawn from an alphabet with no B, I, O, S, 0, 1, 2, 5 or 8, because a code gets read aloud, copied off a screen and typed back, and those are the pairs that turn one into another. `heyphony group new` prints it and `group show` keeps printing it.
+
+the code rides on the end of what members receive, eight characters and no more: `seven then` leaves as `seven then\n\nref K7QD`. that is the whole point of it. a member's reply can then **name** its group instead of being guessed at, and a member can answer with the code alone if they want to be unambiguous. `--no-tag` sends the body by itself, and the output says the cost rather than leaving it to be discovered: eight characters can push a body near the ceiling into a second segment, which is a second message and a second charge.
+
+so attribution is a ladder with the evidence named, not a single rule. a body quoting the group's code is `by: "code"` and certain. a text arriving on a did the group holds is `by: "number"` and certain. no code, one group in our records is `by: "membership"`, reported as a guess, and no code with two candidate groups is `by: "ambiguous"`, which reports both and picks neither. every inbound row carries `certain` beside the name, because "this is bo's group" and "this came from a number that is in bo's group" are different claims and the second one is the one that could be wrong.
+
+the strongest form is a number of its own: `group new --number +1...` attaches a did to the group, and then a reply is *addressed* rather than inferred, which also covers a member texting from a phone we never recorded. it costs a number per group, which is why it is optional rather than the default, and it still starts no carrier group thread, so the members still do not see each other.
+
+and the code is not a secret, which is stated in the command output as well as here: it names a conversation, not a person. anybody holding the message can quote it, so it never proves who is writing, only which group they mean. it also cannot recover a reply whose tag was deleted, a text somebody forwarded from the message, or a carrier group mms, which arrives with its members in a payload this package does not parse.
+
+two limits, stated because they are invisible otherwise. a real carrier group mms from somebody else arrives as an mms from the group or the original sender with the members in a payload this package does not parse, so it is not turned into a group and no media is read. and membership is the only marker there is, so a member texting you one-to-one about dinner is indistinguishable from their group reply, which is a property of the rail and not of the code.
+
+### the thread, and the correction that the group is the id
+
+a group chat is not a list of people, it is an id that a carrier carries. a message sent into that id is a group reply for everybody reading the thread, which is what the agent should be doing when it answers a group, so the shape here is the thread first and the list second.
+
+`heyphony group adopt --thread <carrier id> --with +1... --with +1...` takes a thread the carrier already uses and makes it the group. attribution then reads `by: "thread"` and is certain, the strongest rung on the ladder, because the carrier named the conversation instead of us inferring it from who happens to be in it. an inbound payload that carries a thread id or a participant list is read for exactly this reason (`THREAD_KEYS` and `PARTICIPANT_KEYS` in the inbound normalizer), so a carrier with group mms lands in the right place without a code change.
+
+what the thread needs next is a send path that can address a thread, and none of the ten wired here can: voip.ms takes one `dst` per call, flowroute's message body carries `to` as one number, and signalwire's message endpoint documents `to` as a single e164 string. that refusal is data in `THREAD_SEND` with the reason per provider, and the consequence is stated in the output rather than buried: on a thread group, today's reply is a fan-out, so each member gets their own one-to-one text and the other humans will **not** see it in the group chat they are reading. `thread_gap` says that in the same breath as the send.
+
+the fan-out is still there for the providers that have nothing else, and it is what this repo shipped first: each member receives a one-to-one text from your did, with no sign that anyone else exists, and the shared transcript lives in your records rather than in their phones. the correction worth keeping is that this is a property of a one-recipient API and not of sms. an earlier version of this page claimed most carriers cannot carry a group text as a group, which was wrong about the carriers and only right about our own rail.
+
+### looking a number up is a read, and that is why it is the safe half
+
+`heyphony --lookup +447700900123` answers what a number is from the plan that issues it: `mobile` for a range issued for mobile services, `landline` for a geographic one, `voip` for the uk's own 056 range, `personal numbering` for 070. it also answers the question behind the question, `receive_text`: a mobile range can take a text, a geographic landline mostly cannot.
+
+`heyphony --lookup +1555... support` answers per service instead, and this is where the tool refuses to be clever. a numbering plan can say whether a range can receive a code at all. it cannot say whether this particular number already has a whatsapp account, because that is a fact held by whatsapp and nobody else. so the verdicts are `possible`, `unlikely` and `unknown`, never a boolean, and `heyphony --lookup +1555... probes` prints the exact probe each service would need along with what running it would do: one of them sends an sms to that handset, and two of them lean on undocumented endpoints.
+
+`+1` is where the two kinds of evidence separate cleanly. the north american plan encodes no **line type**, so a +1 number comes back `type: unknown` with `carrier-question` as its evidence and the carrier-lookup adapter named and marked unwired. it encodes a great deal of **geography**: the area code is assigned to a country, a territory or a region, so `heyphony --lookup +13405551234` answers `VI`, `U.S. Virgin Islands` and, for a geographic code, a place like `New York, NY` or `Ontario`. `+1` is not the united states and canada: the plan is shared by 25 countries and territories, from puerto rico and the us virgin islands to jamaica, bermuda and trinidad, and the area code also says whether the number is geographic, non-geographic, toll-free, premium or a personal follow-me number.
+
+the same reader takes the other two address forms a person actually has. `--lookup dana@icloud.com` reads an address: the local part says whether it is a person or a shared desk, the domain says who issues it, and the answer is `possible`, `unknown` or `unlikely` for iMessage rather than a guess. Apple issues an iCloud account one of three address forms, so `@icloud.com`, `@me.com` and `@mac.com` are apple account addresses by construction, which is the strongest thing an address can say about iMessage. each answer also carries a three valued `matrix`: `imessage: true` for an address, because iMessage routes to an apple account and an address can be one, `signal: true` for a signal handle, and `null` where the capability belongs to an account rather than a string. capability is a boolean, existence keeps its verdict. every answer also carries a `fallback` ladder, so a line showing `imessage: unknown` says what comes next: `rcs` (the carrier's universal profile, which follows the text evidence) then `sms`, and a ladder that reaches nothing says so instead of leaving the caller to try another app.
+
+`--lookup alice.42` reads a username, which is the one form this package deliberately cannot route and therefore has to be honest about: signal wants a nickname and a discriminator, whatsapp wants a plain handle, and `alice.42` is legal on both while naming a different account on each.
+
+for one person there is a better instrument than a scanner, and it is resolution: signal's own client library can turn a username or a `signal.me` link into an account id without sending anything, and a small resolver on top of libsignal (`signal-whois`) does exactly that from an identity you already own. that is one request, one exact string, and the thing it returns is a pseudonym, so the output names all three limits. whatsapp has no such path, which the output says rather than dressing a first message up as a check.
+
+turnkey osint tools do answer the questions this reader withholds (holehe for accounts behind an address, sherlock and maigret for usernames across hundreds or thousands of sites, phoneinfoga for numbers). they are named on the lookup page with what each answers and what it costs, and kept outside this package for three reasons: the cost lands on the person being looked up, the site modules rot, and a scan across thousands of hosts is not a lookup.
+
+when the plan cannot fill a field, the answer says so with the reason rather than leaving a null: a toll-free code has no region because a toll-free code is national by design, and that empty region is the plan being exact.
+
+a whole number is not always needed either. the geography sits in the first three digits, so `heyphony --lookup +1212` answers from the area code alone and says the subscriber digits were not needed, which is this half's version of preferring a domain to a local part.
+
+`heyphony lookup eval` runs a labelled fixture corpus and counts a claim beyond the evidence as overreach, separately from a wrong answer: 20 cases, 20 passing, 0 overreach. the fixtures and the tables share an author, so a pass proves the code agrees with the table and not that the table is right, which is the same contract as themailtell and the reason the numbers are printed with that sentence attached.
+
 ### the number outlives the machine
 
 the honest shape of a phone number is that half of it is somebody else's computer, so the interesting question is what happens when the host sleeps.
@@ -177,7 +231,9 @@ the refusal is not a verdict on this package. it is adversarial detection aimed 
 
 `sms on this number, one message at a time.` the rail sends when the gate is open (`HEYPHONY_SEND=allowed`) and the call says so (`--send`), records the message in the same thread as what came in, and refuses a list, a loop and a schedule, because a campaign is a different product with consent, attested origination and a registered business behind it.
 
-two shapes ride that one rail: a single reply and a voicemail. both are the same act at different volumes, which is why neither has a queue, a retry, a schedule or a quiet-hours engine. one of them is a call, so `HEYPHONY_CALL=allowed` is its own gate rather than a second meaning for the text gate.
+the lookup reads a plan and never dials. that is the same split as the rest of the package at a different scale: reading is patient and cheap, and everything that touches somebody else's phone has a gate, a ceiling and a stated consequence.
+
+three shapes ride that one rail: a single reply, a voicemail, and a small named group. all three are the same act at different volumes, which is why none of them has a queue, a retry, a schedule or a quiet-hours engine. one of them is a call, so `HEYPHONY_CALL=allowed` is its own gate rather than a second meaning for the text gate.
 
 provider terms, quiet hours, and what the recipient actually agreed to are yours. a tool that respects a gate cannot also audit a business, and pretending otherwise would be the dishonest version of a safety feature.
 

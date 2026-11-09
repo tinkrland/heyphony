@@ -23,6 +23,19 @@ one table, because the most common confusion in this package was not knowing whi
 | `heyphony voicemail --to +1555... --message "..."` | manage (out) | one call, dialed through your livekit trunk, with the message spoken after the answer | no: `--send` dials a real phone, and `--agent` writes the worker that speaks |
 | `heyphony group new --name "dinner" --with ada=+1555...` | manage (out) | a named conversation of two to four people, each message sent one at a time | yes, it refuses a duplicate id by name and time |
 | `heyphony group say <id> --text "seven o'clock"` | manage (out) | the same rail, once per member, with each member's own result | no: it sends when `--send` and the gate agree |
+| `heyphony group adopt --thread <id> --with +1555...` | manage (in) | takes a carrier thread the carrier already carries and makes it the group, with attribution that is certain | no: it records a thread id |
+| `heyphony group reply <id> --text "seven then"` | manage (out) | manage (out) | answers the group after a member writes: the replier gets it in their own thread, everyone else gets a copy | no: same gate and the same `--send` |
+| `heyphony group new --name dinner --with ... --number +1555...` | manage (in) | gives the group a did of its own, so replies arrive addressed instead of inferred | no: it records a number you already hold |
+| `heyphony group show <id>` | manage (in) | your sends and their replies in one order, with inbound rows matched by membership | reads only |
+| `heyphony lookup eval` | lookup | runs the labelled fixture corpus and reports pass, fail, unknown rate and overreach | yes, it only reads |
+| `heyphony lookup dana@icloud.com` | lookup | the local part, the domain, and an iMessage verdict of possible, unknown or unlikely | yes, and nothing is sent |
+| `heyphony lookup examplemail@gmail.com support` | lookup | the capability matrix: `imessage: true` for an address, false for the services that verify by number | yes, and nothing is sent |
+| `heyphony lookup +12125551234 fallback` | lookup | the rails a message would climb, best first, and where the climb stops | yes, and nothing is sent |
+| `heyphony lookup alice.42 [--platform signal\|whatsapp]` | lookup | the username form, and the fact that a number is not needed either way | yes, and nobody is messaged |
+| `heyphony lookup +1212` | lookup | the country and region from a +1 area code alone, with the subscriber digits never asked for | yes, and nothing is sent |
+| `heyphony lookup +447700900123` (`--lookup` also works) | lookup | what the number is: line class, whether it can take a text, and the market's coverage | yes, it reads a plan |
+| `heyphony --lookup +1555... support` | lookup | the same line, one verdict per service, with `possible` and `unlikely` instead of a boolean | yes |
+| `heyphony --lookup +1555... probes` | lookup | the probes each service would need, and what running one would do to somebody's phone | yes, and nothing is dialed |
 | `heyphony get signal` | onramp | prints the recipe for signal, `--run` executes the install steps | yes |
 | `heyphony status` | any | one line per lane: open, closed, designed | yes |
 

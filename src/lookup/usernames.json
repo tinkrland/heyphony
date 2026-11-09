@@ -1,0 +1,45 @@
+{
+  "_note": "what each platform publishes about its own username form, carried as data so the reader can see the rule it applied. verified is false on every entry: these were read from platform announcements and their own posts, not from a reference page fetched today, and no probe here can check a username without messaging a stranger.",
+  "_limit": "only the rules marked fatal decide validity. a length or a character set is reported as outside_shape instead, because a wrong bound must not make the tool call a real person's handle invalid.",
+  "platforms": {
+    "signal": {
+      "display": "Signal",
+      "shape": "a nickname, a dot, then a numeric discriminator, e.g. alice.42",
+      "requires_discriminator": true,
+      "discriminator_digits_min": 2,
+      "nickname_charset": "a-z 0-9 _",
+      "nickname_min": 3,
+      "nickname_max": 32,
+      "normalised_lowercase": true,
+      "verified": false,
+      "sources": [
+        "signal's own announcement, 2024-02: usernames exist so a chat does not need a phone number",
+        "signal's own post: usernames are designed to be easily changeable, and signal keeps a hash of the username rather than the username"
+      ],
+      "notes": [
+        "a username is enough to start a chat, which is the point: no number required on either side",
+        "because signal stores a hash and people change their username, a username is a handle and not an identity",
+        "signal adds the discriminator itself when you share, so a bare nickname is not a username anybody can be reached on"
+      ]
+    },
+    "whatsapp": {
+      "display": "WhatsApp",
+      "shape": "a handle, optionally written with a leading @, e.g. @alice",
+      "requires_discriminator": false,
+      "handle_charset": "a-z 0-9 . _",
+      "handle_max": 35,
+      "normalised_lowercase": true,
+      "key": "a four digit username key can be required before a chat starts, so knowing the exact username is not always enough",
+      "verified": false,
+      "sources": [
+        "whatsapp's username rollout reported 2026-06, with username reservation ahead of a wider launch",
+        "reporting on the rollout: no public directory, no suggestions, and an optional four digit username key"
+      ],
+      "notes": [
+        "no directory and no search: somebody has to give you the exact username, which is why it works as a contact handle",
+        "the four digit key is a barrier a lookup cannot see, and asking for it is a conversation rather than a check",
+        "a business keeps its phone number visible, so a business handle is not a private contact"
+      ]
+    }
+  }
+}

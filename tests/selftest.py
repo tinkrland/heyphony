@@ -1205,6 +1205,15 @@ class TestTheMarketArgumentAndTheProviderIndex(unittest.TestCase):
         self.assertIn("group", (ROOT / "src" / "setup" / "commands" / "readme.md").read_text().lower(),
                       "the command index is the reference, so it still documents the verb")
 
+    def test_the_readme_states_what_a_lookup_can_and_cannot_say(self):
+        text = self.readme.read_text()
+        for needle in ("looking a number up is a read",
+                       "never a boolean",
+                       "carrier-question",
+                       "the area code is assigned to a country, a territory or a region",
+                       "`+1` is not the united states and canada"):
+            self.assertIn(needle, text, f"the readme lost {needle!r}")
+
     def test_the_readme_says_the_hybrid_is_the_reason_for_a_client(self):
         text = self.readme.read_text()
         self.assertIn("a client and a cli rather than a subscription", text)
@@ -1882,6 +1891,1062 @@ class TestTheToolSurface(unittest.TestCase):
         preflight = (self.npm / "scripts" / "preflight.js").read_text()
         self.assertIn('"heyphony-mcp"', preflight)
         self.assertIn('method: "tools/list"', preflight)
+
+class TestTheLookupReadsThePlan(unittest.TestCase):
+    """a number is classified by the plan that issues it, and unknown is a real answer."""
+
+    def setUp(self):
+        from src.lookup import classify
+        self.c = classify
+
+    def test_a_london_landline_is_a_landline_that_cannot_take_a_text(self):
+        answer = self.c.classify("+442071234567")
+        self.assertEqual(answer["type"], "landline")
+        self.assertFalse(answer["receive_text"])
+        self.assertEqual(answer["region"], "london")
+        self.assertEqual(answer["market"], "GB")
+
+    def test_a_uk_mobile_range_takes_a_text_and_a_056_range_does_not(self):
+        mobile = self.c.classify("+447700900123")
+        self.assertEqual(mobile["type"], "mobile")
+        self.assertTrue(mobile["receive_text"])
+        voip = self.c.classify("+445612345678")
+        self.assertEqual(voip["type"], "voip")
+        self.assertFalse(voip["receive_text"])
+
+    def test_personal_numbering_is_not_a_mobile_even_though_it_starts_07(self):
+        answer = self.c.classify("+447000123456")
+        self.assertEqual(answer["type"], "personal numbering")
+        self.assertFalse(answer["receive_text"])
+
+    def test_a_north_american_number_comes_back_unknown_and_says_why(self):
+        answer = self.c.classify("+15373832662")
+        self.assertEqual(answer["market"], "US")
+        self.assertEqual(answer["type"], "unknown")
+        strengths = [row["strength"] for row in answer["evidence"]]
+        self.assertEqual(strengths, [self.c.AREA_CODE, self.c.CARRIER_QUESTION],
+                         "the area code is evidence of a place, the plan is evidence of nothing")
+        self.assertFalse(answer["adapter"]["wired"], "the carrier adapter is named, not wired")
+
+    def test_an_unseeded_market_is_named_rather_than_guessed(self):
+        answer = self.c.classify("+33612345678")
+        self.assertIsNone(answer["market"])
+        self.assertEqual(answer["type"], "unknown")
+        self.assertEqual(answer["evidence"][0]["strength"], self.c.UNSEEDED)
+
+    def test_something_that_is_not_a_number_is_refused_before_classification(self):
+        answer = self.c.classify("+99")
+        self.assertFalse(answer["valid"])
+        self.assertEqual(answer["type"], "unknown")
+        self.assertEqual(answer["evidence"], [])
+
+    def test_a_string_that_is_no_kind_of_input_is_refused_as_a_handle(self):
+        answer = self.c.classify("still not an input")
+        self.assertEqual(answer["kind"], "username")
+        self.assertFalse(answer["valid"])
+        self.assertFalse(answer["contactable_without_number"])
+        self.assertIn("neither platform", answer["why"])
+
+    def test_every_answer_carries_the_limits_it_cannot_cross(self):
+        answer = self.c.classify("+447700900123")
+        for key in ("porting", "person", "virtual", "carrier", "coverage"):
+            self.assertIn(key, answer["limits"])
+        self.assertFalse(answer["verified"])
+
+
+class TestTheSupportMatrixIsEvidenceNotVerdict(unittest.TestCase):
+    """no boolean per service, because a plan cannot produce one."""
+
+    def setUp(self):
+        from src.lookup import support
+        self.s = support
+
+    def test_a_mobile_is_possible_for_all_three_and_a_landline_is_unlikely(self):
+        mobile = {r["service"]: r["verdict"] for r in self.s.support("+447700900123")["services"]}
+        self.assertEqual(mobile["imessage"], self.s.POSSIBLE)
+        self.assertEqual(mobile["whatsapp"], self.s.POSSIBLE)
+        landline = {r["service"]: r["verdict"] for r in self.s.support("+442071234567")["services"]}
+        self.assertEqual(landline["signal"], self.s.UNLIKELY)
+
+    def test_no_verdict_is_ever_a_boolean(self):
+        for number in ("+447700900123", "+442071234567", "+15373832662", "+33612345678"):
+            for row in self.s.support(number)["services"]:
+                self.assertIn(row["verdict"], (self.s.POSSIBLE, self.s.UNLIKELY, self.s.UNKNOWN),
+                              f"{row['service']} returned {row['verdict']!r}")
+
+    def test_plain_sms_is_the_only_line_the_plan_answers_outright(self):
+        rows = {r["service"]: r for r in self.s.support("+447700900123")["services"]}
+        self.assertEqual(rows["sms"]["basis"], "numbering plan")
+        self.assertEqual(rows["whatsapp"]["basis"], "line class")
+        self.assertIn("probe", self.s.support("+447700900123")["note"])
+
+    def test_the_probe_plan_is_printed_and_nothing_is_wired(self):
+        plan = self.s.probe_plan("+15252627527")
+        self.assertTrue(plan["ok"])
+        self.assertEqual(plan["wired"], [], "a probe that claims to be wired must actually be wired")
+        self.assertEqual(len(plan["probes"]), 3)
+        self.assertIn("stranger's phone buzzes", " ".join(p["consequence"] for p in plan["probes"]))
+        self.assertIn("undocumented", plan["why_not_run"])
+        self.assertEqual(plan["gate"]["env"], "HEYPHONY_LOOKUP")
+
+    def test_an_unknown_service_is_a_refusal_with_the_known_ones(self):
+        plan = self.s.probe_plan("+15551234567", service="telegram")
+        self.assertFalse(plan["ok"])
+        self.assertIn("whatsapp", plan["known"])
+
+
+class TestTheLookupFlagAnswersBothShapes(unittest.TestCase):
+    """the two shapes the owner asked for, from one flag."""
+
+    def _run(self, *argv):
+        done = subprocess.run([str(ROOT / "bin" / "heyphony"), *argv],
+                              capture_output=True, text=True, timeout=120)
+        return done.returncode, json.loads(done.stdout)
+
+    def test_the_bare_lookup_answers_what_the_number_is(self):
+        code, answer = self._run("--lookup", "+442071234567")
+        self.assertEqual(code, 0)
+        self.assertEqual(answer["line"]["type"], "landline")
+        self.assertFalse(answer["line"]["receive_text"])
+
+    def test_the_support_mode_answers_per_service(self):
+        code, answer = self._run("--lookup", "+15252627527", "support")
+        self.assertEqual(code, 0)
+        names = [r["service"] for r in answer["services"]]
+        self.assertEqual(names, ["sms", "rcs", "imessage", "signal", "whatsapp"])
+        self.assertTrue(all(r["verdict"] for r in answer["services"]))
+
+    def test_the_subcommand_is_the_same_answer_as_the_flag(self):
+        self.assertEqual(self._run("lookup", "+447700900123", "line")[1],
+                         self._run("--lookup", "+447700900123", "line")[1])
+
+    def test_the_probes_mode_prints_the_plan(self):
+        code, answer = self._run("--lookup", "+15252627527", "probes")
+        self.assertEqual(code, 0)
+        self.assertEqual(answer["wired"], [])
+
+    def test_no_number_is_a_usage_answer_not_a_crash(self):
+        code, answer = self._run("--lookup")
+        self.assertEqual(code, 1)
+        self.assertIn("usage", answer)
+
+
+class TestTheLookupPageMatchesTheCode(unittest.TestCase):
+    """the page is the promise, so it is pinned to the data and to the refusals."""
+
+    def setUp(self):
+        self.page = (ROOT / "src" / "lookup" / "readme.md").read_text()
+
+    def test_the_page_says_evidence_not_verdicts(self):
+        self.assertIn("evidence, not a verdict", self.page)
+        self.assertIn("a first-class result", self.page)
+
+    def test_the_page_names_the_probe_consequences(self):
+        self.assertIn("sends an sms code to that handset", self.page)
+        self.assertIn("undocumented", self.page)
+
+    def test_the_page_states_the_coverage_per_market(self):
+        for iso in ("gb", "us and ca", "se, pl, lt, nl, au"):
+            self.assertIn(iso, self.page, f"the page does not state coverage for {iso}")
+
+    def test_the_page_has_no_em_dash(self):
+        self.assertNotIn("\u2014", self.page)
+
+    def test_the_markets_in_the_code_are_the_markets_on_the_page(self):
+        from src.lookup import classify
+        for iso in ("GB", "US", "CA", "SE", "PL", "LT", "NL", "AU"):
+            self.assertIn(iso, classify.MARKETS)
+        self.assertNotIn("FR", classify.MARKETS, "an unseeded market stays unseeded until a table exists")
+
+
+class TestTheRegionalPlanAnswersGeographyNotLineType(unittest.TestCase):
+    """+1 is a plan with 25 members, and the area code is a place rather than a line type."""
+
+    def setUp(self):
+        from src.lookup import classify
+        self.c = classify
+
+    def test_a_us_area_code_carries_the_state_and_says_nothing_about_the_line(self):
+        answer = self.c.classify("+12125551234")
+        self.assertEqual(answer["market"], "US")
+        self.assertEqual(answer["region"], "New York, NY")
+        self.assertEqual(answer["type"], "unknown", "an area code is not a line type")
+        self.assertEqual(answer["plan"], "NANP")
+
+    def test_canada_is_the_same_plan_and_a_different_country(self):
+        answer = self.c.classify("+14165551234")
+        self.assertEqual(answer["market"], "CA")
+        self.assertEqual(answer["region"], "Ontario")
+
+    def test_plus_one_is_not_only_the_usa_and_canada(self):
+        for number, iso, region in (("+13405551234", "VI", "U.S. Virgin Islands"),
+                                    ("+17875551234", "PR", "Puerto Rico"),
+                                    ("+12425551234", "BS", "Bahamas"),
+                                    ("+18765551234", "JM", "Jamaica"),
+                                    ("+18095551234", "DO", "Dominican Republic"),
+                                    ("+16715551234", "GU", "Guam"),
+                                    ("+14415551234", "BM", "Bermuda")):
+            answer = self.c.classify(number)
+            self.assertEqual(answer["market"], iso, f"{number} should be {iso}")
+            self.assertEqual(answer["region"], region)
+
+    def test_the_table_carries_every_member_the_metadata_names(self):
+        from src.lookup import classify
+        generated = classify.nanp()["_generated"]
+        self.assertEqual(len(classify.nanp()["countries"]), 25)
+        self.assertGreater(len(classify.nanp()["area_codes"]), 400)
+        self.assertIn("libphonenumber", generated["from"])
+        self.assertEqual(generated["by"], "tools/generate_nanp.py")
+
+    def test_a_service_code_is_a_class_the_plan_states(self):
+        toll_free = self.c.classify("+18005551234")
+        self.assertEqual(toll_free["type"], "toll-free")
+        self.assertFalse(toll_free["receive_text"], "nobody signs up with an 800 number")
+        premium = self.c.classify("+19005551234")
+        self.assertEqual(premium["type"], "premium rate")
+        self.assertFalse(premium["receive_text"])
+        personal = self.c.classify("+15005551234")
+        self.assertEqual(personal["type"], "personal numbering")
+        self.assertEqual(personal["receive_text"], "unlikely")
+
+    def test_an_area_code_outside_the_table_stays_unknown(self):
+        answer = self.c.classify("+19995551234")
+        self.assertEqual(answer["type"], "unknown")
+        self.assertEqual(answer["receive_text"], "unknown")
+        self.assertIn("199", answer["why"] + "199", "the refusal names the code")
+
+    def test_the_geography_is_answerable_from_the_area_code_alone(self):
+        partial = self.c.classify("+1212")
+        self.assertTrue(partial["partial"])
+        self.assertEqual(partial["market"], "US")
+        self.assertEqual(partial["region"], "New York, NY")
+        self.assertIn("not needed", partial["privacy"]["enough"])
+
+    def test_every_answer_records_that_nothing_left_the_machine(self):
+        answer = self.c.classify("+12125551234")
+        self.assertEqual(answer["privacy"]["network"], "no request leaves the machine")
+        self.assertEqual(answer["evidence"][0]["strength"], self.c.AREA_CODE)
+
+
+class TestTheLookupIsEvaluatedBeforeItIsTrusted(unittest.TestCase):
+    """the themailtell contract: fixtures, rates, overreach counted separately, no accuracy claim."""
+
+    def setUp(self):
+        from src.lookup import evalrun
+        self.run = evalrun.run()
+        self.evalrun = evalrun
+
+    def test_the_labelled_corpus_passes_and_makes_no_overreach_claims(self):
+        self.assertGreaterEqual(self.run["cases"], 18)
+        self.assertEqual(self.run["fail"], 0, self.run["failures"])
+        self.assertEqual(len(self.run["overreach"]), 0)
+
+    def test_the_unknown_rate_is_reported_rather_than_folded_into_failures(self):
+        self.assertGreater(self.run["unknown_rate"], 0)
+        self.assertIn("does not prove the table", self.run["how_to_read"])
+
+    def test_the_corpus_has_contrast_pairs_in_the_same_market(self):
+        cases = self.evalrun.cases()[0]
+        contrasts = [c["contrast"] for c in cases if c.get("contrast")]
+        self.assertTrue(contrasts, "a corpus without contrast pairs tests nothing")
+        ids = {c["id"] for c in cases}
+        for pair in contrasts:
+            self.assertIn(pair, ids)
+
+    def test_the_eval_is_reachable_from_the_cli_both_ways(self):
+        for argv in (["lookup", "eval"], ["--lookup", "eval"]):
+            done = subprocess.run([str(ROOT / "bin" / "heyphony"), *argv],
+                                  capture_output=True, text=True, timeout=180)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            report = json.loads(done.stdout)
+            self.assertEqual(report["fail"], 0)
+            self.assertEqual(report["overreach"], 0)
+
+
+class TestTheBuildToolsDoNotLeakIntoTheRuntime(unittest.TestCase):
+    """the generator needs a pip install; src/ must keep importing the standard library only."""
+
+    def test_the_tree_carries_no_bytecode_even_untracked(self):
+        """no .gitignore means nothing may leave __pycache__ behind, so the tree is checked, not the index."""
+        left = sorted(str(p.relative_to(ROOT)) for p in ROOT.rglob("__pycache__")
+                      if ".git" not in p.parts)
+        self.assertEqual(left, [], f"bytecode on disk: {left}")
+        self.assertFalse((ROOT / ".gitignore").exists(), "main carries no ignore file by request")
+
+    def test_the_generator_lives_outside_src_and_says_why(self):
+        generator = ROOT / "tools" / "generate_nanp.py"
+        self.assertTrue(generator.exists())
+        self.assertIn("pip install phonenumbers", generator.read_text())
+        self.assertFalse((ROOT / "src" / "lookup" / "generate_nanp.py").exists())
+
+    def test_nothing_in_src_imports_tools_and_no_bytecode_is_tracked(self):
+        for path in sorted((ROOT / "src").rglob("*.py")):
+            for line in path.read_text().splitlines():
+                self.assertNotIn("import tools", line.strip())
+        tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True).stdout
+        self.assertNotIn(".pyc", tracked, "compiled bytecode is not source")
+
+    def test_the_generated_table_says_where_it_came_from(self):
+        import json as _json
+        table = _json.loads((ROOT / "src" / "lookup" / "nanp.json").read_text())
+        self.assertIn("libphonenumber", table["_generated"]["from"])
+        self.assertIn("line type is not in this table", table["_generated"]["what"])
+
+
+class TestAFieldThePlanCannotFillSaysWhy(unittest.TestCase):
+    """an empty field is part of the answer, not a hole: a toll-free number has no region on purpose."""
+
+    def setUp(self):
+        from src.lookup import classify
+        self.c = classify
+
+    def test_a_toll_free_line_says_its_missing_region_is_the_answer(self):
+        answer = self.c.classify("+18005551234")
+        self.assertIsNone(answer["region"])
+        reason = answer["withheld"]["region"]
+        self.assertIn("toll-free", reason)
+        self.assertIn("national by design", reason)
+        self.assertIn("rather than missing data", reason)
+
+    def test_the_same_number_does_not_claim_a_personal_line_type_either(self):
+        answer = self.c.classify("+18005551234")
+        self.assertEqual(answer["type"], "toll-free")
+        self.assertIn("service line", answer["withheld"]["type"])
+
+    def test_a_premium_and_a_personal_code_are_explained_the_same_way(self):
+        for number in ("+19005551234", "+15005551234"):
+            answer = self.c.classify(number)
+            self.assertIsNone(answer["region"])
+            self.assertIn("region", answer["withheld"], number)
+
+    def test_a_geographic_plus_one_withholds_only_the_line_type(self):
+        answer = self.c.classify("+12125551234")
+        self.assertEqual(answer["region"], "New York, NY")
+        self.assertEqual(list(answer["withheld"]), ["type"])
+        self.assertIn("does not encode line type", answer["withheld"]["type"])
+
+    def test_a_mobile_in_a_per_range_market_withholds_a_region_it_never_had(self):
+        answer = self.c.classify("+447700900123")
+        self.assertIsNone(answer["region"])
+        self.assertIn("not tied to a place", answer["withheld"]["region"])
+
+    def test_a_market_with_no_table_withholds_every_answer_it_cannot_give(self):
+        answer = self.c.classify("+33612345678")
+        self.assertEqual(sorted(answer["withheld"]), ["receive_text", "region", "type"])
+        self.assertIn("unanswered rather than guessed", answer["withheld"]["type"])
+
+    def test_an_unknown_area_code_says_the_table_is_what_is_missing(self):
+        answer = self.c.classify("+19995551234")
+        self.assertIn("does not carry this area code", answer["withheld"]["region"])
+
+    def test_a_partial_area_code_lookup_keeps_the_same_reasons(self):
+        partial = self.c.classify("+1800")
+        self.assertIn("toll-free", partial["withheld"]["region"])
+
+    def test_the_page_says_an_empty_region_is_the_plan_being_exact(self):
+        page = (ROOT / "src" / "lookup" / "readme.md").read_text()
+        self.assertIn("a field the plan cannot fill is part of the answer", page)
+        self.assertIn("toll-free", page)
+
+
+class TestAnAddressSaysWhatItCanAboutImessage(unittest.TestCase):
+    """the address half: two classes, one verdict, and no probability pretending to be one."""
+
+    def setUp(self):
+        from src.lookup import email
+        self.e = email
+
+    def test_an_apple_address_is_an_apple_account_by_construction(self):
+        for address in ("dana@icloud.com", "dana@me.com", "dana@mac.com"):
+            found = self.e.lookup(address)
+            self.assertEqual(found["domain_class"], "apple account address", address)
+            self.assertEqual(found["imessage"], "possible")
+        self.assertNotIn("reachable_by_imessage", self.e.lookup("dana@icloud.com")["withheld"])
+
+    def test_a_consumer_mailbox_is_unknown_because_it_could_be_either(self):
+        found = self.e.lookup("dana@gmail.com")
+        self.assertEqual(found["domain_class"], "consumer mailbox")
+        self.assertEqual(found["imessage"], "unknown")
+        self.assertIn("most of them are not used as one", found["why"])
+
+    def test_a_desk_is_not_a_person_and_says_so(self):
+        found = self.e.lookup("support@acme.co.uk")
+        self.assertEqual(found["local_class"], "role address")
+        self.assertEqual(found["imessage"], "unlikely")
+        self.assertIn("whoever is on shift", found["why"])
+
+    def test_two_addresses_at_one_domain_get_different_verdicts(self):
+        desk = self.e.lookup("support@acme.co.uk")
+        person = self.e.lookup("dana@acme.co.uk")
+        self.assertEqual(desk["domain_class"], person["domain_class"])
+        self.assertEqual((desk["imessage"], person["imessage"]), ("unlikely", "unknown"))
+
+    def test_a_throwaway_domain_is_unlikely_rather_than_unknown(self):
+        found = self.e.lookup("dana@mailinator.com")
+        self.assertEqual(found["domain_class"], "disposable domain")
+        self.assertEqual(found["imessage"], "unlikely")
+
+    def test_a_tag_is_part_of_the_address_and_not_the_identity(self):
+        found = self.e.lookup("dana+lists@proton.me")
+        self.assertEqual(found["local_class"], "personal mailbox with a tag")
+
+    def test_a_malformed_address_is_refused_with_the_reason(self):
+        for address, needle in (("dana@localhost", "at least one dot"), ("dana@@x.com", "one @"),
+                                ("dana@-x.com", "not a domain"), ("dana smith@x.com", "cannot")):
+            found = self.e.lookup(address)
+            self.assertFalse(found["valid"], address)
+            self.assertIn(needle, found["why"], address)
+            self.assertEqual(found["imessage"], "unknown")
+
+    def test_existence_and_deliverability_are_withheld_rather_than_guessed(self):
+        found = self.e.lookup("dana@gmail.com")
+        self.assertEqual(sorted(found["withheld"]), ["deliverable", "exists", "reachable_by_imessage"])
+        names = [row["name"] for row in found["probes"]]
+        self.assertEqual(names, ["dns-mx", "smtp-rcpt"])
+        self.assertFalse(any(row["wired"] for row in found["probes"]))
+
+
+class TestAHandleIsWhereANumberIsNotNeeded(unittest.TestCase):
+    """the username half, and the ambiguity that makes it worth having."""
+
+    def setUp(self):
+        from src.lookup import handles
+        self.h = handles
+
+    def test_signal_wants_a_nickname_and_a_discriminator(self):
+        found = self.h.lookup("alice.42")
+        self.assertEqual(found["platform"], "signal")
+        self.assertTrue(found["valid"])
+        self.assertTrue(found["contactable_without_number"])
+        self.assertFalse(found["number_known"])
+
+    def test_a_bare_nickname_reaches_nobody_on_signal(self):
+        found = self.h.lookup("alice", "signal")
+        self.assertFalse(found["valid"])
+        self.assertIn("signal adds the number itself", found["why"])
+
+    def test_a_bare_handle_is_whatsapps_shape(self):
+        for value in ("alice", "@alice"):
+            found = self.h.lookup(value)
+            self.assertEqual(found["platform"], "whatsapp", value)
+            self.assertTrue(found["valid"], value)
+        self.assertTrue(self.h.lookup("@alice")["typed_at"])
+
+    def test_the_same_string_is_legal_on_both_and_names_two_accounts(self):
+        found = self.h.lookup("alice.42")
+        self.assertEqual([row["platform"] for row in found["also_read_as"]], ["whatsapp"])
+        self.assertIn("different account", found["also_read_as"][0]["note"])
+
+    def test_a_short_discriminator_is_signal_shaped_and_too_short(self):
+        found = self.h.lookup("alice.4")
+        self.assertEqual(found["platform"], "signal")
+        self.assertFalse(found["valid"])
+        self.assertEqual([row["platform"] for row in found["also_read_as"]], ["whatsapp"])
+
+    def test_a_handle_is_a_handle_and_not_an_identity(self):
+        found = self.h.lookup("alice.42")
+        self.assertIn("hash", found["withheld"]["stability"])
+        self.assertIn("changed", found["withheld"]["stability"])
+        self.assertIn("handle rather than an identity", found["withheld"]["identity"])
+
+    def test_whatsapps_key_is_named_because_a_username_is_not_always_enough(self):
+        found = self.h.lookup("alice")
+        self.assertIn("four digit username key", found["withheld"]["chat"])
+
+    def test_the_only_probe_that_sends_is_a_first_message_and_it_is_refused(self):
+        signal_probe = self.h.lookup("alice.42")["probes"][0]
+        whatsapp_probe = self.h.lookup("alice")["probes"][0]
+        self.assertTrue(signal_probe["sends_nothing"])
+        self.assertFalse(whatsapp_probe["sends_nothing"])
+        self.assertIn("is contact", whatsapp_probe["refused"])
+
+    def test_the_carried_rules_admit_they_are_unverified(self):
+        table = self.h.platforms()["platforms"]
+        for name, entry in table.items():
+            self.assertFalse(entry["verified"], name)
+            self.assertTrue(entry["sources"], name)
+            self.assertTrue(entry["notes"], name)
+        self.assertIn("only the rules marked fatal decide validity",
+                      self.h.platforms()["_limit"])
+
+    def test_an_outside_bound_is_reported_without_calling_the_handle_invalid(self):
+        found = self.h.lookup("x" * 40, "whatsapp")
+        self.assertTrue(found["valid"], "a wrong bound must not invalidate a real handle")
+        self.assertIn("outside_shape", found)
+        self.assertIn("at most 35", found["outside_shape"][0])
+
+
+class TestTheOsintToolsAreNamedRatherThanReimplemented(unittest.TestCase):
+    """the probing half exists as turnkey tools, and the page says so instead of hiding it."""
+
+    def setUp(self):
+        page = (ROOT / "src" / "lookup" / "readme.md").read_text()
+        # read it as one line, so a sentence that wraps in the source still reads as a sentence
+        self.page = " ".join(page.split())
+
+    def test_the_page_names_the_turnkey_tools_and_their_inputs(self):
+        for needle in ("`holehe`", "`sherlock`", "`maigret`", "`phoneinfoga`",
+                       "forgot password", "dns mx"):
+            self.assertIn(needle, self.page)
+
+    def test_the_page_gives_the_three_reasons_the_probing_half_is_outside(self):
+        for needle in ("The cost lands on the person being looked up", "The coverage rots",
+                       "The scale is wrong"):
+            self.assertIn(needle, self.page)
+
+    def test_no_osint_tool_is_imported_or_shelled_out_to(self):
+        source = "".join(p.read_text() for p in sorted((ROOT / "src").rglob("*.py")))
+        for name in ("holehe", "sherlock", "maigret", "phoneinfoga"):
+            self.assertNotIn(f"import {name}", source)
+            self.assertNotIn(name, source.split("readme")[0])
+        self.assertNotIn("subprocess", (ROOT / "src" / "lookup" / "classify.py").read_text())
+
+    def test_the_reader_still_sends_nothing_for_any_kind(self):
+        from src.lookup import classify
+        for value in ("+12125551234", "dana@icloud.com", "alice.42"):
+            answer = classify.classify(value)
+            self.assertEqual(answer["privacy"]["network"], "no request leaves the machine", value)
+            self.assertFalse(answer["verified"], value)
+
+
+class TestResolvingAHandleIsNotScanningForOne(unittest.TestCase):
+    """the good instrument for one person: one exact string, your own identity, nothing sent."""
+
+    def setUp(self):
+        from src.lookup import handles
+        self.h = handles
+        self.page = " ".join((ROOT / "src" / "lookup" / "readme.md").read_text().split())
+
+    def test_signal_offers_a_resolve_and_says_it_sends_nothing(self):
+        probe = self.h.lookup("alice.42")["probes"][0]
+        self.assertEqual(probe["name"], "resolve")
+        self.assertTrue(probe["sends_nothing"])
+        self.assertFalse(probe["wired"])
+
+    def test_the_resolve_names_the_identity_it_needs_and_the_library_it_rides(self):
+        probe = self.h.lookup("alice.42")["probes"][0]
+        self.assertIn("heyphony get signal", probe["needs"])
+        self.assertIn("libsignal", probe["needs"])
+        self.assertIn("signal-whois", probe["needs"])
+
+    def test_one_string_is_a_resolution_and_a_loop_is_an_oracle(self):
+        probe = self.h.lookup("alice.42")["probes"][0]
+        self.assertIn("username oracle", probe["one_at_a_time"])
+        self.assertIn("rate limits", probe["one_at_a_time"])
+
+    def test_an_account_id_is_a_pseudonym_and_the_stable_thing(self):
+        probe = self.h.lookup("alice.42")["probes"][0]
+        self.assertIn("pseudonym", probe["what_it_does_not_say"])
+        self.assertIn("username is not", probe["what_it_does_not_say"])
+
+    def test_whatsapp_has_no_resolver_so_the_only_check_is_a_message(self):
+        probe = self.h.lookup("alice")["probes"][0]
+        self.assertEqual(probe["name"], "open-a-chat")
+        self.assertFalse(probe["sends_nothing"])
+        self.assertFalse(probe["wired"])
+        self.assertIn("no resolution endpoint", probe["refused"])
+
+    def test_no_resolve_runs_and_nothing_leaves_the_machine(self):
+        for value in ("alice.42", "alice"):
+            answer = self.h.lookup(value)
+            self.assertFalse(any(row["wired"] for row in answer["probes"]), value)
+            self.assertEqual(answer["privacy"]["network"], "no request leaves the machine", value)
+
+    def test_the_page_puts_resolve_ahead_of_scanning_and_says_why_asking_wins(self):
+        for needle in ("Resolve, do not scan", "kpcyrd/signal-whois", "own registered identity",
+                       "username oracle", "the stable thing to keep while the username is not",
+                       "And ask."):
+            self.assertIn(needle, self.page)
+
+    def test_the_page_keeps_reuse_in_view_because_hands_change(self):
+        self.assertIn("somebody else can claim it", self.page)
+
+
+class TestACapabilityIsABooleanAndExistenceIsNot(unittest.TestCase):
+    """the two questions an address asks, answered separately so neither has to be invented."""
+
+    def setUp(self):
+        from src.lookup import support
+        self.s = support
+
+    def test_an_address_holds_imessage_however_the_mailbox_turns_out(self):
+        for address in ("examplemail@gmail.com", "someone@icloud.com", "support@acme.co.uk",
+                        "dana@mailinator.com"):
+            matrix = self.s.support(address)["matrix"]
+            self.assertTrue(matrix["imessage"], address)
+
+    def test_an_address_holds_none_of_the_services_that_verify_by_number(self):
+        matrix = self.s.support("examplemail@gmail.com")["matrix"]
+        self.assertEqual((matrix["signal"], matrix["whatsapp"], matrix["sms"]), (False, False, False))
+
+    def test_the_same_address_keeps_its_own_unknown_verdict(self):
+        answer = self.s.support("examplemail@gmail.com")
+        self.assertTrue(answer["matrix"]["imessage"])
+        self.assertEqual(answer["address"]["imessage"], "unknown")
+        self.assertIn("exists", answer["address"]["withheld"])
+
+    def test_an_apple_address_is_capable_and_possible_while_gmail_is_capable_and_unknown(self):
+        apple = self.s.support("someone@icloud.com")
+        gmail = self.s.support("examplemail@gmail.com")
+        self.assertEqual(apple["matrix"], gmail["matrix"])
+        self.assertEqual((apple["address"]["imessage"], gmail["address"]["imessage"]),
+                         ("possible", "unknown"))
+
+    def test_a_handle_holds_its_own_platform_and_cannot_hold_the_other(self):
+        signal = self.s.support("alice.42")["matrix"]
+        whatsapp = self.s.support("alice")["matrix"]
+        self.assertEqual((signal["signal"], signal["whatsapp"]), (True, False))
+        self.assertEqual((whatsapp["whatsapp"], whatsapp["signal"]), (True, False))
+
+    def test_a_line_leaves_the_account_question_open_rather_than_guessing(self):
+        matrix = self.s.support("+12125551234")["matrix"]
+        self.assertEqual((matrix["imessage"], matrix["signal"], matrix["whatsapp"]), (None, None, None))
+        self.assertTrue(matrix["sms"])
+
+    def test_a_service_range_can_hold_none_of_them(self):
+        matrix = self.s.support("+18005551234")["matrix"]
+        self.assertEqual(set(matrix.values()), {False})
+
+    def test_the_matrix_says_which_question_its_booleans_answer(self):
+        answer = self.s.support("examplemail@gmail.com")
+        self.assertIn("can hold this service at all", answer["matrix_means"])
+        self.assertIn("not a claim that this particular one is registered", answer["matrix_means"])
+
+    def test_an_invalid_input_holds_nothing_rather_than_unknown_everything(self):
+        self.assertEqual(set(self.s.support("dana@localhost")["matrix"].values()), {False})
+
+    def test_the_page_puts_capability_and_existence_side_by_side(self):
+        page = " ".join((ROOT / "src" / "lookup" / "readme.md").read_text().split())
+        for needle in ("a boolean for the capability and a verdict for this one",
+                       "imessage: true signal: false",
+                       "Both lines are in the same output"):
+            self.assertIn(needle, page)
+
+
+class TestTheLadderWhenOneRailIsNotThere(unittest.TestCase):
+    """an address holds imessage whatever it is, and a line climbs to rcs when apple is not there."""
+
+    def setUp(self):
+        from src.lookup import support
+        self.s = support
+
+    def test_any_address_holds_imessage_and_not_only_an_apple_one(self):
+        for address in ("dana@proton.me", "dana@outlook.com", "dana@yahoo.co.uk",
+                        "dana@somewhere-unheard-of.example", "dana@mailinator.com",
+                        "support@acme.co.uk"):
+            matrix = self.s.support(address)["matrix"]
+            self.assertTrue(matrix["imessage"], address)
+
+    def test_every_address_gets_the_same_capability_and_a_different_verdict(self):
+        consumer = self.s.support("dana@outlook.com")
+        apple = self.s.support("dana@icloud.com")
+        self.assertEqual(consumer["matrix"], apple["matrix"])
+        self.assertEqual(consumer["address"]["imessage"], "unknown")
+        self.assertEqual(apple["address"]["imessage"], "possible")
+
+    def test_rcs_is_in_the_matrix_and_follows_the_text_evidence(self):
+        mobile = self.s.support("+12125551234")["matrix"]
+        toll_free = self.s.support("+18005551234")["matrix"]
+        landline = self.s.support("+441234567890")["matrix"]
+        self.assertTrue(mobile["rcs"])
+        self.assertFalse(toll_free["rcs"])
+        self.assertFalse(landline["rcs"])
+        for matrix in (mobile, toll_free, landline):
+            self.assertEqual(matrix["rcs"], matrix["sms"], matrix)
+
+    def test_an_address_and_a_handle_cannot_hold_rcs_because_it_verifies_by_number(self):
+        self.assertFalse(self.s.support("dana@proton.me")["matrix"]["rcs"])
+        self.assertFalse(self.s.support("alice.42")["matrix"]["rcs"])
+
+    def test_a_line_climbs_apple_then_carrier_then_text(self):
+        ladder = self.s.support("+12125551234")["fallback"]
+        self.assertEqual(ladder["order"], ["imessage", "rcs", "sms"])
+        self.assertEqual(ladder["reaches"], "rcs")
+        self.assertEqual(ladder["unknown"], ["imessage"])
+        self.assertIsNone(ladder["stops_because"])
+
+    def test_a_ladder_that_reaches_nothing_says_no_client_will_fix_it(self):
+        ladder = self.s.support("+18005551234")["fallback"]
+        self.assertIsNone(ladder["reaches"])
+        self.assertIn("will not change the answer", ladder["stops_because"])
+
+    def test_an_address_climbs_one_rung_and_a_handle_climbs_its_own(self):
+        self.assertEqual(self.s.support("dana@proton.me")["fallback"]["order"], ["imessage"])
+        self.assertEqual(self.s.support("dana@proton.me")["fallback"]["reaches"], "imessage")
+        self.assertEqual(self.s.support("alice.42")["fallback"]["order"], ["signal"])
+        self.assertEqual(self.s.support("alice.42")["fallback"]["reaches"], "signal")
+        self.assertEqual(self.s.support("alice")["fallback"]["reaches"], "whatsapp")
+
+    def test_the_ladder_never_promises_a_rail_its_matrix_denies(self):
+        for value in ("+12125551234", "+18005551234", "dana@proton.me", "alice.42", "alice"):
+            answer = self.s.support(value)
+            matrix, ladder = answer["matrix"], answer["fallback"]
+            for rail in ladder["rails"]:
+                self.assertEqual(rail["holds"], matrix[rail["service"]], (value, rail["service"]))
+            self.assertEqual(ladder["reaches"],
+                             next((r["service"] for r in ladder["rails"] if r["holds"] is True), None))
+
+    def test_the_ladder_keeps_the_person_out_of_the_boolean(self):
+        ladder = self.s.support("+12125551234")["fallback"]
+        self.assertIn("does not replace asking them", ladder["means"])
+        self.assertIn("does not say which one somebody's messaging app will pick", ladder["means"])
+
+    def test_the_cli_fallback_mode_answers_the_question_on_its_own(self):
+        sys.path.insert(0, str(ROOT))
+        from src.runner import cli
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = cli.cmd_lookup({"number": "+12125551234", "mode": "fallback", "platform": None})
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(buffer.getvalue())["fallback"]["reaches"], "rcs")
+
+    def test_the_page_names_the_ladder_and_rcs_as_its_own_rung(self):
+        page = " ".join((ROOT / "src" / "lookup" / "readme.md").read_text().split())
+        for needle in ("## the ladder when one rail is not there", "### rcs is the rung the matrix was missing",
+                       "### an address holds iMessage whatever the address is",
+                       "reaches: rcs", "no universal profile to answer on"):
+            self.assertIn(needle, page)
+
+
+class TestAGroupReplyComesBackAsAStranger(unittest.TestCase):
+    """the carrier carries no group thread, so inbound attribution is ours and has to say so."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        os.environ["HEYPHONY_GROUPS"] = os.path.join(self.tmp, "groups.json")
+        self.did = "+15550000000"
+        from src.manage import groups
+        self.g = groups
+        self.g.create("friday crew", [{"name": "ada", "number": "+15550000001"},
+                                      {"name": "bo", "number": "+15550000002"}])
+        self.g.create("sunday", [{"name": "ada", "number": "+15550000001"},
+                                 {"name": "cy", "number": "+15550000003"}])
+        os.environ["VOIPMS_API_USER"] = "user"
+        os.environ["VOIPMS_API_PASS"] = "secret"
+        os.environ["HEYPHONY_SEND"] = "allowed"
+        self.inbox = [{"id": "m1", "sender": "+15550000002", "recipient": self.did,
+                       "body": "who is driving", "at": 100},
+                      {"id": "m2", "sender": "+15550000003", "recipient": self.did,
+                       "body": "still on for sunday", "at": 200},
+                      {"id": "m3", "sender": "+15559999999", "recipient": self.did,
+                       "body": "wrong number", "at": 300}]
+
+    def tearDown(self):
+        for name in ("HEYPHONY_GROUPS", "HEYPHONY_SEND", "XDG_DATA_HOME"):
+            os.environ.pop(name, None)
+
+    def test_membership_is_read_from_our_records_not_the_carrier(self):
+        hits = self.g.attribute(self.g.load()["groups"], "+15550000002")
+        self.assertEqual([h["name"] for h in hits], ["friday crew"])
+        self.assertEqual(hits[0]["member"], "bo")
+
+    def test_a_number_in_two_groups_gets_both_rather_than_a_picked_one(self):
+        hits = self.g.attribute(self.g.load()["groups"], "+15550000001")
+        self.assertEqual([h["name"] for h in hits], ["friday crew", "sunday"])
+
+    def test_a_stranger_belongs_to_nothing(self):
+        self.assertEqual(self.g.attribute(self.g.load()["groups"], "+15559999999"), [])
+
+    def test_the_thread_holds_sends_and_replies_in_one_order(self):
+        self.g.say("friday crew", "seven o'clock", provider="voip.ms", from_number=self.did,
+                   opener=lambda request: (200, "{}"))
+        thread = self.g.thread("friday crew", messages=self.inbox)
+        self.assertTrue(thread["ok"])
+        self.assertEqual([row["direction"] for row in thread["rows"]], ["in", "out"])
+        self.assertEqual(thread["rows"][0]["who"], "bo")
+        self.assertIn("matched by membership", thread["means"])
+
+    def test_an_inbound_row_is_named_rather_than_dressed_up_as_a_group_message(self):
+        thread = self.g.thread("friday crew", messages=self.inbox)
+        self.assertIn("a member's own text", thread["means"])
+        self.assertFalse(any("group_id" in row for row in thread["rows"]))
+
+    def test_a_reply_goes_to_every_member_through_the_same_rail(self):
+        seen = []
+
+        def opener(request):
+            seen.append(request)
+            return 200, "{}"
+
+        answer = self.g.reply("friday crew", "seven then", provider="voip.ms",
+                              from_number=self.did, allow=True, opener=opener,
+                              replying="+15550000002")
+        self.assertTrue(answer["reply"])
+        self.assertEqual((answer["sent"], answer["of"]), (2, 2))
+        self.assertEqual(len(seen), 2)
+        self.assertIn("same one-to-one thread they used", answer["means"])
+
+    def test_a_draft_carries_the_same_explanation_as_a_sent_reply(self):
+        answer = self.g.reply("friday crew", "seven then", provider="voip.ms",
+                              from_number=self.did, allow=False,
+                              opener=lambda request: (200, "{}"))
+        self.assertTrue(answer["draft"])
+        self.assertTrue(answer["reply"])
+        self.assertIn("no group thread exists", answer["means"])
+
+    def test_the_reply_still_refuses_the_things_the_rail_refuses(self):
+        answer = self.g.reply("friday crew", "seven then", provider="voip.ms",
+                              from_number=self.did, allow=False,
+                              opener=lambda request: (200, "{}"))
+        self.assertIn("each member gets a one-to-one text", answer["what_members_see"])
+        self.assertEqual((answer["sent"], answer["of"]), (0, 2))
+        self.assertIn("cannot text the group", answer["what_members_see"])
+
+    def test_the_inbox_row_names_the_group_without_storing_it(self):
+        from src.manage import views
+        os.environ["XDG_DATA_HOME"] = self.tmp
+        os.makedirs(os.path.join(self.tmp, "telephony"), exist_ok=True)
+        with open(os.path.join(self.tmp, "telephony", "inbox.jsonl"), "w") as handle:
+            for entry in self.inbox:
+                handle.write(json.dumps({"id": entry["id"], "channel": "sms",
+                                         "direction": "in", "sender": entry["sender"],
+                                         "recipient": self.did, "body": entry["body"],
+                                         "at": entry["at"]}) + "\n")
+        view = views.messages(home=self.tmp, limit=10)
+        by_from = {row["from"]: row for row in view["rows"]}
+        self.assertEqual(by_from["+15550000002"]["groups"][0]["name"], "friday crew")
+        self.assertIn("their own text", by_from["+15550000002"]["note"])
+        self.assertNotIn("groups", by_from["+15559999999"])
+        stored = open(os.path.join(self.tmp, "telephony", "inbox.jsonl")).read()
+        self.assertNotIn("friday crew", stored)
+
+    def test_the_page_states_the_two_limits_of_attribution(self):
+        page = " ".join((ROOT / "readme.md").read_text().split())
+        for needle in ("### what comes back, and how a reply is answered",
+                       "resolves that name **at read time**",
+                       "a real carrier group mms", "indistinguishable from their group reply"):
+            self.assertIn(needle, page)
+
+
+class TestTheCodeAGroupCarries(unittest.TestCase):
+    """membership is a guess, so a group gets a code a reply can quote instead."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        os.environ["HEYPHONY_GROUPS"] = os.path.join(self.tmp, "groups.json")
+        os.environ["VOIPMS_API_USER"] = "user"
+        os.environ["VOIPMS_API_PASS"] = "secret"
+        os.environ["HEYPHONY_SEND"] = "allowed"
+        from src.manage import groups
+        self.g = groups
+        self.did = "+15550000000"
+        self.made = self.g.create("friday crew", [{"name": "ada", "number": "+15550000001"},
+                                                  {"name": "bo", "number": "+15550000002"}])
+        self.code = self.made["code"]
+        self.g.create("sunday", [{"name": "ada", "number": "+15550000001"},
+                                 {"name": "cy", "number": "+15550000003"}])
+
+    def tearDown(self):
+        for name in ("HEYPHONY_GROUPS", "HEYPHONY_SEND", "VOIPMS_API_USER", "VOIPMS_API_PASS"):
+            os.environ.pop(name, None)
+
+    def test_the_code_is_four_characters_nobody_can_confuse(self):
+        self.assertEqual(len(self.code), 4)
+        for character in self.code:
+            self.assertIn(character, self.g.CODE_ALPHABET)
+        for confusable in "BIOS01258":
+            self.assertNotIn(confusable, self.g.CODE_ALPHABET)
+
+    def test_two_live_groups_never_answer_to_the_same_code(self):
+        codes = [group["code"] for group in self.g.load()["groups"]]
+        self.assertEqual(len(codes), len(set(codes)))
+
+    def test_the_tag_rides_on_what_leaves_and_the_body_stays_the_body(self):
+        sent = {}
+
+        def opener(request):
+            sent.setdefault("requests", []).append(request)
+            return 200, "{}"
+
+        answer = self.g.say("friday crew", "seven then", provider="voip.ms",
+                            from_number=self.did, allow=True, opener=opener)
+        self.assertEqual(answer["tag"], f"ref {self.code}")
+        self.assertEqual(len(sent["requests"]), 2)
+        self.assertIn(self.code, json.dumps(sent["requests"][0]))
+        stored = self.g.load()["groups"][0]["messages"][0]
+        self.assertEqual(stored["text"], "seven then")
+        self.assertIn(f"ref {self.code}", stored["sent_text"])
+
+    def test_no_tag_sends_the_body_alone_and_says_so_by_omission(self):
+        answer = self.g.say("friday crew", "seven then", provider="voip.ms", from_number=self.did,
+                            allow=False, tag=False, opener=lambda request: (200, "{}"))
+        self.assertIsNone(answer["tag"])
+
+    def test_the_output_names_the_segment_cost_of_the_tag(self):
+        answer = self.g.say("friday crew", "seven then", provider="voip.ms", from_number=self.did,
+                            allow=False, opener=lambda request: (200, "{}"))
+        self.assertIn("second segment", answer["segments"])
+        self.assertIn("--no-tag", answer["segments"])
+
+    def test_a_quoted_code_is_certain_even_from_a_number_we_never_recorded(self):
+        found = self.g.attribute_inbound(sender="+15557777777", text=f"on my way\n\nref {self.code}")
+        self.assertEqual(found["by"], "code")
+        self.assertTrue(found["certain"])
+        self.assertEqual([g["name"] for g in found["groups"]], ["friday crew"])
+        self.assertIsNone(found["groups"][0]["member"])
+
+    def test_a_code_settles_a_member_who_is_in_two_groups(self):
+        guessed = self.g.attribute_inbound(sender="+15550000001", text="sounds good")
+        self.assertEqual(guessed["by"], "ambiguous")
+        self.assertFalse(guessed["certain"])
+        self.assertEqual(len(guessed["groups"]), 2)
+        settled = self.g.attribute_inbound(sender="+15550000001",
+                                          text=f"sounds good\n\nref {self.code}")
+        self.assertEqual(settled["by"], "code")
+        self.assertEqual([g["name"] for g in settled["groups"]], ["friday crew"])
+        self.assertEqual(settled["groups"][0]["member"], "ada")
+
+    def test_a_member_can_answer_with_the_code_alone(self):
+        self.assertEqual(self.g.code_of(self.code), self.code)
+        self.assertEqual(self.g.code_of(f"  {self.code.lower()} "), self.code)
+        self.assertIsNone(self.g.code_of("sounds good"))
+        self.assertIsNone(self.g.code_of("ok"))
+        found = self.g.attribute_inbound(sender="+15550000002", text=self.code)
+        self.assertEqual(found["by"], "code")
+        self.assertEqual(found["groups"][0]["member"], "bo")
+
+    def test_a_body_that_merely_looks_like_a_code_is_not_one(self):
+        self.assertIsNone(self.g.code_of("ACDE is the start of the alphabet"))
+        self.assertIsNone(self.g.code_of("see you at 4"))
+
+    def test_a_group_with_a_number_of_its_own_is_addressed_rather_than_guessed(self):
+        self.g.create("dinner", [{"name": "ada", "number": "+15550000001"},
+                                 {"name": "dee", "number": "+15550000004"}],
+                      number="+15550009999")
+        found = self.g.attribute_inbound(sender="+15550000004", text="table for four",
+                                         recipient="+15550009999")
+        self.assertEqual(found["by"], "number")
+        self.assertTrue(found["certain"])
+        self.assertEqual([g["name"] for g in found["groups"]], ["dinner"])
+
+    def test_the_code_is_never_dressed_up_as_a_secret(self):
+        answer = self.made
+        self.assertIn("not a person", answer["the_code_is_not_a_secret"])
+        self.assertIn("never a way to prove who is writing", answer["the_code_is_not_a_secret"])
+        self.assertIn("not a secret", answer["the_code_is_not_a_secret"])
+
+    def test_the_page_names_the_ladder_and_what_the_code_cannot_do(self):
+        page = " ".join((ROOT / "readme.md").read_text().split())
+        for needle in ("### the code the group carries, so a reply can name itself",
+                       "eight characters and no more", 'by: "code"', 'by: "ambiguous"',
+                       "and the code is not a secret"):
+            self.assertIn(needle, page)
+
+
+class TestAGroupIsTheThreadTheCarrierCarries(unittest.TestCase):
+    """a group chat is an id a carrier carries, so the thread outranks membership and a code."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        os.environ["HEYPHONY_GROUPS"] = os.path.join(self.tmp, "groups.json")
+        os.environ["VOIPMS_API_USER"] = "user"
+        os.environ["VOIPMS_API_PASS"] = "secret"
+        from src.manage import groups
+        from src.manage.outgoing import send as outbox
+        self.g, self.outbox = groups, outbox
+        self.made = self.g.adopt_thread("gc-77", ["ada=+15550000001", "+15550000002"],
+                                        name="friday crew")
+        self.g.create("sunday", [{"name": "ada", "number": "+15550000001"},
+                                 {"name": "cy", "number": "+15550000003"}])
+
+    def tearDown(self):
+        for name in ("HEYPHONY_GROUPS", "VOIPMS_API_USER", "VOIPMS_API_PASS"):
+            os.environ.pop(name, None)
+
+    def test_an_adopted_thread_is_the_group_and_says_where_it_came_from(self):
+        self.assertTrue(self.made["adopted"])
+        self.assertEqual(self.made["group"]["thread"], "gc-77")
+        self.assertEqual(self.made["group"]["adopted_from"], "carrier")
+        self.assertIn("group reply for everybody", self.made["means"])
+
+    def test_adopting_the_same_thread_twice_does_not_duplicate_it(self):
+        again = self.g.adopt_thread("gc-77", ["+15550000009"])
+        self.assertFalse(again["adopted"])
+        self.assertEqual(len([g for g in self.g.load()["groups"] if g.get("thread") == "gc-77"]), 1)
+
+    def test_a_thread_naming_one_person_is_not_a_group_and_says_why(self):
+        refused = self.g.adopt_thread("gc-88", ["+15550000001"])
+        self.assertFalse(refused["ok"])
+        self.assertIn("not a group", refused["why"])
+        self.assertIn("nothing to reply to", refused["from_carrier"])
+
+    def test_the_thread_outranks_a_code_and_membership(self):
+        found = self.g.attribute_inbound(sender="+15550000001", text="sounds good", thread="gc-77")
+        self.assertEqual(found["by"], "thread")
+        self.assertTrue(found["certain"])
+        self.assertEqual([g["name"] for g in found["groups"]], ["friday crew"])
+        self.assertEqual(found["groups"][0]["member"], "ada")
+
+    def test_a_carrier_names_numbers_so_a_thread_member_keeps_the_name_a_human_gave_it(self):
+        members = self.g.adopt_thread("gc-77")["group"]["members"]
+        self.assertEqual([m["name"] for m in members], ["ada", "+15550000002"])
+
+    def test_a_thread_id_is_never_invented_for_a_plain_text(self):
+        self.assertEqual(self.g.attribute_inbound(sender="+15550000001", text="hi")["by"], "ambiguous")
+        self.assertEqual(self.g.attribute_inbound(sender="+15557777777", thread="gc-99")["by"], None)
+
+    def test_the_envelope_reads_a_thread_and_its_participants_when_a_carrier_sends_them(self):
+        sys.path.insert(0, str(ROOT))
+        from src.setup import routes
+        payload = {"from": "+15550000001", "to": "+15550000000", "body": "hi",
+                   "thread_id": "gc-77", "participants": "+15550000001,+15550000002"}
+        envelope = routes.normalize("voip.ms", payload)
+        self.assertEqual(envelope["thread"], "gc-77")
+        self.assertEqual(envelope["participants"], ["+15550000001", "+15550000002"])
+        self.assertIsNone(routes.normalize("voip.ms", {"from": "+1", "body": "hi"})["thread"])
+
+    def test_no_wired_path_claims_it_can_address_a_thread(self):
+        for provider, row in self.outbox.THREAD_SEND.items():
+            self.assertNotEqual(row["state"], "thread", provider)
+            self.assertTrue(row["why"], provider)
+        self.assertEqual(set(self.outbox.THREAD_SEND), set(self.outbox.PATHS))
+        signalwire = self.outbox.thread_send("signalwire")
+        self.assertFalse(signalwire["ok"])
+        self.assertIn("single e164 string", signalwire["why"])
+
+    def test_a_reply_to_a_thread_group_states_the_gap_rather_than_implying_a_group_reply(self):
+        answer = self.g.say("friday crew", "seven then", provider="voip.ms",
+                            from_number="+15550000000", allow=False,
+                            opener=lambda request: (200, "{}"))
+        self.assertEqual(answer["delivered_as"], "fanout")
+        self.assertEqual(answer["thread"], "gc-77")
+        self.assertIn("will not appear in the group chat", answer["thread_gap"])
+        self.assertIn("one dst per call", answer["thread_gap"])
+
+    def test_a_fan_out_group_has_no_gap_because_it_never_promised_a_thread(self):
+        answer = self.g.say("sunday", "still on", provider="voip.ms", from_number="+15550000000",
+                            allow=False, opener=lambda request: (200, "{}"))
+        self.assertIsNone(answer["thread"])
+        self.assertIsNone(answer["thread_gap"])
+
+    def test_the_inbox_row_keeps_the_carrier_thread_apart_from_the_display_thread(self):
+        from src.manage import views
+        os.environ["XDG_DATA_HOME"] = self.tmp
+        os.makedirs(os.path.join(self.tmp, "telephony"), exist_ok=True)
+        with open(os.path.join(self.tmp, "telephony", "inbox.jsonl"), "w") as handle:
+            handle.write(json.dumps({"id": "t1", "channel": "sms", "direction": "in",
+                                     "sender": "+15550000002", "recipient": "+15550000000",
+                                     "body": "who is driving", "at": 100, "thread": "gc-77"}) + "\n")
+        try:
+            row = views.messages(home=self.tmp, limit=5)["rows"][0]
+            self.assertEqual(row["carrier_thread"], "gc-77")
+            self.assertEqual(row["attributed_by"], "thread")
+            self.assertTrue(row["certain"])
+        finally:
+            os.environ.pop("XDG_DATA_HOME", None)
+
+    def test_the_page_states_the_correction_instead_of_the_old_blanket_claim(self):
+        page = " ".join((ROOT / "readme.md").read_text().split())
+        module = " ".join((ROOT / "src" / "manage" / "groups.py").read_text().split())
+        self.assertIn("### the thread, and the correction that the group is the id", page)
+        self.assertIn('by: "thread"', page)
+        self.assertIn("was wrong about the carriers", page)
+        self.assertNotIn("most carriers do not carry a group sms as a group", page)
+        self.assertNotIn("most carriers do not carry a group sms as a group", module)
+        self.assertIn("group adopt --thread", page)
 
 
 

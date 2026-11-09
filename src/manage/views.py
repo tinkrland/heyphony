@@ -49,6 +49,34 @@ def mark_read(ids, home=None):
     return sorted(current)
 
 
+def group_digits(value):
+    return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+
+def attribute(sender, body=None, recipient=None, thread=None):
+    """the same ladder the group store uses, kept behind one function so the view cannot drift."""
+    try:
+        from src.manage import groups
+        return groups.attribute_inbound(sender=sender, text=body, recipient=recipient, thread=thread)
+    except Exception:
+        return {"groups": [], "by": None, "certain": False}
+
+
+def _groups_by_number():
+    """number -> [{id, name, member}], read from the group store. an unreadable store is not a
+    reason for the inbox to fail, so it degrades to no attribution rather than an exception."""
+    try:
+        from src.manage import groups
+        buckets = {}
+        for group in groups.load().get("groups", []):
+            for member in group.get("members", []):
+                buckets.setdefault(group_digits(member.get("number")), []).append(
+                    {"id": group["id"], "name": group["name"], "member": member.get("name")})
+        return buckets
+    except Exception:
+        return {}
+
+
 def _rows(home=None, path=None):
     """provider texts first: they are the ones that arrive while the machine sleeps."""
     rows = []
@@ -59,6 +87,9 @@ def _rows(home=None, path=None):
             "from": entry.get("sender"), "to": entry.get("recipient"),
             "at": entry.get("at"), "body": entry.get("body") or "",
             "thread": entry.get("thread") or entry.get("sender"),
+            # the carrier's own thread id, kept apart from the display thread above: one names a
+            # conversation the carrier carries, the other is a handle this view invented
+            "carrier_thread": entry.get("thread"),
             "raw": entry.get("raw"),
         })
     for entry in sip.messages(home=home, limit=200):
@@ -95,14 +126,28 @@ def messages(home=None, path=None, unread=False, since_days=None, thread=None,
         rows = [r for r in rows if r["id"] not in read_ids]
     total = len(rows)
     rows = rows[:limit]
+    from src.manage.groups import ATTRIBUTION_MEANS
+
     view = []
     for i, row in enumerate(rows, 1):
-        view.append({
+        entry = {
             "n": i, "id": row["id"], "channel": row["channel"], "from": row["from"],
             "at": row["at"], "thread": row["thread"],
             "unread": row["id"] not in read_ids,
             "preview": (row["body"] or "").replace("\n", " ")[:PREVIEW],
-        })
+            "carrier_thread": row.get("carrier_thread"),
+        }
+        # a reply names its group when it quotes the code, and is only inferred from membership when
+        # it does not. either way the name is resolved here, not written into the stored message
+        found = attribute(row["from"], row.get("body"), row.get("to"), row.get("carrier_thread"))
+        if found["groups"]:
+            entry["groups"] = found["groups"]
+            entry["attributed_by"] = found["by"]
+            entry["certain"] = found["certain"]
+            entry["note"] = ("a member of this named group writing to your did directly. there is no "
+                             "group thread, so this is their own text. "
+                             + ATTRIBUTION_MEANS[found["by"]])
+        view.append(entry)
     out = {"inbox": "messages", "count": total, "shown": len(view),
            "unread_total": sum(1 for r in _rows(home, path) if r["id"] not in read_ids),
            "rows": view,

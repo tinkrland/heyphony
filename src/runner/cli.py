@@ -288,6 +288,82 @@ def cmd_get(args):
     _out(getters.run(args.name, path=args.path, dry=not args.run))
 
 
+LOOKUP_MODES = ("line", "support", "probes", "fallback")
+
+# a number is read as a line, an address as an address, a username as a handle. the key says which,
+# because printing an email under a key called "line" is the kind of small wrongness that teaches
+# people to stop reading the output
+SUBJECT_KEYS = {"number": "line", "email": "address", "username": "handle"}
+
+
+def _lookup_args(rest):
+    """`--lookup <number> [mode]`, with the mode optional because the number is the point."""
+    parsed = {"number": None, "mode": "all", "platform": None}
+    if rest and rest[0] == "eval":
+        return {"number": None, "mode": "eval", "platform": None}
+    words = list(rest)
+    if "--platform" in words:
+        at = words.index("--platform")
+        if at + 1 < len(words):
+            parsed["platform"] = words[at + 1]
+            del words[at:at + 2]
+    for word in words:
+        if word.startswith("-"):
+            continue
+        if parsed["number"] is None:
+            parsed["number"] = word
+        elif word in LOOKUP_MODES:
+            parsed["mode"] = word
+        else:
+            parsed["mode"] = word
+    return parsed
+
+
+def cmd_lookup(args):
+    """what a number is, from the plan that issues it, and the probe that would go further."""
+    from src.lookup import classify, evalrun, support
+    number = args.get("number") if isinstance(args, dict) else getattr(args, "number", None)
+    mode = (args.get("mode") if isinstance(args, dict) else getattr(args, "mode", None)) or "all"
+    platform = args.get("platform") if isinstance(args, dict) else getattr(args, "platform", None)
+    if number == "eval":
+        number, mode = None, "eval"
+    if mode == "eval":
+        report = evalrun.run()
+        _out({k: report[k] for k in ("cases", "pass", "fail", "unknown_rate", "note", "how_to_read")}
+             | {"overreach": len(report["overreach"]),
+                "failures": [{k: row[k] for k in ("id", "wrong", "got", "expected")}
+                             for row in report["failures"]]})
+        return 0 if report["fail"] == 0 and not report["overreach"] else 1
+    if not number:
+        _out({"ok": False, "why": "lookup needs a number",
+              "usage": "heyphony --lookup +447700900123 [line|support|probes]",
+              "modes": list(LOOKUP_MODES)})
+        return 1
+    if mode in ("support", "services", "all"):
+        answer = support.support(number, platform)
+        if mode == "support":
+            _out(answer)
+            key = SUBJECT_KEYS.get(answer.get("kind") or "number", "line")
+            return 0 if answer[key]["valid"] else 1
+        single = classify.classify(number, platform)
+        answer = {"ok": True, "all": answer,
+                  SUBJECT_KEYS.get(single.get("kind") or "number", "line"): single}
+    elif mode == "fallback":
+        single = support.support(number, platform)["fallback"]
+        single["subject"] = number
+        _out({"ok": True, "fallback": single})
+        return 0
+    elif mode == "probes":
+        answer = support.probe_plan(number)
+        _out(answer)
+        return 0 if answer.get("ok") else 1
+    else:
+        single = classify.classify(number, platform)
+        answer = {"ok": True, SUBJECT_KEYS.get(single.get("kind") or "number", "line"): single}
+    _out(answer)
+    return 0 if answer.get("ok", True) else 1
+
+
 def cmd_voicemail(args):
     """one call, one person, a message spoken after whatever answers picks up."""
     from src.manage.outgoing import voicemail
@@ -316,17 +392,29 @@ def cmd_voicemail(args):
 def cmd_group(args):
     """a conversation with two to four named people, one message at a time."""
     from src.manage import groups
+    args.group = args.group or getattr(args, "target", None)
     if args.action == "new":
         members = []
         for chunk in args.with_ or []:
             name, _, number = chunk.partition("=")
             members.append({"name": name.strip(), "number": number.strip() or name.strip()})
-        answer = groups.create(args.name, members)
+        answer = groups.create(args.name, members, number=getattr(args, "number", None))
+    elif args.action == "adopt":
+        if not args.thread:
+            _out({"ok": False, "why": "adopt needs --thread with the carrier's own id"})
+            return 1
+        numbers = []
+        for chunk in args.with_ or []:
+            name, _, number = chunk.partition("=")
+            numbers.append(f"{(name or number).strip()}={number.strip() or name.strip()}")
+        answer = groups.adopt_thread(args.thread, numbers, name=args.name)
     elif args.action == "list":
         answer = groups.listing()
     elif args.action in ("show", "messages"):
         answer = groups.show(args.group)
-    elif args.action == "say":
+        if answer.get("ok"):
+            answer["thread"] = groups.thread(args.group, messages=None)["rows"]
+    elif args.action in ("say", "reply"):
         if not args.text:
             _out({"sent": 0, "why": "say needs --text"})
             return 1
@@ -336,10 +424,12 @@ def cmd_group(args):
             _out({"sent": 0, "why": "no sender number",
                   "how": "set HEYPHONY_SIP_DID to the did this provider holds"})
             return 1
-        answer = groups.say(args.group, args.text, provider=provider, from_number=from_number,
-                            allow=bool(args.send))
+        verb = groups.reply if args.action == "reply" else groups.say
+        extra = {"replying": args.replying} if args.action == "reply" else {}
+        answer = verb(args.group, args.text, provider=provider, from_number=from_number,
+                      allow=bool(args.send), tag=not bool(getattr(args, "no_tag", False)), **extra)
     else:
-        answer = {"ok": False, "why": "group takes new, list, show or say"}
+        answer = {"ok": False, "why": "group takes new, adopt, list, show, say or reply"}
     _out(answer)
     return 0 if answer.get("ok") or answer.get("count") is not None else 1
 
@@ -469,6 +559,15 @@ def build_parser():
     hk.add_argument("--did")
     hk.add_argument("--apply", action="store_true", help="set it over the provider's api, when that exists")
     hk.set_defaults(func=cmd_hooks)
+    lk = sub.add_parser("lookup", help="what a number is: line class, text, service support")
+    lk.add_argument("number")
+    lk.add_argument("--platform", choices=["signal", "whatsapp"], default=None,
+                    help="which platform's username rules to apply, when the string is a username")
+    lk.add_argument("mode", nargs="?", default="all",
+                    choices=list(LOOKUP_MODES) + ["all", "eval"],
+                    help="`eval` runs the labelled fixtures instead of a number")
+    lk.set_defaults(func=cmd_lookup)
+
     vm = sub.add_parser("voicemail", help="place one call and leave a spoken message")
     vm.add_argument("--to")
     vm.add_argument("--message")
@@ -480,14 +579,23 @@ def build_parser():
     vm.set_defaults(func=cmd_voicemail)
 
     gr = sub.add_parser("group", help="a small named conversation, one message per member")
-    gr.add_argument("action", choices=["new", "list", "show", "say"])
+    gr.add_argument("action", choices=["new", "list", "show", "say", "reply", "adopt"])
     gr.add_argument("--name")
     gr.add_argument("--with", dest="with_", action="append", metavar="NAME=+1555...",
                     help="a member, repeated (max four)")
+    gr.add_argument("target", nargs="?", help="group id or name, the same thing --group takes")
     gr.add_argument("--group", help="group id or name")
     gr.add_argument("--text")
+    gr.add_argument("--thread", metavar="ID",
+                    help="a carrier thread id, for adopt: the group chat the carrier already carries")
+    gr.add_argument("--number", metavar="+1555...",
+                    help="a did of the group's own, so replies arrive addressed instead of inferred")
     gr.add_argument("--provider")
     gr.add_argument("--send", action="store_true", help="actually send, with HEYPHONY_SEND=allowed")
+    gr.add_argument("--no-tag", action="store_true",
+                    help="send the body without the group's code on the end")
+    gr.add_argument("--replying", metavar="+1555...",
+                    help="the member whose text you are answering, recorded rather than messaged singly")
     gr.set_defaults(func=cmd_group)
 
     s = sub.add_parser("send", help="one outbound text: drafted unless --send, gated by HEYPHONY_SEND")
@@ -509,6 +617,10 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "--setup":
         argv = ["setup"] + argv[1:]
+    if argv and argv[0] == "--lookup":
+        return cmd_lookup(_lookup_args(argv[1:]))
+    if argv and argv[0] == "lookup":
+        return cmd_lookup(_lookup_args(argv[1:]))
     if argv[:2] == ["setup", "provision"]:
         argv = ["provision"] + argv[2:]
     if argv[:2] == ["setup", "--select"]:

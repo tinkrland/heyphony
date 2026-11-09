@@ -236,6 +236,14 @@ def _curl(apply, paste, did=None):
     return " ".join(parts)
 
 
+# when a carrier carries a real group thread, the thread has a name of its own and the reply belongs
+# to it rather than to whoever typed last. none of the ten paths wired today publishes one of these
+# fields, so this list is what a carrier with group mms would land in without a code change.
+THREAD_KEYS = ("thread", "thread_id", "threadId", "group_id", "groupId", "conversation_id",
+               "conversationId", "message_thread_id", "chat_id", "chatId")
+PARTICIPANT_KEYS = ("participants", "recipients", "to_participants", "group_members", "members")
+
+
 def normalize(provider, payload):
     """one envelope out of every shape. a shape nobody predicted is still stored."""
     key = _key(provider)
@@ -245,6 +253,12 @@ def normalize(provider, payload):
                 "recipient": None, "subject": None, "body": None, "at": int(time.time()),
                 "thread": None, "reply_to": None, "raw": payload}
     parse = ROUTES[key].get("parse") or {}
+    thread = pick(payload, (parse.get("thread") or []) + list(THREAD_KEYS))
+    participants = pick(payload, (parse.get("participants") or []) + list(PARTICIPANT_KEYS))
+    if isinstance(participants, str):
+        participants = [part.strip() for part in participants.split(",") if part.strip()]
+    if not isinstance(participants, list):
+        participants = None
     sender = pick(payload, parse.get("sender") or ["from", "source"])
     recipient = pick(payload, parse.get("recipient") or ["to", "destination"])
     body = pick(payload, parse.get("body") or ["body", "text", "message"])
@@ -255,7 +269,8 @@ def normalize(provider, payload):
         ident = f"{key}:{digest.hexdigest()[:16]}"
     return {"id": ident, "channel": "sms", "direction": "inbound", "sender": sender,
             "recipient": recipient, "subject": None, "body": body, "at": at,
-            "thread": None, "reply_to": None, "raw": payload}
+            "thread": str(thread) if thread not in (None, "") else None,
+            "participants": participants, "reply_to": None, "raw": payload}
 
 
 def apply_hook(provider, base=BASE, did=None):

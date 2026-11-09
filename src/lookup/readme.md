@@ -1,0 +1,299 @@
+# lookup: what the number is, from evidence
+
+*this folder answers one question about a number before anybody spends money on it: what class of line is this, and what follows from that class.*
+
+this is evidence, not a verdict, and it is built from **numbering plans**, not from a carrier, because a numbering plan is the only thing that is both public and stable. ofcom publishes which uk ranges exist and what each one is issued for, and the same is true of most european regulators. that evidence is enough to answer the two questions people actually ask:
+
+- **what type of line is this**: mobile, landline, business numbering, a voip range, personal numbering, a pager, a service range.
+- **can it receive a text**: for most ranges this follows directly from the class, and where it does not, the answer is `unknown` rather than a guess.
+
+## the +1 plan does answer one thing after all: where
+
+an earlier version of this page said the north american plan carries nothing, and that was half wrong. it
+carries no **line type**, which is why `type` stays `unknown` for a +1 number. it carries a great deal
+about **geography**, because the area code is assigned to a country, a territory or a region:
+
+    $ heyphony --lookup +13405551234
+    market: VI   country: U.S. Virgin Islands   region: U.S. Virgin Islands   type: unknown
+
+`+1` is not the united states and canada. the plan is shared by **25 countries and territories**:
+the us and canada, puerto rico, the us virgin islands, guam, the northern marianas, american samoa, and
+the caribbean members from the bahamas and barbados to trinidad, jamaica, bermuda and sint maarten. the
+table here is generated from libphonenumber's metadata (469 area codes across those 25 members)
+by `tools/generate_nanp.py`, which lives outside `src/` precisely so that `src/` keeps importing nothing
+but the standard library.
+
+the area code also carries a **class**, and the class is a real answer:
+
+- **geographic**: a region, from `New York, NY` to `Ontario`. line type still unknown.
+- **non-geographic**: the plan's own national codes, which are about a service rather than a place.
+- **toll-free** and **premium**: service codes. a business answers an 800 number and nobody signs up
+  with one, so `receive_text: false` follows from the plan rather than from a probe.
+- **personal numbering**: a follow-me number, so `unlikely` rather than a plain no.
+
+## a field the plan cannot fill is part of the answer
+
+an empty `region` is not a hole in the output, and leaving it unexplained is how a lookup tool trains
+people to distrust it. so every answer carries a `withheld` map: the fields it did not fill, each with
+the reason, and the reason is sometimes the whole point.
+
+    $ heyphony --lookup +18005551234
+    type: toll-free   region: null
+    withheld.region: a toll-free code is national by design: there is no region to give,
+                     and the empty region is the answer rather than missing data
+
+a toll-free number has no region because a toll-free code is national by design. that absence is the plan
+being exact, not the table being thin. the same answer names why it will not call the number a business
+landline either: the line belongs to whoever answers it, so there is no personal line type to claim. the
+pattern holds across the classes: a geographic +1 code withholds only the line type, a mobile range
+withholds the region it never had, an area code outside the table says the table is what is missing, and a
+market with no table at all withholds type, text capability and region together, saying each is
+unanswered rather than guessed.
+
+`heyphony --lookup +1800` keeps the same reasons on a partial answer, so asking for less evidence does
+not make the tool quieter about what it does not know.
+
+## a whole number is not always needed
+
+the geography sits in the first three digits, so `heyphony --lookup +1212` answers the country and the
+region from the area code alone and says that the subscriber digits were not needed. this is the same
+restraint as preferring a domain to a local part: ask for the part of the number the plan actually reads,
+and leave the rest on the person's side. every answer carries a `privacy` block saying what the answer
+was derived from, that no request left the machine, and that nothing was stored.
+
+## an address, for the one service that answers one
+
+`--lookup dana@example.com` reads an address the way the number reader reads a line: two independent
+classes, each of which explains itself, and a verdict that stays a verdict.
+
+### the local part says whether a person or a desk
+
+`support@`, `info@`, `billing@` and about thirty more stems are carried as role addresses. A role
+address is a shared desk: mail to it is answered by whoever is on shift, so it is not a person's account
+anywhere. A `+tag` is noted as a tag, because the tag is part of the address and not part of the identity.
+
+### the domain says who issues it
+
+`@icloud.com`, `@me.com` and `@mac.com` are apple's own three forms, and apple's support pages describe
+them as the addresses an icloud account is issued. That makes those three **apple account addresses by
+construction**, which is the single strongest thing an address can say about iMessage. Consumer mailbox
+domains (gmail, outlook, proton, yahoo and the rest) are carried as a list, throwaway domains as
+another, and everything else is a custom domain, which in practice means work or school.
+
+### the verdict is possible, unknown or unlikely, and never a probability
+
+An apple address reaches `possible`, because it is an account address by construction and whether
+iMessage is on is still a setting. A consumer mailbox reaches `unknown`, because an apple account can be
+any address and most consumer addresses are not one. A role address on a custom domain reaches
+`unlikely`, because a shared desk has no apple account and the domain does not change that. A throwaway
+domain reaches `unlikely`, because the address will be gone before a reply arrives.
+
+### a boolean for the capability and a verdict for this one
+
+Two questions hide inside "does this work", and `support` answers them separately because only one of
+them is a boolean.
+
+**Can a thing of this kind hold the service at all.** An address holds iMessage, because iMessage
+routes to an apple account and an address can be one. A whatsapp handle holds whatsapp and cannot hold
+signal. A line's sms ability is the plan's business and everything else about a line is a question for
+the account on it. That is the `matrix`, three valued: `true`, `false`, or `null` when the capability
+belongs to the account rather than the string.
+
+```
+$ heyphony --lookup examplemail@gmail.com
+imessage: true   signal: false   whatsapp: false   sms: false
+```
+
+Read that as capability and it is correct however the mailbox turns out: any address can be an apple
+account, and none of the other three verify by anything but a number. Read it as existence and it would
+be a lie about a mailbox nobody has checked.
+
+**Is this particular one registered.** That is the `verdict` on the address: `possible`, `unknown` or
+`unlikely`, with the reason. The gmail address above holds iMessage and its own verdict is still
+`unknown`, because a consumer mailbox can be an apple account and most are not. Both lines are in the
+same output, and `matrix_means` says in one sentence which one the booleans are.
+
+The pairing is the point. A boolean that tried to answer existence would have to invent the answer. A
+verdict alone hides the capability the caller was actually asking about. So an address gets
+`imessage: true` and `imessage: unknown` together, and neither one undercuts the other.
+
+### what it withholds, and what a probe would need
+
+Existence, deliverability and apple account status are all withheld with a reason, because all three
+need a request and this reader makes none. The `probes` list names what would answer them: a dns mx
+lookup for deliverability, and an smtp `RCPT` for existence, the second of which the domain owner can
+see happen. Neither is wired, and the page says so rather than implying a check that did not run.
+
+## the ladder when one rail is not there
+
+A line that shows `imessage: unknown` is not a dead end, and printing a lone false or a lone null
+leaves the caller to guess what comes next. So every answer also carries a `fallback` ladder: the rails
+a message would climb, best first, with the reason each one holds or does not, and where the climb stops.
+
+```
+$ heyphony --lookup +12125551234 fallback
+imessage  unknown   on when an apple account is signed in to this line
+rcs       true      rides the carrier messaging service the plain text does
+sms       true      the plan issues a line that can receive a text
+reaches: rcs
+```
+
+### rcs is the rung the matrix was missing
+
+`rcs` is in the `matrix` beside the other four now, and it follows the text evidence rather than
+adding a new source: RCS is the carrier's universal profile, issued with the plain text service, so a
+line that carries a text carries RCS in practice once the carrier and the client both support it, and a
+line with no messaging service has no universal profile to answer on. That is why a mobile reads
+`rcs: true`, a toll-free or a landline reads `rcs: false`, and the ladder on a mobile stops at RCS
+instead of shrugging at the iMessage question.
+
+### an address holds iMessage whatever the address is
+
+Any address, not only an Apple one: an Apple account is an address, so `dana@proton.me`,
+`dana@outlook.com` and `dana@somewhere-unheard-of.example` all read `imessage: true` in the matrix, and
+their ladder is the single rung `imessage`. What changes between them is the verdict on that particular
+address, which stays `unknown` for a consumer mailbox and `possible` for one Apple issues. The capability
+belongs to the kind of thing, the verdict belongs to the one you asked about.
+
+### the ladder says what a client will not fix
+
+`reaches` is the first rail that holds, and when nothing holds, `stops_because` says so in words nobody
+can misread: no different app changes the answer. A toll-free number, a service range and a landline all
+reach nothing, because there is no messaging service under any of them to climb from.
+
+The limit is in the block rather than the small print too. It says which rails this kind of thing can
+ride, not which one somebody's messaging app will pick, and it does not replace asking them. A person who
+has RCS available may still answer on iMessage, and a person whose line is a mobile may have every
+messaging app turned off.
+
+## a handle, which is where a number is not needed
+
+`--lookup alice.42` and `--lookup alice` read a username. This is the one address form this package
+deliberately cannot route, and that is the reason to cover it: on signal and on whatsapp a username is
+enough to start a chat without either side giving up a phone number.
+
+### signal wants a discriminator and whatsapp does not
+
+Signal's form is a nickname, a dot and a numeric discriminator, and signal adds the discriminator itself
+when you share a username, so a bare nickname reaches nobody. WhatsApp's form is a plain handle, with no
+discriminator, optionally written with the `@` people type. `--platform signal` or `--platform whatsapp`
+settles which rules to apply.
+
+### the same string is often legal on both, and names a different account
+
+`alice.42` is a valid signal username and a legal whatsapp handle. Those are two different accounts, so
+the answer carries `also_read_as` rather than picking one silently, and the service matrix marks the
+other platform `unknown` instead of `unlikely`. `alice.4` is the sharper case: too short a
+discriminator for signal, a perfectly legal whatsapp handle.
+
+### what a handle cannot tell you, and the two ways left to ask
+
+Existence, identity and the number behind it are all withheld, for a reason that outlasts any probe: a
+username is built to be changed, and after a period of disuse somebody else can claim it. Signal keeps a
+hash of the username rather than the username. So the string is not the identity, and the answer says so
+instead of implying otherwise.
+
+That still leaves a better instrument than a scan, and it is worth naming because it is the one that
+fits a single person.
+
+**Resolve, do not scan.** Signal's own client library can turn a username, or a `signal.me/#eu/` link,
+into an account id without sending anything: `kpcyrd/signal-whois` is a small resolver built on
+libsignal that does exactly that. One request, from an identity you already own, asking the platform a
+question it expects a client to ask. Because this package already onboards Signal with
+`heyphony get signal`, that identity is the one it would ride. The probe row says `sends_nothing: true`
+and `wired: false`, so the page advertises the instrument without pretending it runs.
+
+Three limits come with it, and all three are in the output rather than the small print. It needs your
+**own registered identity**, because there is no anonymous resolve. It answers **one exact string**, and a
+loop over many is a username oracle, which is the thing platform rate limits exist to stop. And what
+comes back is an **account id, which is a pseudonym**, so it is the stable thing to keep while the
+username is not.
+
+**Where there is no resolver, say so.** WhatsApp publishes no directory, offers no suggestions, and has
+no resolution path that is not a first message, plus a four digit key that can gate that message anyway.
+For a single person that is fine, because opening a chat is what you were going to do; the honest
+position is to prepare the contact rather than dress up a message as a check. `probes` names
+`open-a-chat`, marks it `sends_nothing: false`, and refuses it.
+
+**And ask.** The primitive these platforms ship for exactly this question is a shared username, a QR
+code or a link: one person handing another person a way to start a chat. No request, no third party, and
+the only method that answers the question people actually mean, which is not whether a string resolves
+but whether it is the person they think it is.
+
+## the osint turnkey tools, and why the probing half is not here
+
+There are turnkey tools that answer the questions this reader withholds, and they are worth naming
+plainly rather than pretending the capability does not exist.
+
+| tool | input | the question it answers | how it answers | what that costs |
+| --- | --- | --- | --- | --- |
+| `holehe` | an email address | which sites already have an account for that address | drives each site's "forgot password" flow and reads the response | every one of those sites sees the request and learns that somebody is checking that address. each site can change and the module rots |
+| `sherlock` and `maigret` | a username | where that username exists, hundreds of sites for sherlock and thousands for maigret | one http request per site, judged by status code and page markers | a hit is a string match, not the same person, and the tail is noise |
+| `phoneinfoga` | a number | country, area, carrier, plus search footprints | number parsing and search engine dorks | the footprints are searches rather than facts, and the parsing half is what this reader already does offline |
+
+Three reasons the probing half stays out of this package, in order of weight. **The cost lands on the
+person being looked up:** account existence is a fact about them, and every check is a request their
+provider logs. **The coverage rots:** a tool that shells out to a checker inherits its staleness and
+reports it as current. **The scale is wrong:** a username checked across thousands of sites is a scan,
+not a lookup, and a scanner inside a phone-number package is a surprise nobody asked for.
+
+If you run them, run them beside this reader rather than instead of it. Their hits are provider probes,
+which is a different and weaker strength than the plan and issuer evidence here, and this page's own
+`probes` and `withheld` blocks name the same questions in the same vocabulary, so the two outputs read
+together.
+
+## what it will not answer, and why that is the honest position
+
+a lookup that says `whatsapp: true` for a number is not reading a numbering plan. it is either texting a code to somebody else's handset or talking to an unofficial endpoint with a borrowed token, and both of those are actions against a real person's phone rather than a read of public data.
+
+`unknown` is a first-class result here, and an answer that the plan cannot give is `unknown` rather than
+a guess.
+
+so the service support matrix in `support.py` is **evidence-shaped**: for each service it says what the line class implies (`a landline cannot register any of them`), what the numbering plan cannot tell you, and the exact probe each service would need if you decided to run one. `heyphony --lookup <number> support` prints that, with `unknown` where the truth is unknown.
+
+the probe plan is printed and not executed. each entry names its consequence:
+
+- a registration probe **sends an sms code to that handset**, which is a stranger's phone ringing for a check nobody there asked for.
+- the unofficial presence endpoints for the three large services are undocumented, rate limited, and change without notice, so a `false` from one of them is a fact about the endpoint that day.
+
+## the shape of an answer
+
+    $ heyphony --lookup +15373832662
+    { "number": "+15373832662", "valid": true, "market": "US", "type": "unknown", ... }
+
+    $ heyphony --lookup +442071234567
+    { "number": "+442071234567", "valid": true, "market": "GB", "type": "landline",
+      "receive_text": false, "region": "london", ... }
+
+every answer carries `evidence` (what the classification rests on, with the regulator and the date), `limits` (what the answer cannot say), and `verified` (false until a real number from your own corpus agrees). an `unknown` is a first-class result: it means the market's plan does not encode the answer, which is exactly true of the north american numbering plan, where line type is a carrier question and never a range question.
+
+## evidence before verdicts, which is themailtell's contract applied to a number
+
+the shape of an answer here is deliberately the same shape as [themailtell](https://github.com/tinkrland/themailtell),
+which asks the same question about an email address: independent signals with their scope, evidence
+source and freshness, evidence strength with an explicit meaning rather than a made-up probability,
+contradictory and unresolved states kept rather than collapsed, and `unknown` as a first-class result.
+
+one more thing came across with the contract, and it is the reason there is an `eval`:
+
+    $ heyphony lookup eval
+    { "cases": 20, "pass": 20, "fail": 0, "unknown_rate": 0.55, "overreach": 0 }
+
+`src/lookup/corpus.json` is a labelled fixture set, and the runner counts a claim beyond the evidence as
+**overreach**, separately from a wrong answer, exactly as themailtell's runner separates false positives
+from unknown rates. the fixtures were written by the same hand as the tables, so a pass proves the code
+agrees with the table and **not** that the table is right about the world. no rate from this run should
+be quoted as accuracy. what the run does catch is the failure that matters in a lookup tool: saying
+something confident about a number whose evidence cannot support it.
+
+the contrast pairs are the design. two numbers from one market that must not get the same answer are the
+only real test that an answer is derived rather than guessed from a familiar shape, so the corpus pairs a
+uk landline with a uk mobile, a geographic +1 code with a toll-free one, and a table-known area code with
+one the table does not carry.
+
+## coverage, stated per market
+
+- **gb**: per range, verified against ofcom's numbering data. this is the market this repo is actually good at, down to `070` being personal numbering rather than mobile.
+- **us, ca and the other 25 nanp members**: `line type is a carrier question` for every number, because the plan does not encode it, while country, territory and region come straight from the area code. the honest output is `type: unknown` plus a place.
+- **se, pl, lt, nl, au**: market level evidence only: the country's cloud numbers are issued in mobile ranges. that answers "is a number from here the right class", never "is this particular number a mobile".
+- **everything else**: `unknown`, with the market named as unseeded. guessing a line type from an unfamiliar plan is how a lookup tool starts lying politely.

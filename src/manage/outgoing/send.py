@@ -161,6 +161,46 @@ def as_curl(request):
 # wired above; the rest are named here rather than left to a generic refusal, because "that provider
 # does not work" and "the parameter names for that gateway are behind a portal" are different
 # sentences and only one of them is a bug.
+# a carrier thread is addressed as a thread, not as a list of people. none of the paths wired here
+# can do that, and each row says so from its own request shape rather than from a hunch, because
+# "we cannot" and "nobody can" are different claims and only the first one is ours.
+THREAD_SEND = {
+    "voip.ms": {"state": "single recipient",
+                "why": "rest.php sendSMS takes one dst per call, so there is no field in which to "
+                       "name a thread",
+                "docs": "https://voip.ms/m/api.php"},
+    "flowroute": {"state": "single recipient",
+                  "why": "the v2.2 message body carries to as one number, so a thread is not "
+                         "addressable through it",
+                  "docs": "https://developer.flowroute.com"},
+    "signalwire": {"state": "single recipient",
+                   "why": "the laml Messages.json resource takes one To, and the rest message "
+                          "endpoint documents to as a single e164 string",
+                   "docs": "https://signalwire.com/docs/apis/rest/messages/create-message"},
+    "anveo": {"state": "gateway not wired", "why": "no send path to address anything with",
+              "docs": "https://www.anveo.com/api.asp"},
+    "questblue": {"state": "gateway not wired", "why": "no send path to address anything with",
+                  "docs": "https://docs.questblue.com"},
+    "bulkvs": {"state": "gateway not wired", "why": "no send path to address anything with",
+               "docs": "https://www.bulkvs.com"},
+    "jmp.chat": {"state": "no http path", "why": "xmpp has its own rooms, which are not this",
+                 "docs": "https://jmp.chat"},
+    "voyced": {"state": "no outbound sms claim", "why": "the vendor claims no outbound sms",
+               "docs": "https://voyced.com"},
+    "voxacall": {"state": "no outbound sms claim", "why": "the vendor claims no outbound sms",
+                 "docs": "https://voxacall.com"},
+    "bitcall": {"state": "no outbound sms claim", "why": "the vendor claims no outbound sms",
+                "docs": "https://bitcall.io"},
+}
+
+
+def thread_send(provider):
+    """whether this provider's send path can address a carrier thread, and why not when it cannot."""
+    row = THREAD_SEND.get(provider) or {"state": "unknown provider", "why": "not one of the ten",
+                                        "docs": None}
+    return {"provider": provider, "ok": row["state"] == "thread", **row}
+
+
 PATHS = {
     "voip.ms": {"state": "wired", "docs": "https://voip.ms/m/api.php",
                 "why": "rest.php with method=sendSMS, one call per message"},
