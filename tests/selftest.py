@@ -3291,6 +3291,64 @@ class TestWhoTheAgentWillHearFrom(unittest.TestCase):
             self.assertNotIn("\u2014", path.read_text(), f"{path.name} has an em dash")
 
 
+class TestTheBranchIndexMatchesGit(unittest.TestCase):
+    """repo.md says which branches mcp already contains, so git is asked instead of the page being trusted."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.page = (ROOT / "repo.md").read_text()
+        cls.rows = {}
+        for line in cls.page.splitlines():
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) == 3 and cells[0].startswith("`") and cells[0].endswith("`"):
+                cls.rows[cells[0].strip("`")] = cells[2]
+
+    def git(self, *args):
+        return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, timeout=60)
+
+    def remote_branches(self):
+        out = self.git("for-each-ref", "--format=%(refname:short)", "refs/remotes/origin")
+        if out.returncode != 0:
+            return []
+        return sorted(n.split("/", 1)[1] for n in out.stdout.split() if "/" in n and not n.endswith("/HEAD"))
+
+    def test_mcp_is_in_the_index_and_says_it_is_flat(self):
+        self.assertIn("mcp", self.rows, "the mcp branch is missing from the index")
+        self.assertIn("this is it", self.rows["mcp"])
+        self.assertIn("no `mcp/` folder", self.page)
+        self.assertFalse((ROOT / "mcp").exists(), "mcp is a branch, not a folder")
+
+    def test_main_is_not_merged_into_mcp_and_the_page_says_why(self):
+        self.assertIn("is deliberately not merged into it", " ".join(self.page.split()))
+        self.assertIn("never appears on the page", self.page)
+
+    def test_every_row_is_a_known_cell(self):
+        for name, cell in self.rows.items():
+            self.assertIn(cell, ("yes", "no", "this is it"), f"{name} has an unreadable last cell: {cell!r}")
+
+    def test_the_page_matches_the_branches_git_has(self):
+        branches = self.remote_branches()
+        if "mcp" not in branches:
+            self.skipTest("this copy has no origin/mcp ref to compare against")
+        self.assertEqual(sorted(self.rows), branches,
+                         "a branch exists that repo.md does not list, or the reverse")
+
+    def test_the_last_column_is_read_from_git(self):
+        branches = self.remote_branches()
+        if "mcp" not in branches:
+            self.skipTest("this copy has no origin/mcp ref to compare against")
+        # the page is committed on mcp, so mcp itself is compared by its own head
+        for name in branches:
+            if name == "mcp":
+                continue
+            inside = self.git("merge-base", "--is-ancestor", f"origin/{name}", "origin/mcp").returncode == 0
+            self.assertEqual(self.rows[name], "yes" if inside else "no",
+                             f"{name}: the page says {self.rows[name]!r} but git says {'yes' if inside else 'no'}")
+
+    def test_no_em_dash(self):
+        self.assertNotIn("\u2014", self.page)
+
+
 if __name__ == "__main__":
     suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])
     result = unittest.TextTestRunner(verbosity=0).run(suite)
