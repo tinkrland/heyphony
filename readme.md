@@ -107,6 +107,22 @@ the honest shape of a phone number is that half of it is somebody else's compute
 
 that asymmetry is the design. it is why the number lives on the host rather than inside a burnable guest, and why receiving is the half this repo optimises for.
 
+### and who it will hear from is a setting, not a hope
+
+a number that anyone can text is an agent that anyone can talk to, and an agent that is willing to be talked into things by anyone is a worse thing to own than one with no number at all. so the door has a policy, and the policy is closed until a human opens it: an unset one admits nobody, which means protection never depends on remembering to switch it on, and a broken policy file shuts the door rather than opening it.
+
+there are three ways to open it, and they are one choice rather than four flags:
+
+- **a list.** only the numbers you name get in. this is the default shape, with an empty list, and it is the right one for an agent that has a handful of people it works with.
+- **local.** only numbers from your own country get in, decided by the dial code at the front of the number. it is the setting for an agent whose whole job is people nearby.
+- **chosen countries.** you name the countries that are welcome and the ones that never are, and a blocked country loses to an allowed one by default so a refusal cannot be undone by a typo elsewhere.
+
+two toggles sit on top: a listed number gets in whatever the mode says (so a country rule never locks out the person you added by hand), and a block wins over a list unless you turn that off. every change prints the sentence it now means, so a widened door is something you read rather than something you find out about.
+
+one honest limit: a `+1` number is the north american numbering plan, shared by the united states, canada and a run of caribbean nations, and the digits alone do not say which. so "local" for a `+1` home admits all of it, and asking for the united states only would need an area code table this repo does not pretend to have. the same goes for who is really calling: the sender is the number the carrier reports, and a provider vouches for it, not this page.
+
+refused messages are never stored, but they are counted: the reason, the region and a shortened number, never the text. a policy that is too tight otherwise looks exactly like a broken webhook, and `heyphony allow` prints the tally so you can tell them apart.
+
 ## get it
 
 ```

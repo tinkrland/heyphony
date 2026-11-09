@@ -13,7 +13,7 @@ import sys
 
 from src import __version__
 from src.onramp import flow as getters
-from src.manage import inbox
+from src.manage import allow, inbox
 from src import providers
 from src.linphone import sip
 from src.manage import views
@@ -254,6 +254,27 @@ def cmd_inbox(args):
     _out({"messages": [r for r in rows if r.get("channel") == "sms"], "count": len(rows)})
 
 
+def cmd_allow(args):
+    """show the policy, or make exactly one edit to it. every edit says what it changed."""
+    policy = allow.load()
+    if args.action is None:
+        _out({"policy": policy, "means": allow.explain(policy), "refusals": allow.refusal_summary(),
+              "modes": list(allow.MODES), "default": allow.DEFAULT_MODE,
+              "path": str(allow.policy_path())})
+        return 0
+    if args.action == "check":
+        ok, why = allow.decide(args.value, policy)
+        _out({"sender": args.value, "allowed": ok, "why": why, "region": allow.country_of(args.value)})
+        return 0 if ok else 1
+    changed, note = allow.apply(policy, args.action, args.value)
+    if not note["ok"]:
+        _out(note)
+        return 2
+    path = allow.save(changed)
+    _out({**note, "means": allow.explain(changed), "saved": str(path)})
+    return 0
+
+
 def cmd_serve(args):
     from src.manage import catcher
     catcher.serve(port=args.port, token=args.token)
@@ -414,6 +435,11 @@ def build_parser():
     i.set_defaults(func=cmd_inbox)
     w = sub.add_parser("serve"); w.add_argument("--port", type=int, default=8099)
     w.add_argument("--token"); w.set_defaults(func=cmd_serve)
+    al = sub.add_parser("allow", help="who the agent will hear from: a list, a home country, or chosen countries")
+    al.add_argument("action", nargs="?", choices=[
+        "mode", "home", "allow", "unallow", "block", "unblock", "allow-country", "unallow-country",
+        "block-country", "unblock-country", "also-allow-list", "block-wins", "check"])
+    al.add_argument("value", nargs="?"); al.set_defaults(func=cmd_allow)
     o = sub.add_parser("open", help="read the inbox, the call log or the voicemail")
     o.add_argument("what", nargs="?", default="all", choices=["messages", "calls", "voicemail", "all"])
     o.add_argument("--unread", action="store_true")
