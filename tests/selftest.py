@@ -1886,10 +1886,36 @@ class TestTheToolSurface(unittest.TestCase):
         self.assertIn("### the sdk is the cli with the parsing done", root)
         self.assertIn("### the tool surface cannot close a gate", root)
         self.assertIn("## as an mcp server", package)
-        self.assertIn("### twelve tools, and which of them spend", package)
+        # the count in the heading is read off the server, so adding a tool without touching the page fails
+        # here instead of leaving the prose quietly wrong
+        server = (self.npm / "bin" / "heyphony-mcp.js").read_text()
+        total = server.count('    name: "heyphony_')
+        words = {12: "twelve", 13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen", 17: "seventeen",
+                 18: "eighteen", 19: "nineteen", 20: "twenty"}
+        self.assertIn(total, words, "teach this test the word for the new count")
+        self.assertIn(f"### {words[total]} tools, and which of them spend", package)
+        spend = server.count("gate: SEND_GATE") + server.count("gate: CALL_GATE")
+        self.assertEqual(spend, 3, "three tools reach outside the machine")
+        self.assertIn(f"the other {words[total - spend]} only read", root)
+        self.assertIn(f"{words[total - spend]} that read and three that reach outside the machine", agents)
+        self.assertIn(f"{words[total - spend]} read: `heyphony_status`", package)
         self.assertIn("## if you speak mcp instead of a shell", agents)
         for page in (root, package, agents):
             self.assertIn("HEYPHONY_SEND=allowed", page)
+
+    def test_the_pages_say_no_tool_edits_the_inbound_policy_and_the_code_agrees(self):
+        server = (self.npm / "bin" / "heyphony-mcp.js").read_text()
+        package = " ".join((self.npm / "readme.md").read_text().split())
+        agents = " ".join((self.npm / "agents.md").read_text().split())
+        names = re.findall(r'    name: "(heyphony_[a-z_]+)"', server)
+        self.assertEqual(sorted(n for n in names if "allow" in n), ["heyphony_allow_check", "heyphony_allow_show"],
+                         "an allow tool that edits would let a prompt open the agent's own door")
+        for needle in ("there is no tool that edits it", "a refused sender comes back as an answer",
+                       "an argument nobody declared"):
+            self.assertIn(needle, package, f"the npm page lost {needle!r}")
+        self.assertIn("there is no tool to change that policy: ask the human", agents)
+        self.assertIn("function violations(tool, input)", server, "the schema is held, not just printed")
+        self.assertIn("answers: [0, 1]", server, "a refused sender must not look like a crash")
 
     def test_the_suite_would_notice_a_server_that_stopped_answering(self):
         script = (self.npm / "scripts" / "test-mcp.js").read_text()

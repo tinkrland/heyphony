@@ -51,7 +51,12 @@ function run(args, options) {
   const opts = options || {};
   const answer = captured(args, opts);
   const parsed = firstJson(answer.stdout);
-  const ok = answer.code === 0 && !answer.spawn_error;
+  // a verb that exits nonzero to say "no" (allow check does, for a refused sender) names that code in
+  // `answers`, and it counts as an answer only when it also printed json. a crash prints none, and a
+  // spawn error is never an answer, so naming a code cannot turn a failure into a success
+  const answered = Array.isArray(opts.answers) && opts.answers.includes(answer.code)
+    && parsed.json !== null && !answer.spawn_error;
+  const ok = (answer.code === 0 && !answer.spawn_error) || answered;
   return {
     ok,
     code: answer.code,

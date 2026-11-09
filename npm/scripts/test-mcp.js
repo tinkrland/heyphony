@@ -11,6 +11,8 @@
  */
 
 const assert = require("assert");
+const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
 
@@ -99,9 +101,87 @@ async function main() {
   assert.match(draftBody.gate.means, /HEYPHONY_SEND=allowed/);
   assert.doesNotMatch(draftBody.command, /--send/, "the flag is absent when the gate is shut");
 
+
+  // the inbound policy: readable and checkable by an agent, never editable by one
+  assert.ok(names.includes("heyphony_lookup") && names.includes("heyphony_allow_show") && names.includes("heyphony_allow_check"),
+    "lookup, allow_show and allow_check are tools");
+  assert.deepStrictEqual(names.filter((n) => /allow/.test(n)).sort(), ["heyphony_allow_check", "heyphony_allow_show"],
+    "there is no tool that edits the policy: widening who can text the agent is a human decision");
+  for (const n of ["heyphony_lookup", "heyphony_allow_show", "heyphony_allow_check"]) {
+    assert.strictEqual(listed.result.tools.find((e) => e.name === n).annotations.readOnlyHint, true, `${n} only reads`);
+  }
+
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "heyphony-allow-"));
+  const policyEnv = { HEYPHONY_ALLOW: path.join(scratch, "allow.json"), XDG_DATA_HOME: path.join(scratch, "data") };
+  try {
+    const shut = await tool("heyphony_allow_check", { sender: "+447700900123" }, policyEnv);
+    assert.strictEqual(shut.isError, false, "a refused sender is an answer, not a failure");
+    assert.strictEqual(body(shut).result.allowed, false);
+    assert.strictEqual(body(shut).result.why, "not-on-the-list", "the default policy admits nobody");
+    assert.strictEqual(body(shut).ok, true, "ok and isError agree");
+
+    fs.writeFileSync(policyEnv.HEYPHONY_ALLOW, JSON.stringify({ mode: "local", home: "GB" }));
+    const open = await tool("heyphony_allow_check", { sender: "+44 7700 900123" }, policyEnv);
+    assert.strictEqual(open.isError, false);
+    assert.strictEqual(body(open).result.allowed, true, "a local number gets in when the home country matches");
+    assert.strictEqual(body(open).result.region, "GB");
+
+    const shown = body(await tool("heyphony_allow_show", {}, policyEnv));
+    assert.strictEqual(shown.result.policy.mode, "local");
+    assert.match(shown.result.means, /GB/);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
+
+  const looked = await tool("heyphony_lookup", { number: "+447700900123", mode: "line" });
+  assert.strictEqual(looked.isError, false, "lookup answers");
+  assert.ok(body(looked).result.line, "lookup returns the line reading");
+
+  // the schema a tool advertises is held, not just printed
+  for (const [label, name, args, pattern] of [
+    ["a value outside the enum", "heyphony_lookup", { number: "+447700900123", mode: "zzz" }, /mode must be one of/],
+    ["an argument nobody declared", "heyphony_allow_check", { sender: "+447700900123", extra: "x" }, /unknown argument extra/],
+    ["the wrong type", "heyphony_allow_check", { sender: 12345 }, /sender must be a string/],
+    ["a non-object", "heyphony_status", [1, 2], /arguments must be an object/],
+  ]) {
+    const refused = await tool(name, args);
+    assert.strictEqual(refused.isError, true, `${label} is refused`);
+    assert.match(refused.content[0].text, pattern, `${label} says why`);
+  }
+
+
+  // the sdk is the other adapter over the same verbs, and it must agree with the server about what a no is
+  const sdk = require("..");
+  assert.ok(!("allowSet" in sdk) && !("setAllow" in sdk) && !("allowMode" in sdk), "the sdk has no wrapper that edits the policy");
+  const scratch2 = fs.mkdtempSync(path.join(os.tmpdir(), "heyphony-sdk-"));
+  const savedAllow = process.env.HEYPHONY_ALLOW, savedData = process.env.XDG_DATA_HOME;
+  process.env.HEYPHONY_ALLOW = path.join(scratch2, "allow.json");
+  process.env.XDG_DATA_HOME = path.join(scratch2, "data");
+  try {
+    const no = sdk.allowCheck("+447700900123");
+    assert.strictEqual(no.code, 1, "the verb exits 1 for a sender it refuses");
+    assert.strictEqual(no.ok, true, "the sdk reports that no as an answer");
+    assert.strictEqual(no.json.allowed, false);
+    const plain = sdk.run(["allow", "check", "+447700900123"]);
+    assert.strictEqual(plain.ok, false, "naming the exit code is opt in: a plain run still sees exit 1 as not ok");
+    assert.strictEqual(sdk.allow().json.policy.mode, "list", "the default policy is the closed one");
+    assert.ok(sdk.lookup("+447700900123", { mode: "line" }).json.line, "the sdk reads a number");
+    const crash = sdk.run(["allow", "nonsense"], { answers: [0, 1, 2] });
+    assert.strictEqual(crash.ok, false, "naming exit codes cannot turn a verb that printed nothing into an answer");
+  } finally {
+    if (savedAllow === undefined) delete process.env.HEYPHONY_ALLOW; else process.env.HEYPHONY_ALLOW = savedAllow;
+    if (savedData === undefined) delete process.env.XDG_DATA_HOME; else process.env.XDG_DATA_HOME = savedData;
+    fs.rmSync(scratch2, { recursive: true, force: true });
+  }
+
   console.log("mcp: " + [
     "initialize", "tools/list", "ping", "unknown method", "status", "unknown tool",
     "missing argument", "shut gate drafts", "spending tools are flagged",
+    "no tool edits the policy", "a refusal is an answer", "a local sender gets in", "the policy reads back",
+    "lookup answers", "an undeclared enum value is refused", "an undeclared argument is refused",
+    "the wrong type is refused", "a non-object is refused",
+    "the sdk has no edit wrapper", "the sdk reports a no as an answer", "a plain run still sees exit 1 as not ok",
+    "a named exit code cannot turn a crash into an answer",
   ].length + " checks pass, " + names.length + " tools");
 }
 

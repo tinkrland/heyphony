@@ -100,7 +100,7 @@ it is gated like the text rail: `HEYPHONY_CALL=allowed` and `--send`, both, or y
 
 ### the same answers over mcp, for an agent that is not a shell
 
-`heyphony-mcp` is a model context protocol server, and it is deliberately the smallest thing that could work: json-rpc on stdin and stdout, no dependency, and each tool is one of the commands above with its json handed back as the tool result. twelve tools, and the interesting part is not the count, it is which way the arrows point. three of them reach outside this machine (`heyphony_send_text`, `heyphony_group_say`, `heyphony_voicemail`) and the other nine only read, so `readOnlyHint` in `tools/list` is a fact about the code rather than a label somebody typed.
+`heyphony-mcp` is a model context protocol server, and it is deliberately the smallest thing that could work: json-rpc on stdin and stdout, no dependency, and each tool is one of the commands above with its json handed back as the tool result. fifteen tools, and the interesting part is not the count, it is which way the arrows point. three of them reach outside this machine (`heyphony_send_text`, `heyphony_group_say`, `heyphony_voicemail`) and the other twelve only read, so `readOnlyHint` in `tools/list` is a fact about the code rather than a label somebody typed.
 
 ```
 { "mcpServers": { "heyphony": { "command": "npx", "args": ["-y", "-p", "heyphony", "heyphony-mcp"] } } }

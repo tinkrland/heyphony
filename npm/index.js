@@ -29,6 +29,12 @@ module.exports = {
   sendText: ({ to, text, from, provider, send }, options) =>
     read(["send", "--to", to, "--text", text, ...(from ? ["--from", from] : []),
       ...(provider ? ["--provider", provider] : []), ...(send ? ["--send"] : [])], options),
+  // read only on purpose. there is no wrapper that edits the policy, for the reason the mcp server has no
+  // such tool: who the agent will hear from is widened by the human who runs it
+  lookup: (number, options) => read(["lookup", String(number), ...((options && options.mode) ? [String(options.mode)] : [])], options),
+  allow: (options) => read(["allow"], options),
+  // a refused sender exits 1 and still prints its answer, so that exit code is an answer here too
+  allowCheck: (sender, options) => read(["allow", "check", String(sender)], Object.assign({}, options, { answers: [0, 1] })),
   groups: (options) => read(["group", "list"], options),
   groupShow: (group, options) => read(["group", "show", "--group", group], options),
 };

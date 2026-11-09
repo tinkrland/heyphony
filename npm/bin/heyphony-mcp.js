@@ -147,6 +147,45 @@ const TOOLS = [
       ...(a.wait !== undefined ? ["--wait", String(a.wait)] : [])],
   },
   {
+    name: "heyphony_lookup",
+    title: "What a number is",
+    description:
+      "What a phone number is, from the numbering plan that issued it: country, line class, whether it can hold a " +
+      "text, and which services tend to refuse it. A read of public plan data that never dials and never contacts " +
+      "the number. Every answer carries its evidence and says what it cannot know, so treat a field marked " +
+      "withheld as unknown rather than as a no.",
+    input: {
+      number: str("the number in international form, +44..."),
+      mode: { type: "string", enum: ["all", "line", "support", "probes", "fallback"], description: "which part of the answer; defaults to all" },
+    },
+    required: ["number"],
+    args: (a) => ["lookup", String(a.number), ...(a.mode ? [String(a.mode)] : [])],
+  },
+  {
+    name: "heyphony_allow_show",
+    title: "Who the agent will hear from",
+    description:
+      "The inbound policy in force: its mode (list, local, regions or open), the home country, the numbers and " +
+      "countries it names, and a one sentence reading of what that means. Also the tally of texts the policy " +
+      "turned away, by reason and region. Read only. There is deliberately no tool that edits the policy: " +
+      "widening who can text the agent is a decision for the human who runs the server.",
+    input: {},
+    args: () => ["allow"],
+  },
+  {
+    name: "heyphony_allow_check",
+    title: "Would this sender get in",
+    description:
+      "Ask the inbound policy about one sender without sending or storing anything. Answers allowed true or " +
+      "false with the reason, and the country the number belongs to. A refusal is an answer, not an error. " +
+      "A brand name or short code (AMAZON, 12345) has no country and is only admitted by open mode.",
+    input: { sender: str("a phone number in international form, or a brand name or short code") },
+    required: ["sender"],
+    args: (a) => ["allow", "check", String(a.sender)],
+    // `allow check` exits 1 for a sender that is refused, which is a normal answer
+    answers: [0, 1],
+  },
+  {
     name: "heyphony_hooks",
     title: "Inbound hook",
     description:
@@ -191,6 +230,27 @@ function gateOpen(name) {
   return String(process.env[name] || "").toLowerCase() === "allowed";
 }
 
+// the schema each tool advertises is the contract, so the server holds callers to it instead of dropping
+// whatever it does not recognise. an argument that was never declared, a value of the wrong type, or one
+// outside a declared enum is refused before a command line is built from it
+function violations(tool, input) {
+  const declared = tool.input || {};
+  const found = [];
+  if (input === null || typeof input !== "object" || Array.isArray(input)) return ["arguments must be an object"];
+  for (const key of Object.keys(input)) {
+    if (!Object.prototype.hasOwnProperty.call(declared, key)) found.push(`unknown argument ${key}`);
+  }
+  for (const [key, spec] of Object.entries(declared)) {
+    const value = input[key];
+    if (value === undefined || value === null) continue;
+    if (spec.type === "integer" && !Number.isInteger(value)) found.push(`${key} must be an integer`);
+    else if (spec.type === "boolean" && typeof value !== "boolean") found.push(`${key} must be true or false`);
+    else if (spec.type === "string" && typeof value !== "string") found.push(`${key} must be a string`);
+    else if (spec.enum && !spec.enum.includes(value)) found.push(`${key} must be one of ${spec.enum.join(", ")}`);
+  }
+  return found;
+}
+
 function callTool(name, args) {
   const tool = BY_NAME.get(name);
   if (!tool) {
@@ -202,12 +262,17 @@ function callTool(name, args) {
     return { isError: true, content: [{ type: "text", text: `missing ${missing.join(", ")}: ${tool.name} needs ${missing.join(", ")}.` }] };
   }
 
+  const broken = violations(tool, input);
+  if (broken.length) {
+    return { isError: true, content: [{ type: "text", text: `${tool.name} refused its arguments: ${broken.join("; ")}.` }] };
+  }
+
   const argv = tool.args(input);
   const shut = Boolean(tool.gate) && !gateOpen(tool.gate);
   // the flag goes on only for a spending tool whose gate is open. a read tool never gets one, and a
   // shut gate means the flag is absent and the verb replies with the draft, as it would in a terminal
   const full = tool.gate && !shut ? [...argv, "--send"] : argv;
-  const answer = run(full, { timeout: 90000 });
+  const answer = run(full, { timeout: 90000, answers: tool.answers });
 
   const payload = {
     ok: answer.ok,

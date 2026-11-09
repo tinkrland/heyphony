@@ -24,7 +24,7 @@ that is not an error to retry, it is the next question. answer it with the flag 
 
 ## if you speak mcp instead of a shell
 
-`heyphony-mcp` is a stdio server in this package, so your host can list the tools and call them rather than running commands: nine that read and three that reach outside the machine (`heyphony_send_text`, `heyphony_group_say`, `heyphony_voicemail`). call `heyphony_status` first, because it answers what this machine can actually do.
+`heyphony-mcp` is a stdio server in this package, so your host can list the tools and call them rather than running commands: twelve that read and three that reach outside the machine (`heyphony_send_text`, `heyphony_group_say`, `heyphony_voicemail`). call `heyphony_status` first, because it answers what this machine can actually do. `heyphony_allow_check` tells you whether a sender would be heard before you wait on one, and there is no tool to change that policy: ask the human.
 
 **a spending tool answers with `gate: { closed: true, drafted: true }` when nobody has said yes.** that is not an error to retry with different arguments, and it is not a hint to go looking for another route: it means `HEYPHONY_SEND=allowed` (or `HEYPHONY_CALL=allowed`) is absent from the environment you were started with, and closing it is your human's decision, not an argument you can supply. say so and stop, exactly as you would with a `needs` answer from `setup select sip`.
 
