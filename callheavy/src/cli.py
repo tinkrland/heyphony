@@ -11,7 +11,7 @@ import pathlib
 import sys
 import time
 
-from callheavy.src import audio, dial, host, task as tasks
+from callheavy.src import audio, calle, dial, host, pump, task as tasks
 
 STATE = pathlib.Path(os.environ.get("HEYPHONY_CALLHEAVY_DIR")
                      or "~/.local/share/telephony/callheavy").expanduser()
@@ -19,6 +19,29 @@ STATE = pathlib.Path(os.environ.get("HEYPHONY_CALLHEAVY_DIR")
 
 def _read_json(path):
     return json.loads(pathlib.Path(path).read_text()) if path else None
+
+
+VIA = ("callheavy", "calle")
+
+# what each rail is and what it costs, printed with every plan so the choice is never invisible
+RAILS = {
+    "callheavy": {"rings_from": "this machine, over our own baresip and the did it holds",
+                  "spends": "the did's per minute rate, to the carrier the owner already pays",
+                  "returns": "the call's own facts (ringing, established, closed) and the audio path, but no "
+                             "transcript and no extracted result: those need a speech model this repo does not ship",
+                  "needs": ["a running baresip with ctrl_tcp (callheavy host)", "HEYPHONY_CALL is not read here; "
+                            "--authorized and --run are the consent"]},
+    "calle": {"rings_from": "a hosted service (api.heycall-e.com), with their voice agent doing the talking",
+              "spends": "the owner's call-e credits, on the owner's own key",
+              "returns": "the call, a transcript and a result extracted into the schema, in one round trip",
+              "needs": ["CALLE_API_KEY in the environment", "HEYPHONY_CALL=allowed",
+                        "a closed flat result schema (at most 32 string, boolean, integer or number fields)",
+                        "--authorized and --run"]},
+}
+
+
+def _via_note(via):
+    return {"via": via, **RAILS[via]}
 
 
 def _task(args):
@@ -45,16 +68,75 @@ def cmd_host(args):
 
 def cmd_plan(args):
     item = _task(args)
+    if args.via == "calle":
+        return _calle_plan(args, item)
     missing = tasks.clarifications(item, args.to)
     if missing:
         return {"ok": False, "problems": missing}, 1
-    return {"ok": True, "task": item, "dial": f"sip:{args.to}",
+    return {"ok": True, "task": item, "dial": f"sip:{args.to}", **_via_note("callheavy"),
             "socket": f"{args.socket}", "record": str(STATE),
-            "note": "nothing was dialled. `dial --run` places it, and only then does a phone ring"}, 0
+            "note": "nothing was dialled. `dial --via callheavy --run` places it, and only then does a phone ring"}, 0
+
+
+def _calle_inputs(args):
+    schema = _read_json(args.schema)
+    goal = args.goal
+    return goal, schema
+
+
+def _calle_plan(args, item, idem=None):
+    goal, schema = _calle_inputs(args)
+    found = calle.problems(goal, args.to, schema, getattr(args, "region", None))
+    if found:
+        return {"ok": False, "via": "calle", "problems": found}, 1
+    key_ = idem or calle.idempotency_key(goal, args.to, schema)
+    return {"ok": True, "sending": False, **_via_note("calle"),
+            "request": calle.request_body(goal, args.to, schema, getattr(args, "region", None),
+                                          args.language, None, None, args.notes),
+            "idempotency_key": key_, "endpoint": calle.base() + "/v2/calls", "gate": calle.gate(),
+            "note": "nothing was sent. `dial --via calle --run` creates the call, and only then is anyone rung"}, 0
+
+
+def _calle_dial(args, item):
+    plan, code = _calle_plan(args, item)
+    if code:
+        return plan, code
+    if not args.authorized:
+        return {"ok": False, "via": "calle", "problems": [{"needs": "authorized", "flag": "--authorized",
+                "why": "a call is somebody's phone ringing; the record says who asked for it"}]}, 1
+    plan["authorized_by"] = args.authorized
+    if not args.run:
+        plan["note"] = "plan only. --run creates the call"
+        return plan, 0
+    shut = calle.gate()
+    if shut["closed"]:
+        plan.update({"ok": False, "drafted": True, "gate": shut,
+                     "note": "the gate is shut, so nothing was sent and nobody was rung"})
+        return plan, 1
+    goal, schema = _calle_inputs(args)
+    try:
+        created = calle.create(goal, args.to, schema, plan["idempotency_key"], region=getattr(args, "region", None),
+                               locale=args.language, notes=args.notes)
+        call_id = created.get("id")
+        snapshot, timed_out = (created, False)
+        if call_id and not args.no_wait:
+            snapshot, timed_out = calle.wait(call_id, timeout=args.wait)
+    except calle.ApiError as error:
+        return {"ok": False, "via": "calle", "error": {"status": error.status, "code": error.code,
+                "message": error.message, "details": error.details}, "authorized_by": args.authorized,
+                "idempotency_key": plan["idempotency_key"]}, 1
+    record = {**calle.shape(snapshot), "authorized_by": args.authorized,
+              "idempotency_key": plan["idempotency_key"], "waited": not args.no_wait,
+              "timed_out": timed_out,
+              "resume": f"callheavy status --via calle --id {call_id}" if call_id else None}
+    record["record"] = _store(record, f"calle-{int(time.time())}")
+    return {"ok": snapshot.get("status") not in ("failed", "canceled"), **record}, 0
 
 
 def cmd_dial(args):
     item = _task(args)
+    if args.via == "calle":
+        return _calle_dial(args, item)
     missing = tasks.clarifications(item, args.to)
     if missing:
         return {"ok": False, "problems": missing}, 1
@@ -64,16 +146,48 @@ def cmd_dial(args):
                                                  "who asked for it"}]}, 1
     target = f"sip:{args.to}"
     if not args.run:
-        return {"ok": True, "sending": False, "dial": target, "socket": args.socket,
+        return {"ok": True, "sending": False, "dial": target, "socket": args.socket, **_via_note("callheavy"),
                 "task": item, "authorized_by": args.authorized,
                 "note": "plan only. --run sends the dial to baresip"}, 0
 
     host_name, _, port = args.socket.partition(":")
     result = dial.dial(target, host=host_name or "127.0.0.1", port=int(port or 4444),
                        settle=args.settle)
-    record = {"task": item, "authorized_by": args.authorized, **result}
+    record = {"via": "callheavy", "task": item, "authorized_by": args.authorized, **result,
+              "result_status": "not_applicable", "result": None, "transcript": [],
+              "result_status_why": "this rail places the call and carries its audio, but turning audio into "
+                                   "a transcript needs a speech model this repo does not ship. use `prompt` on "
+                                   "a transcript you made, or --via calle for one in a single round trip"}
     record["record"] = _store(record, f"{args.to.lstrip('+')}-{int(time.time())}")
     return record, 0 if result.get("accepted") else 1
+
+
+def cmd_status(args):
+    """read one hosted call by id. a long call returns an id, and this is how it is picked up again."""
+    if args.via != "calle":
+        return {"ok": False, "problems": [{"needs": "via", "why": "only the hosted rail has a call id to ask about; "
+                "a call on our own rail is a record file under " + str(STATE)}]}, 1
+    if not calle.key():
+        return {"ok": False, "problems": [{"needs": calle.KEY_ENV, "why": "reading a call needs the owner's key"}]}, 1
+    try:
+        snapshot = calle.get(args.id)
+    except calle.ApiError as error:
+        return {"ok": False, "via": "calle", "error": {"status": error.status, "code": error.code,
+                "message": error.message}}, 1
+    return {"ok": True, **calle.shape(snapshot)}, 0
+
+
+def cmd_cancel(args):
+    if args.via != "calle":
+        return {"ok": False, "problems": [{"needs": "via", "why": "own-rail calls end with `hangup`"}]}, 1
+    shut = calle.gate()
+    if shut["closed"]:
+        return {"ok": False, "drafted": True, "gate": shut, "note": "the gate is shut, so nothing was sent"}, 1
+    try:
+        return {"ok": True, **calle.shape(calle.cancel(args.id))}, 0
+    except calle.ApiError as error:
+        return {"ok": False, "via": "calle", "error": {"status": error.status, "code": error.code,
+                "message": error.message}}, 1
 
 
 def cmd_mic(args):
@@ -119,8 +233,12 @@ def build(argv=None):
 
     for name, run in (("plan", cmd_plan), ("dial", cmd_dial)):
         p = sub.add_parser(name, help="print the call" if name == "plan" else "place it")
+        p.add_argument("--via", required=True, choices=VIA,
+                       help="which rail rings: callheavy (this machine) or calle (hosted). there is no "
+                            "default, because one of them spends credits")
         p.add_argument("--goal", required=True, help="what the call is for, in words")
         p.add_argument("--to", required=True, help="one recipient in e164")
+        p.add_argument("--region", help="two letter country code, for the hosted rail only")
         p.add_argument("--schema", help="a json schema file: the fields to bring back")
         p.add_argument("--success", help="how either side would know it worked")
         p.add_argument("--notes", help="context the agent should have")
@@ -131,7 +249,16 @@ def build(argv=None):
     dial_p = sub.choices["dial"]
     dial_p.add_argument("--authorized", help="who asked for this call")
     dial_p.add_argument("--run", action="store_true", help="actually dial")
-    dial_p.add_argument("--settle", type=float, default=45.0, help="seconds to listen for the ending")
+    dial_p.add_argument("--settle", type=float, default=45.0, help="seconds to listen for the ending (callheavy)")
+    dial_p.add_argument("--wait", type=float, default=600.0, help="seconds to wait for the hosted result (calle)")
+    dial_p.add_argument("--no-wait", action="store_true", help="return the call id at once and read it later (calle)")
+
+    for name, handler, what in (("status", cmd_status, "read one hosted call by id"),
+                                ("cancel", cmd_cancel, "cancel one hosted call by id")):
+        q = sub.add_parser(name, help=what)
+        q.add_argument("--via", required=True, choices=VIA)
+        q.add_argument("--id", required=True)
+        q.set_defaults(handler=handler)
 
     mic_p = sub.add_parser("mic", help="the capture device, and what it costs")
     mic_p.add_argument("--wav", help="use a wav as a browser microphone instead of a device")

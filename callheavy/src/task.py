@@ -3,8 +3,10 @@
 this is the piece the hosted calling services genuinely did better than a plain dialler, and it is
 worth taking seriously: a call with a stated goal, a list of things to find out, and a structured
 result is a different object from a call with a script. what is taken from [call-e](https://heycall-e.com)
-is the *shape* of that idea, credited here and implemented locally against our own client and our own
-reasoning. no request goes to their hosted dialer, and no audio leaves the machine except the call.
+is the *shape* of that idea, credited here, and it is implemented twice: locally against our own client and
+our own reasoning, which is this file, and as a client for their hosted service in `calle.py`, which is a
+separate rail the caller has to ask for by name with `--via calle`. nothing in this file talks to them, and
+on the local rail no request goes to their dialler and no audio leaves the machine except the call.
 
 the vocabulary below is deliberately borrowed (result_status, call_outcome, the four-state envelope),
 because a caller that already reads one calling tool should not have to learn a second dialect to read

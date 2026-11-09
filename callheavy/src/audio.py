@@ -3,16 +3,24 @@
 two media paths, and they are different problems wearing the same word. a phone call carries one
 stream over rtp and the client owns it, so the agent has to arrive at the client's audio device. a
 livekit room carries tracks between participants, so the agent arrives as a participant. the umbrella
-already picked the rails for both; this file is the honest version of them for a call this lane places,
-including the part that is not built.
+already picked the rails for both; this file is the honest version of them for a call this lane places.
 
 what is here: the virtual microphone a native client can read from (pipewire or pulse, over pactl), the
 browser flags that make a page see a wav file as a microphone, and the livekit gate with a publish call
 that refuses by name when the sdk is absent rather than failing an import at module load.
 
-what is not here: a bridge between a sip call and a livekit room. joining both ends is a participant
-that pumps audio in two directions, which is a real piece of software and is not written. saying so is
-the point of `bridge_plan()`.
+what is built elsewhere in this folder: the agent's ears and mouth on a sip call. `pump.py` puts the
+agent's voice where baresip reads its microphone and records what baresip plays, through four
+pulseaudio null sinks that keep their own clock, and `rig.py` runs two real baresip instances so it can
+be proven on a machine with no sound card and no carrier. a tone crosses a real call in each direction
+at the level it was spoken, with no leakage, and the test for it runs on every suite. an earlier version
+of this docstring said the pumping was not written, and that was the wrong sentence: it was never one
+problem.
+
+what is not here: a bridge between a sip call and a livekit room. that is the different problem the old
+sentence was pointing at, a participant that holds two media clocks and two codecs at once, and it is
+not written. saying so is the point of `bridge_plan()`. turning the ears into a transcript is also not
+here, because that needs a speech model and this repo ships none.
 """
 import os
 
@@ -113,6 +121,8 @@ def bridge_plan():
                             "back into the room as a track",
         "why_not_shipped": "two media clocks and two codecs is a project, not a helper, and pretending "
                            "otherwise would make this lane look finished",
+        "what_is_shipped_instead": "the agent's ears and mouth on a sip call (pump.py), which needs no "
+                                   "room: it is one stream each way through a local sink",
         "the shape_that_works_today": "the call rides baresip and the agent's voice rides the virtual mic; "
                                       "a room rides livekit and the agent is a participant. pick the one "
                                       "that matches where the other person already is",
@@ -129,6 +139,11 @@ def readiness(platform=None):
                 "commands": row["commands"], "verified": row["verified"], "oss": row["oss"]},
         "room": {"closed": room["closed"], "missing": room["missing"]},
         "bridge": "not shipped",
+        "call_audio": {"shipped": True, "module": "callheavy/src/pump.py",
+                       "what": "the agent's voice into the call and the far end's voice out of it, on a sip "
+                               "call this lane places",
+                       "proof": "callheavy/src/rig.py runs two baresip instances and a test carries a tone "
+                                "each way"},
         "note": "a call without a capture device connects and is silent, which sounds like a network "
                 "problem and is not one",
     }
