@@ -9,7 +9,7 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from src.manage import inbox
+from src.manage import allow, inbox
 from src.setup import routes
 
 
@@ -49,10 +49,21 @@ def normalize(payload, provider=None):
     return entry
 
 
-def make_handler(token=None, path=None):
+def make_handler(token=None, path=None, policy=None, refused=None):
     class Handler(BaseHTTPRequestHandler):
         def _store(self, payload, provider):
-            stored, reason = inbox.append(normalize(payload, provider), path)
+            entry = normalize(payload, provider)
+            # reloaded per message: an edit to the policy takes effect on the next text, not the next restart
+            allowed, why = allow.decide(entry.get("sender"), policy or allow.load())
+            if not allowed:
+                allow.record_refusal(entry.get("sender"), why, refused)
+                # 200, not 403: a carrier that sees an error retries, and a retry storm of refused
+                # messages is worse than the refusal. the body says what happened.
+                body = json.dumps({"stored": False, "reason": "refused", "why": why}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(body)
+                return
+            stored, reason = inbox.append(entry, path)
             body = json.dumps({"stored": stored, "reason": reason}).encode()
             self.send_response(200 if stored or reason == "duplicate" else 500)
             self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(body)
@@ -93,5 +104,5 @@ def make_handler(token=None, path=None):
     return Handler
 
 
-def serve(port=8099, token=None, path=None):
-    HTTPServer(("0.0.0.0", port), make_handler(token, path)).serve_forever()
+def serve(port=8099, token=None, path=None, policy=None, refused=None):
+    HTTPServer(("0.0.0.0", port), make_handler(token, path, policy, refused)).serve_forever()

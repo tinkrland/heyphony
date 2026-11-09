@@ -14,6 +14,7 @@ one table, because the most common confusion in this package was not knowing whi
 | `heyphony doctor` | setup (proof) | what is configured and what is still designed | yes |
 | `heyphony serve --port 8099` | manage | runs the catcher that receives texts and carrier email | it is a server, one at a time |
 | `heyphony app` | manage | the launcher on 127.0.0.1:8790; `--json` prints the tabs, counts and people and exits without serving | same |
+| `heyphony allow` | manage | who the agent will hear from: shows the policy and what it means, and `allow mode local`, `allow allow +44...`, `allow block-country poland` or `allow check +46...` edit or test it | yes, every edit prints what it changed |
 | `heyphony inbox --since 7` | manage | the raw rows, machine shaped, for a script rather than a person | yes |
 | `heyphony calls --missed` | manage | the call log out of the client's own sqlite, filtered if you ask | yes |
 | `heyphony open messages` | manage | reads the inbox, marks what you looked at | yes, read marks are a sidecar |

@@ -278,8 +278,18 @@ class TestThePagesSayHowToGetIt(unittest.TestCase):
     def test_the_package_page_admits_it_came_from_the_umbrella(self):
         """the prose names sibling lanes that live elsewhere, so the page has to say so."""
         text = (ROOT / "readme.md").read_text()
-        self.assertIn("this repo is the standalone package", text)
+        self.assertIn("this is the standalone package", text)
         self.assertIn("spawnables/tree/comms", text)
+
+    def test_the_opening_says_who_this_number_is_not_for(self):
+        """the owner's call: the scope boundary belongs in the opening, where the pitch is."""
+        text = (ROOT / "readme.md").read_text()
+        opening = text.split("## telecom was built for people")[0]
+        for needle in ("bulk outbound calling", "marketing campaigns", "a sales dialer",
+                       "there are already enough companies selling it well"):
+            self.assertIn(needle, opening, f"the opening stopped saying {needle!r}")
+        self.assertNotIn("> **", opening,
+                         "the stand-alone note was a blockquote in the opening; it is prose elsewhere now")
 
     def test_the_main_page_carries_no_repo_map_and_no_branch_table(self):
         """the owner's call: the tree and the branch list are not the front page's job."""
@@ -2948,6 +2958,311 @@ class TestAGroupIsTheThreadTheCarrierCarries(unittest.TestCase):
         self.assertNotIn("most carriers do not carry a group sms as a group", module)
         self.assertIn("group adopt --thread", page)
 
+
+
+class TestWhoTheAgentWillHearFrom(unittest.TestCase):
+    """the door is closed by default, the modes are one choice, and a refusal is counted but never stored."""
+
+    def setUp(self):
+        from src.manage import allow
+        self.allow = allow
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+
+    def policy(self, **kw):
+        base = self.allow.default_policy()
+        base.update(kw)
+        return base
+
+    def test_an_unset_policy_admits_nobody(self):
+        ok, why = self.allow.decide("+447700900123", self.allow.default_policy())
+        self.assertFalse(ok)
+        self.assertEqual(why, "not-on-the-list")
+        self.assertEqual(self.allow.DEFAULT_MODE, "list", "protection must not depend on being switched on")
+
+    def test_a_missing_or_broken_file_closes_the_door(self):
+        missing = self.allow.load(self.tmp / "nope.json")
+        self.assertEqual(missing["mode"], "list")
+        broken = self.tmp / "broken.json"
+        broken.write_text("{ this is not json")
+        loaded = self.allow.load(broken)
+        self.assertEqual(loaded["mode"], "list")
+        self.assertTrue(loaded.get("broken"))
+        self.assertFalse(self.allow.decide("+447700900123", loaded)[0])
+
+    def test_an_unknown_mode_in_the_file_falls_back_to_closed(self):
+        bad = self.tmp / "bad.json"
+        bad.write_text(json.dumps({"mode": "everyone-please"}))
+        self.assertEqual(self.allow.load(bad)["mode"], "list")
+
+    def test_list_mode_admits_only_the_named_numbers(self):
+        p = self.policy(mode="list", allow_numbers=["+447700900123"])
+        self.assertEqual(self.allow.decide("+44 7700 900123", p), (True, "on-the-list"))
+        self.assertEqual(self.allow.decide("+447700900999", p), (False, "not-on-the-list"))
+
+    def test_local_mode_uses_the_dial_code_of_the_home_country(self):
+        p = self.policy(mode="local", home="GB")
+        self.assertEqual(self.allow.decide("+447700900123", p), (True, "local"))
+        self.assertEqual(self.allow.decide("+46701234567", p), (False, "not-local"))
+
+    def test_local_with_no_home_country_admits_nobody(self):
+        self.assertEqual(self.allow.decide("+447700900123", self.policy(mode="local")),
+                         (False, "no-home-country"))
+
+    def test_regions_mode_allows_some_countries_and_refuses_others(self):
+        p = self.policy(mode="regions", allow_countries=["GB", "SE"], block_countries=["PL"])
+        self.assertTrue(self.allow.decide("+447700900123", p)[0])
+        self.assertTrue(self.allow.decide("+46701234567", p)[0])
+        self.assertEqual(self.allow.decide("+48501234567", p), (False, "country-blocked"))
+        self.assertEqual(self.allow.decide("+4915112345678", p), (False, "country-not-allowed"))
+
+    def test_regions_mode_with_nothing_allowed_admits_nobody(self):
+        self.assertEqual(self.allow.decide("+447700900123", self.policy(mode="regions")),
+                         (False, "no-countries-allowed"))
+
+    def test_a_blocked_country_beats_an_allowed_one_by_default(self):
+        p = self.policy(mode="regions", allow_countries=["PL"], block_countries=["PL"])
+        self.assertEqual(self.allow.decide("+48501234567", p), (False, "country-blocked"))
+
+    def test_a_listed_number_gets_in_whatever_the_mode_says(self):
+        p = self.policy(mode="local", home="GB", allow_numbers=["+46701234567"])
+        self.assertEqual(self.allow.decide("+46701234567", p), (True, "on-the-list"))
+        off = self.policy(mode="local", home="GB", allow_numbers=["+46701234567"], also_allow_list=False)
+        self.assertEqual(self.allow.decide("+46701234567", off), (False, "not-local"))
+
+    def test_a_blocked_number_loses_even_when_it_is_listed(self):
+        p = self.policy(mode="open", allow_numbers=["+447700900123"], block_numbers=["+447700900123"])
+        self.assertEqual(self.allow.decide("+447700900123", p), (False, "number-blocked"))
+
+    def test_block_wins_can_be_turned_off_for_countries(self):
+        p = self.policy(mode="open", block_countries=["PL"], block_wins=False)
+        self.assertTrue(self.allow.decide("+48501234567", p)[0])
+
+    def test_a_listed_number_survives_a_blocked_country_only_when_block_wins_is_off(self):
+        on = self.policy(mode="list", allow_numbers=["+48501234567"], block_countries=["PL"])
+        self.assertEqual(self.allow.decide("+48501234567", on), (False, "country-blocked"))
+        off = self.policy(mode="list", allow_numbers=["+48501234567"], block_countries=["PL"], block_wins=False)
+        self.assertEqual(self.allow.decide("+48501234567", off), (True, "on-the-list"))
+
+    def test_the_longest_dial_code_wins(self):
+        self.assertEqual(self.allow.country_of("+37061234567"), "LT", "+370 is lithuania, not a +3 anything")
+        self.assertEqual(self.allow.country_of("+447700900123"), "GB")
+        self.assertEqual(self.allow.country_of("+919876543210"), "IN")
+
+    def test_plus_one_is_one_plan_and_the_file_says_so(self):
+        self.assertEqual(self.allow.country_of("+14155550123"), "NANP")
+        self.assertEqual(self.allow.country_of("+16475550123"), "NANP", "toronto looks the same as san francisco")
+        for name in ("united states", "usa", "canada"):
+            self.assertEqual(self.allow.region(name), "NANP")
+        self.assertIn("us-only-from-a-plus-one", self.allow.REFUSED)
+
+    def test_a_number_the_table_cannot_place_is_refused_by_every_region_rule(self):
+        stranger = "+99912345678"
+        self.assertIsNone(self.allow.country_of(stranger))
+        self.assertEqual(self.allow.decide(stranger, self.policy(mode="regions", allow_countries=["GB"])),
+                         (False, "country-unknown"))
+        self.assertEqual(self.allow.decide(stranger, self.policy(mode="local", home="GB")),
+                         (False, "country-unknown"))
+
+    def test_open_mode_exists_but_is_never_the_default(self):
+        self.assertIn("open", self.allow.MODES)
+        self.assertTrue(self.allow.decide("+447700900123", self.policy(mode="open"))[0])
+        self.assertNotEqual(self.allow.default_policy()["mode"], "open")
+
+    def test_a_garbage_sender_is_refused_in_every_mode(self):
+        for mode in self.allow.MODES:
+            for junk in (None, "", "not a number", "+0123456", "this is far too long to be a sender",
+                         ["+447700900123"], b"+447700900123", 1234567890123456789,
+                         "+\uff14\uff14\uff17\uff17\uff10\uff10\u2079\uff10\uff10\uff11\uff12\uff13"):
+                self.assertFalse(self.allow.decide(junk, self.policy(mode=mode))[0], f"{mode} admitted {junk!r}")
+
+    def test_a_short_code_or_brand_name_gets_in_only_through_open(self):
+        """a verification text comes from AMAZON or 12345, which have no country. only open can vouch for one."""
+        for name in ("AMAZON", "VM-BANK", "12345"):
+            self.assertEqual(self.allow.decide(name, self.policy(mode="open")), (True, "open-name"))
+            for mode in ("list", "local", "regions"):
+                p = self.policy(mode=mode, home="GB", allow_countries=["GB"], allow_numbers=["+447700900123"])
+                self.assertEqual(self.allow.decide(name, p), (False, "alphanumeric-sender"),
+                                 f"{mode} admitted {name!r}, which has no country to check")
+
+    def test_a_name_is_refused_under_its_own_reason_not_as_a_malformed_number(self):
+        self.assertEqual(self.allow.decide("AMAZON", self.policy(mode="list"))[1], "alphanumeric-sender")
+        self.assertEqual(self.allow.decide("not a number", self.policy(mode="list"))[1], "no-number")
+        self.assertIn("name-as-a-number", self.allow.REFUSED)
+
+    def test_a_blocked_name_stays_out_even_in_open_mode(self):
+        p = self.policy(mode="open", block_numbers=["amazon"])
+        self.assertEqual(self.allow.decide("AMAZON", p), (False, "alphanumeric-sender"))
+
+    def test_bare_digits_are_a_number_only_when_they_start_with_a_known_dial_code(self):
+        """some carriers drop the plus. 447700900123 is a uk number, 123456789012 is just digits."""
+        self.assertEqual(self.allow.normalize_number("447700900123"), "+447700900123")
+        self.assertEqual(self.allow.normalize_number("919876543210"), "+919876543210")
+        self.assertIsNone(self.allow.normalize_number("999123456789"), "no dial code starts this")
+        listed = self.policy(mode="list", allow_numbers=["+447700900123"])
+        self.assertEqual(self.allow.decide("447700900123", listed), (True, "on-the-list"),
+                         "a listed sender was locked out because the carrier dropped the plus")
+
+    def test_a_unicode_digit_anywhere_in_a_number_is_refused(self):
+        """\\d matches fullwidth and arabic-indic digits in python, so a number that starts with an ascii digit
+        and continues in fullwidth passes `[1-9]\\d{6,14}`. the leading digit hid it for the pure case."""
+        fullwidth = lambda s: "".join(chr(0xFF10 + int(d)) for d in s)
+        arabic = lambda s: "".join(chr(0x0660 + int(d)) for d in s)
+        for sneaky in ("+" + fullwidth("447700900123"),
+                       "+4" + fullwidth("47700900123"),
+                       "+44770090" + fullwidth("0123"),
+                       "+4" + arabic("47700900123"),
+                       fullwidth("447700900123")):
+            self.assertIsNone(self.allow.normalize_number(sender := sneaky), f"accepted {sneaky!r}")
+            self.assertFalse(self.allow.decide(sender, self.policy(mode="open"))[0],
+                             f"open mode admitted a number made of unicode digits: {sneaky!r}")
+        self.assertEqual(self.allow.normalize_number("+447700900123"), "+447700900123", "the real one still works")
+
+    def test_the_e164_pattern_is_ascii_digits_and_a_fullmatch(self):
+        self.assertNotIn("\\d", self.allow.E164.pattern, "\\d is unicode aware in python")
+        self.assertIsNone(self.allow.E164.fullmatch("+447700900123\n"), "a trailing newline is not a number")
+        self.assertTrue(self.allow.E164.fullmatch("+447700900123"))
+
+    def test_every_edit_says_what_it_changed_and_refuses_what_it_cannot_do(self):
+        p = self.allow.default_policy()
+        p, note = self.allow.apply(p, "mode", "regions")
+        self.assertEqual(note["changed"], "mode list -> regions")
+        p, note = self.allow.apply(p, "allow-country", "United Kingdom")
+        self.assertEqual(p["allow_countries"], ["GB"])
+        p, note = self.allow.apply(p, "allow-country", "uk")
+        self.assertEqual(p["allow_countries"], ["GB"], "adding twice must not duplicate")
+        p, note = self.allow.apply(p, "block-country", "atlantis")
+        self.assertFalse(note["ok"])
+        p, note = self.allow.apply(p, "mode", "everyone")
+        self.assertFalse(note["ok"])
+        p, note = self.allow.apply(p, "allow", "07700 900123")
+        self.assertFalse(note["ok"], "a number without a country code is not an e164 number")
+        p, note = self.allow.apply(p, "unallow-country", "gb")
+        self.assertEqual(p["allow_countries"], [])
+
+    def test_the_policy_file_is_written_private_and_round_trips(self):
+        target = self.tmp / "allow.json"
+        p, _ = self.allow.apply(self.allow.default_policy(), "mode", "local")
+        p, _ = self.allow.apply(p, "home", "india")
+        self.allow.save(p, target)
+        self.assertEqual(oct(target.stat().st_mode & 0o777), "0o600")
+        again = self.allow.load(target)
+        self.assertEqual((again["mode"], again["home"]), ("local", "IN"))
+
+    def test_explain_says_it_in_a_sentence_a_person_can_check(self):
+        self.assertIn("only the 0 numbers", self.allow.explain(self.allow.default_policy()))
+        text = self.allow.explain(self.policy(mode="regions", allow_countries=["GB", "SE"], block_countries=["PL"]))
+        self.assertIn("GB, SE", text)
+        self.assertIn("never PL", text)
+        self.assertIn("no home country", self.allow.explain(self.policy(mode="local")))
+
+    def test_a_refusal_is_logged_without_the_text_or_the_whole_number(self):
+        log = self.tmp / "refused.jsonl"
+        self.allow.record_refusal("+447700900123", "not-on-the-list", log, at=1000)
+        row = json.loads(log.read_text().strip())
+        self.assertEqual(row["why"], "not-on-the-list")
+        self.assertEqual(row["region"], "GB")
+        self.assertNotIn("7700900", row["sender"], "the log must not rebuild a contact list")
+        self.assertNotIn("body", row)
+        self.assertEqual(oct(log.stat().st_mode & 0o777), "0o600")
+        summary = self.allow.refusal_summary(log)
+        self.assertEqual(summary["refused"], 1)
+        self.assertEqual(summary["by_region"], {"GB": 1})
+
+    def test_the_catcher_stores_an_allowed_text_and_refuses_the_rest_before_the_inbox(self):
+        from src.manage import catcher, inbox
+        import threading
+        import urllib.request
+        from http.server import HTTPServer
+
+        store = self.tmp / "inbox.jsonl"
+        refused = self.tmp / "refused.jsonl"
+        pol = self.policy(mode="list", allow_numbers=["+447700900123"])
+        server = HTTPServer(("127.0.0.1", 0), catcher.make_handler(None, str(store), pol, str(refused)))
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            url = f"http://127.0.0.1:{server.server_port}/"
+
+            def post(sender, ident):
+                req = urllib.request.Request(url, data=json.dumps(
+                    {"from": sender, "to": "+15550001111", "body": "hi", "id": ident}).encode(),
+                    headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=10) as reply:
+                    return reply.status, json.loads(reply.read())
+
+            status, body = post("+447700900123", "m1")
+            self.assertEqual((status, body["stored"]), (200, True))
+            status, body = post("+46701234567", "m2")
+            self.assertEqual(status, 200, "a refusal must not look like an error to a carrier that retries")
+            self.assertFalse(body["stored"])
+            self.assertEqual((body["reason"], body["why"]), ("refused", "not-on-the-list"))
+            rows = inbox.read(str(store))
+            self.assertEqual([r.get("id") for r in rows], ["m1"], "the refused text reached the inbox")
+            self.assertEqual(self.allow.refusal_summary(refused)["refused"], 1)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_an_edit_takes_effect_on_the_next_text_without_a_restart(self):
+        from src.manage import catcher
+        import threading
+        import urllib.request
+        from http.server import HTTPServer
+
+        cfg = self.tmp / "live.json"
+        os.environ["HEYPHONY_ALLOW"] = str(cfg)
+        store = self.tmp / "live-inbox.jsonl"
+        server = HTTPServer(("127.0.0.1", 0), catcher.make_handler(None, str(store), None,
+                                                                   str(self.tmp / "live-refused.jsonl")))
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            url = f"http://127.0.0.1:{server.server_port}/"
+
+            def post(ident):
+                req = urllib.request.Request(url, data=json.dumps(
+                    {"from": "+447700900123", "to": "+15550001111", "body": "hi", "id": ident}).encode(),
+                    headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=10) as reply:
+                    return json.loads(reply.read())
+
+            self.assertFalse(post("a")["stored"], "the unset policy must start closed")
+            opened, _ = self.allow.apply(self.allow.default_policy(), "allow", "+447700900123")
+            self.allow.save(opened, cfg)
+            self.assertTrue(post("b")["stored"], "an edit did not reach the running catcher")
+            closed, _ = self.allow.apply(opened, "block", "+447700900123")
+            self.allow.save(closed, cfg)
+            self.assertFalse(post("c")["stored"], "a block did not reach the running catcher")
+        finally:
+            os.environ.pop("HEYPHONY_ALLOW", None)
+            server.shutdown()
+            server.server_close()
+
+    def test_the_command_edits_shows_and_checks(self):
+        env = dict(os.environ, HEYPHONY_ALLOW=str(self.tmp / "cli.json"), XDG_DATA_HOME=str(self.tmp / "data"))
+
+        def run(*args):
+            return subprocess.run([str(ROOT / "bin" / "heyphony"), "allow", *args], capture_output=True,
+                                  text=True, timeout=60, env=env)
+
+        shown = run()
+        self.assertEqual(shown.returncode, 0, shown.stderr)
+        self.assertEqual(json.loads(shown.stdout)["policy"]["mode"], "list")
+        self.assertEqual(run("mode", "local").returncode, 0)
+        self.assertEqual(run("home", "uk").returncode, 0)
+        inside, outside = run("check", "+447700900123"), run("check", "+46701234567")
+        self.assertEqual((inside.returncode, outside.returncode), (0, 1), "check must exit by its answer")
+        self.assertEqual(json.loads(inside.stdout)["why"], "local")
+        self.assertEqual(run("block-country", "atlantis").returncode, 2)
+
+    def test_the_pages_carry_it(self):
+        page = (ROOT / "readme.md").read_text()
+        for needle in ("and who it will hear from is a setting, not a hope", "an unset one admits nobody",
+                       "a broken policy file shuts the door", "**a list.**", "**local.**",
+                       "**chosen countries.**", "north american numbering plan", "never the text"):
+            self.assertIn(needle, page, f"the readme lost {needle!r}")
+        self.assertIn("`heyphony allow`", (ROOT / "src/setup/commands/readme.md").read_text())
+        self.assertIn("who gets in, before anything", (ROOT / "src/manage/readme.md").read_text())
+        for path in (ROOT / "src/manage/allow.py", ROOT / "readme.md", ROOT / "src/manage/readme.md"):
+            self.assertNotIn("\u2014", path.read_text(), f"{path.name} has an em dash")
 
 
 if __name__ == "__main__":

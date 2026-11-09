@@ -6,7 +6,7 @@ there is no product that sells a phone number to a program. there are products t
 
 that is the whole pitch, and it is smaller than it sounds. your agent ends up with a **phone number of its own**, in the same network as every other number, dialable and textable from the phone already in somebody's pocket. everything below is the argument for the shape and the way to get it.
 
-> **this repo is the standalone package.** these pages were written beside the umbrella, so a few of them name sibling lanes (signal, email, meetings, the contact book) that live in [spawnables on the comms branch](https://github.com/tinkrland/spawnables/tree/comms) rather than here. the argument holds and the code runs without them: what leaves this repo is the number and the rails a number unlocks, and nothing here imports the umbrella. the dependency runs one way and stays that way.
+this is not the number for the other kind of company. if the job is bulk outbound calling driven by a model, marketing campaigns, or a sales dialer working a list, that is a different product with consent, attested origination and a registered business behind it, and there are already enough companies selling it well that the honest advice is to go and look at them. what is here is deliberately the opposite shape: one number, one agent, one message at a time, at the pace a person would keep.
 
 if you opened this repo and could not tell how it runs, that is what [directory.md](directory.md) is for: the tree, the setup flow and the manage flow drawn separately, and where each command sits.
 
@@ -177,6 +177,24 @@ the honest shape of a phone number is that half of it is somebody else's compute
 
 that asymmetry is the design. it is why the number lives on the host rather than inside a burnable guest, and why receiving is the half this repo optimises for.
 
+### and who it will hear from is a setting, not a hope
+
+a number that anyone can text is an agent that anyone can talk to, and an agent that is willing to be talked into things by anyone is a worse thing to own than one with no number at all. so the door has a policy, and the policy is closed until a human opens it: an unset one admits nobody, which means protection never depends on remembering to switch it on, and a broken policy file shuts the door rather than opening it.
+
+there are three ways to open it, and they are one choice rather than four flags:
+
+- **a list.** only the numbers you name get in. this is the default shape, with an empty list, and it is the right one for an agent that has a handful of people it works with.
+- **local.** only numbers from your own country get in, decided by the dial code at the front of the number. it is the setting for an agent whose whole job is people nearby.
+- **chosen countries.** you name the countries that are welcome and the ones that never are, and a blocked country loses to an allowed one by default so a refusal cannot be undone by a typo elsewhere.
+
+two toggles sit on top: a listed number gets in whatever the mode says (so a country rule never locks out the person you added by hand), and a block wins over a list unless you turn that off. every change prints the sentence it now means, so a widened door is something you read rather than something you find out about.
+
+one honest limit: a `+1` number is the north american numbering plan, shared by the united states, canada and a run of caribbean nations, and the digits alone do not say which. so "local" for a `+1` home admits all of it, and asking for the united states only would need an area code table this repo does not pretend to have. the same goes for who is really calling: the sender is the number the carrier reports, and a provider vouches for it, not this page.
+
+one more edge worth knowing: texts from a brand name or a short code (a bank, a courier, a verification service) have no country, so only the open mode lets them through and every other mode refuses them under their own name rather than as a malformed number. that includes verification texts, which is the same line this page draws everywhere else about what a number of this type is for.
+
+refused messages are never stored, but they are counted: the reason, the region and a shortened number, never the text. a policy that is too tight otherwise looks exactly like a broken webhook, and `heyphony allow` prints the tally so you can tell them apart.
+
 ## get it
 
 ```
@@ -252,3 +270,5 @@ no stream, no account to create, no audience to grow: a number that can be reach
 ### the rest is in the argument
 
 those are not gaps waiting for a sprint. they are the limit of what a number of this type can do, and [theidea/](theidea/) is where each one is argued rather than listed.
+
+and for the record, since the pages here name lanes that are not in this repo: this is the standalone package, written beside the umbrella, so a few of them point at sibling lanes (signal, email, meetings, the contact book) that live in [spawnables on the comms branch](https://github.com/tinkrland/spawnables/tree/comms). the code runs without them, what leaves this repo is the number and the rails a number unlocks, and the dependency runs one way.
