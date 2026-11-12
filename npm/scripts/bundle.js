@@ -26,7 +26,7 @@ const clean = process.argv.includes("--clean");
 
 // the packaging folders are not the product. everything else at the root is, and it ships as it is:
 // the prose is part of what an agent reads, and the licence has to travel with the code.
-const SKIP = new Set([".git", ".github", "npm", "tests", "bin", "node_modules", "__pycache__"]);
+const SKIP = new Set([".git", ".github", "npm", "pypi", "tests", "bin", "node_modules", "__pycache__"]);
 
 function fail(message, detail) {
   const line = detail ? `${message}\n  ${detail}` : message;

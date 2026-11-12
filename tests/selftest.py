@@ -7,6 +7,7 @@ the specific failure mode of a package that has to be trusted with a phone numbe
 """
 import argparse
 import contextlib
+import importlib.util
 import io
 import json
 import os
@@ -163,6 +164,23 @@ class TestTheNpmPackageIsInstallable(unittest.TestCase):
         self.assertEqual(list(bundled.rglob("__pycache__")), [], "a cached .pyc does not belong in a tarball")
         self.assertEqual((bundled / "src/__init__.py").read_text().count("__version__"),
                          (ROOT / "src/__init__.py").read_text().count("__version__"))
+
+    def test_the_npm_bundle_never_carries_the_pypi_build(self):
+        """the bundler copies the repo root minus a skip list, so a new packaging folder is shipped by
+        default unless it is skipped. pypi/ and its generated heyphony/ copy must not ride along."""
+        node = self.node()
+        pypi_build = ROOT / "pypi" / "build.py"
+        subprocess.run([sys.executable, str(pypi_build)], capture_output=True, text=True, timeout=120, check=True)
+        try:
+            done = subprocess.run([node, str(self.npm / "scripts/bundle.js"), "--strict"],
+                                  capture_output=True, text=True, timeout=120)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertFalse((self.npm / "python" / "pypi").exists(),
+                             "the npm tarball would carry the pypi packaging folder")
+            self.assertEqual(sorted(p.name for p in (self.npm / "python").iterdir() if p.name == "heyphony"), [])
+        finally:
+            subprocess.run([sys.executable, str(pypi_build), "--clean"], capture_output=True, text=True, timeout=120)
+            subprocess.run([node, str(self.npm / "scripts/bundle.js"), "--clean"], capture_output=True, text=True, timeout=120)
 
     def test_the_installed_shim_runs_the_bundled_code(self):
         node = self.node()
@@ -3347,6 +3365,116 @@ class TestTheBranchIndexMatchesGit(unittest.TestCase):
 
     def test_no_em_dash(self):
         self.assertNotIn("\u2014", self.page)
+
+
+class TestThePypiPackageIsTheRepoRenamed(unittest.TestCase):
+    """the pypi build copies src/ to heyphony/ and rewrites imports. the claims worth pinning are the
+    ones that would go wrong silently: a leaked top-level `src`, a second version, a dirty tree."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.pypi = ROOT / "pypi"
+        cls.script = cls.pypi / "build.py"
+        spec = importlib.util.spec_from_file_location("pypi_build", cls.script)
+        cls.build = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.build)
+
+    def test_import_rewrite_covers_both_statement_forms(self):
+        text = "from src.setup import routes\nimport src\n    from src import providers\nx = 'src.not an import'\n"
+        out = self.build.rewrite(text)
+        self.assertIn("from heyphony.setup import routes", out)
+        self.assertIn("import heyphony\n", out)
+        self.assertIn("    from heyphony import providers", out)
+        self.assertIn("'src.not an import'", out, "a string that merely mentions src must be left alone")
+
+    def test_no_import_in_the_repo_is_missed_by_the_rewrite(self):
+        for path in (ROOT / "src").rglob("*.py"):
+            for number, line in enumerate(path.read_text().splitlines(), 1):
+                stripped = line.strip()
+                if re.match(r"(from|import)\s+src\b", stripped):
+                    self.assertTrue(self.build.IMPORT.match(line),
+                                    f"{path.relative_to(ROOT)}:{number} is an src import the rewrite would miss")
+
+    def test_the_version_has_one_source(self):
+        self.assertEqual(self.build.version(), json.loads((ROOT / "npm/package.json").read_text())["version"])
+        toml = (self.pypi / "pyproject.toml").read_text()
+        self.assertIn("dynamic = [\"version\"]", toml)
+        self.assertNotRegex(toml, r"(?m)^version\s*=\s*[\"']\d", "pyproject must read the version, never state one")
+
+    def test_the_console_script_points_at_a_real_main(self):
+        toml = (self.pypi / "pyproject.toml").read_text()
+        self.assertIn('heyphony = "heyphony.runner.cli:main"', toml)
+        self.assertRegex((ROOT / "src/runner/cli.py").read_text(), r"(?m)^def main\(argv=None\)")
+
+    def test_a_build_leaves_no_src_package_and_cleans_up(self):
+        import tempfile
+        before = sorted(p.name for p in self.pypi.iterdir())
+        try:
+            self.build.build()
+            out = self.pypi / "heyphony"
+            self.assertTrue((out / "runner" / "cli.py").exists())
+            self.assertFalse((out / "src").exists(), "a nested src/ would mean the copy kept the old root")
+            for path in out.rglob("*.py"):
+                self.assertNotRegex(path.read_text(), r"(?m)^\s*(from|import)\s+src\b",
+                                    f"{path.relative_to(self.pypi)} still imports src")
+            self.assertTrue((out / "lookup" / "nanp.json").exists(), "the data a module reads by __file__ must travel")
+        finally:
+            self.build.clean()
+        self.assertEqual(sorted(p.name for p in self.pypi.iterdir()), before,
+                         "the build left generated files in a tree that has no .gitignore")
+
+    def test_the_build_does_not_touch_the_repo_source(self):
+        before = subprocess.run(["git", "status", "--porcelain", "src"], cwd=ROOT, capture_output=True, text=True).stdout
+        try:
+            self.build.build()
+        finally:
+            self.build.clean()
+        after = subprocess.run(["git", "status", "--porcelain", "src"], cwd=ROOT, capture_output=True, text=True).stdout
+        self.assertEqual(before, after)
+
+    def test_the_readme_does_not_claim_pip_works_until_it_does(self):
+        """the page says what is true. while nothing is uploaded it must say so, and npm stays first."""
+        text = (ROOT / "readme.md").read_text()
+        self.assertIn("pypi/publish.md", text)
+        self.assertLess(text.index("npm i -g heyphony"), text.index("pypi/publish.md"),
+                        "npm is the first route and the page must keep leading with it")
+        runbook = (self.pypi / "publish.md").read_text()
+        uploaded = "pip install heyphony" not in text.split("not uploaded yet")[0] and "not uploaded yet" in text
+        self.assertTrue(uploaded or "pip install heyphony" in text,
+                        "the page neither says pypi is unpublished nor how to install from it")
+        self.assertIn("nothing has been uploaded", runbook)
+        self.assertEqual(("not uploaded yet" in text), ("nothing has been uploaded" in runbook),
+                         "the readme and the runbook disagree about whether it is published")
+
+    def test_the_floor_is_python_3_8_and_the_code_keeps_to_it(self):
+        """requires-python says 3.8, and so does the npm shim. a grammar check alone missed the dict
+        union operator (3.9) that broke anveo provisioning, so this also reads for what only fails at run time."""
+        import ast
+        self.assertIn('requires-python = ">=3.8"', (self.pypi / "pyproject.toml").read_text())
+        late = [
+            (r"\.removeprefix\(|\.removesuffix\(", "str.removeprefix (3.9)"),
+            (r"\bzip\([^)]*strict\s*=", "zip(strict=) (3.10)"),
+            (r"^\s*match\s+\S.*:\s*$", "match statement (3.10)"),
+            (r"(?:->|:)\s*(?:list|dict|tuple|set|frozenset)\[", "builtin generic annotation (3.9)"),
+            (r"(?:->|:)\s*\w+\s*\|\s*None", "X | None annotation (3.10)"),
+            (r"\bint\.bit_count\(|\.bit_count\(\)", "int.bit_count (3.10)"),
+            (r"^[^\"']*\bdict\([^()]*\)\s*\|\s*[{d]|^[^\"']*\}\s*\|\s*\{", "dict union operator (3.9)"),
+        ]
+        for path in (ROOT / "src").rglob("*.py"):
+            text = path.read_text()
+            try:
+                ast.parse(text, feature_version=(3, 8))
+            except SyntaxError as error:
+                self.fail(f"{path.relative_to(ROOT)}:{error.lineno} does not parse as python 3.8: {error.msg}")
+            for number, line in enumerate(text.splitlines(), 1):
+                if line.lstrip().startswith("#"):
+                    continue
+                for pattern, name in late:
+                    if re.search(pattern, line):
+                        self.fail(f"{path.relative_to(ROOT)}:{number} uses {name}, newer than the 3.8 floor: {line.strip()}")
+
+    def test_no_em_dash(self):
+        self.assertNotIn("\u2014", self.script.read_text())
 
 
 if __name__ == "__main__":

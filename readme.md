@@ -211,6 +211,8 @@ curl -fsSL https://raw.githubusercontent.com/tinkrland/heyphony/main/npm/install
 
 it downloads the same tree and puts `heyphony` on your path, needing python3 and nothing else. the two routes differ in what they leave behind, not in what they can do.
 
+if python is the tool you reach for, there is a third door onto the same code. the pypi package is built and passes `twine check`, and an installed wheel runs on python 3.8 and 3.11, but it is **not uploaded yet**, so `pip install heyphony` does not work today. [pypi/publish.md](pypi/publish.md) is the runbook, and this paragraph is flipped in the same commit as the upload.
+
 ### other offerings
 
 - mcp server (in development) @ `mcp` branch

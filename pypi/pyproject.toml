@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "heyphony"
+dynamic = ["version"]
+description = "give your ai agent a phone number of its own: a sip did, an inbox that survives the machine sleeping, and the rails a number unlocks"
+readme = "readme.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "tinkrland", email = "324020321+tinkrland@users.noreply.github.com" }]
+keywords = ["ai-agent", "cli", "did", "sip", "sms", "telephony", "voip", "mcp"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Topic :: Communications :: Telephony",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/tinkrland/heyphony"
+Repository = "https://github.com/tinkrland/heyphony"
+Issues = "https://github.com/tinkrland/heyphony/issues"
+
+[project.scripts]
+heyphony = "heyphony.runner.cli:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["heyphony*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "heyphony.__version__" }
+
+[tool.setuptools.package-data]
+heyphony = ["**/*.json", "**/*.md", "**/*.jsonc", "docs/**/*"]

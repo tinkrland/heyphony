@@ -61,7 +61,7 @@ def parse(text):
     except ET.ParseError:
         return {"result": None, "raw": text[:600]}
     out = {"result": (root.findtext("RESULT") or "").strip() or None}
-    areas = [dict(node.attrib) | {"rate_plans": [dict(rp.attrib) for rp in node]}
+    areas = [{**node.attrib, "rate_plans": [dict(rp.attrib) for rp in node]}
              for node in root.iter("AREA")]
     dids = [dict(node.attrib) for node in root.iter("DID")]
     if areas:
