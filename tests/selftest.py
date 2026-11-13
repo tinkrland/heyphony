@@ -5190,10 +5190,3 @@ if __name__ == "__main__":
     failed = len(result.failures) + len(result.errors)
     print(f"selftest: {result.testsRun - failed}/{result.testsRun} pass")
     sys.exit(1 if failed else 0)
-
-if __name__ == "__main__":
-    suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])
-    result = unittest.TextTestRunner(verbosity=0).run(suite)
-    failed = len(result.failures) + len(result.errors)
-    print(f"selftest: {result.testsRun - failed}/{result.testsRun} pass")
-    sys.exit(1 if failed else 0)
