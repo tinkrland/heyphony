@@ -8,15 +8,17 @@ the short version: **`python3 pypi/build.py --wheel`, install the wheel somewher
 
 ## what is true today
 
-- the name `heyphony` answered **404** on pypi when this was written, which means unheld and claimable. it is not reserved. check again right before the first upload.
-- the wheel and sdist build, pass `twine check`, and the installed wheel runs `--version`, `status`, `doctor` and `lookup` on python 3.8.20 and 3.11, with nothing from outside the standard library.
-- nothing has been uploaded. `pip install heyphony` does not work until the first upload lands.
+- `heyphony 0.3.0` is on pypi, uploaded 2026-11-13, so `pip install heyphony` works. the files are the wheel and the sdist built here from the tree at `5500104`.
+- the wheel on the index was installed into a clean 3.8.20 and a clean 3.11 and answered `--version`, `doctor` and `live` out of each, with nothing from outside the standard library.
+- its code is that commit plus the import rewrite and nothing else. the wheel's `heyphony/` was diffed file by file against `src/` at `5500104`, and the only differences were the rewritten imports.
+- the name is held by this project now, so a later upload wants a project-scoped token and a version nobody has taken.
+- the tag `v0.3.0` marks the **npm** release and points at an older commit, not at this upload. do not move it: the commit named above is the wheel's record.
 
 ## the version, which lives in one place
 
 `__version__` in `src/__init__.py` is the only version. `pyproject.toml` reads it (`dynamic = ["version"]`) and `build.py` reads it for its log line, so there is nothing to keep in step. bump the python file, never the toml. a pypi version is also permanent: a file name can be uploaded once, even if the release is deleted, so a wrong 0.3.0 is fixed with 0.3.1.
 
-## before the first upload
+## before an upload
 
 ```
 python3 -m pip install build twine
@@ -36,7 +38,7 @@ HOME=$(mktemp -d) /tmp/pv/bin/heyphony status
 
 ## the account, and a token
 
-pypi requires 2FA for uploads. the practical route is an **API token** from pypi.org, account settings, scope it to the project once the name exists (the first upload needs an account-wide token, so replace it with a project-scoped one straight after). it goes in `~/.pypirc` or `TWINE_PASSWORD`, mode `0600`, with `TWINE_USERNAME=__token__`. it is a password: never in the repo, never pasted into chat. if it ever was, rotate it.
+pypi requires 2FA for uploads. the practical route is an **API token** from pypi.org, account settings, scope it to the project, because the name exists now. only an account-wide token can create a name, which is why the first upload could not be project-scoped; every one after it can be. it goes in `~/.pypirc` or `TWINE_PASSWORD`, mode `0600`, with `TWINE_USERNAME=__token__`. it is a password: never in the repo, never pasted into chat. if it ever was, rotate it.
 
 to rehearse without spending a version, upload to **TestPyPI** first (`twine upload --repository testpypi pypi/dist/*`). its names are separate, so a success there says the metadata and the wheel are acceptable, and nothing about the real name.
 
@@ -55,7 +57,12 @@ python3 -m venv /tmp/pr && /tmp/pr/bin/pip install heyphony
 
 ## the same commit as the upload
 
-the readme's install section says pypi is built but not published until it is. flip those sentences in the same commit as the upload, and `git tag` the version. the test suite pins the sentences, so it fails until they are flipped, which is the point.
+the readme's install section and this page say the same thing about what pypi has, and the suite fails when they disagree. 0.3.0 is when the sentences flipped from "not uploaded yet" to published, so that is also the moment the test had to flip with them rather than being deleted.
+
+two things worth writing down, because both cost a round trip:
+
+- **testpypi rejects a pypi token.** they are separate accounts with separate databases, so `twine upload --repository testpypi` answers 403 Forbidden however good the real token is. a test run there needs its own account and its own token, and without one the rehearsal is the local one: `twine check`, then install the wheel into a clean venv with `--no-index --find-links dist`, then run `--version`, `doctor` and `live` out of that environment. that is what happened for 0.3.0.
+- **the version is spent on upload, not on approval.** pypi takes the files the moment twine finishes, so there is no staged state to wait out and no second chance at 0.3.0. the local rehearsal above is the only safety net there is.
 
 ## the floor is python 3.8
 

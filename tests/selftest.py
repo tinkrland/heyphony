@@ -3606,19 +3606,25 @@ class TestThePypiPackageIsTheRepoRenamed(unittest.TestCase):
         after = subprocess.run(["git", "status", "--porcelain", "src"], cwd=ROOT, capture_output=True, text=True).stdout
         self.assertEqual(before, after)
 
-    def test_the_readme_does_not_claim_pip_works_until_it_does(self):
-        """the page says what is true. while nothing is uploaded it must say so, and npm stays first."""
+    def test_the_readme_and_the_runbook_say_the_same_thing_about_pypi(self):
+        """0.3.0 is the upload that flipped both pages from "not uploaded yet" to published, so the pin
+        flipped with it. what is left worth pinning is that the version each page names is the one the
+        code carries, and that npm still leads: a stale version here sends people to a 404."""
         text = (ROOT / "readme.md").read_text()
+        runbook = (self.pypi / "publish.md").read_text()
+        version = self.build.version()
         self.assertIn("pypi/publish.md", text)
         self.assertLess(text.index("npm i -g heyphony"), text.index("pypi/publish.md"),
                         "npm is the first route and the page must keep leading with it")
-        runbook = (self.pypi / "publish.md").read_text()
-        uploaded = "pip install heyphony" not in text.split("not uploaded yet")[0] and "not uploaded yet" in text
-        self.assertTrue(uploaded or "pip install heyphony" in text,
-                        "the page neither says pypi is unpublished nor how to install from it")
-        self.assertIn("nothing has been uploaded", runbook)
-        self.assertEqual(("not uploaded yet" in text), ("nothing has been uploaded" in runbook),
-                         "the readme and the runbook disagree about whether it is published")
+        self.assertIn("pip install heyphony", text)
+        self.assertNotIn("not uploaded yet", text, "the page kept the sentence from before the upload")
+        self.assertNotIn("nothing has been uploaded", runbook,
+                         "the runbook still says the registry is empty")
+        section = text[text.index("## get it"):text.index("### other offerings")]
+        self.assertEqual(set(re.findall(r"heyphony[@ ](\d+\.\d+\.\d+)", section)), {version},
+                         "a registry line on the page names a version the code does not carry")
+        self.assertIn(f"`heyphony {version}` is on pypi", runbook,
+                      "the runbook does not say which version is on the registry")
 
     def test_the_floor_is_python_3_8_and_the_code_keeps_to_it(self):
         """requires-python says 3.8, and so does the npm shim. a grammar check alone missed the dict
