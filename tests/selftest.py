@@ -24,7 +24,7 @@ import time
 import unittest
 import urllib.parse
 import urllib.request
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 # this repo carries no .gitignore, so nothing here may leave __pycache__ behind
 sys.dont_write_bytecode = True
@@ -3803,6 +3803,33 @@ class TestTheLiveVerbAndTheScreenshotCommand(unittest.TestCase):
         code, out = self.run_cli(["media", "fetch"])
         self.assertEqual(code, 2)
         self.assertIn("--url", json.loads(out)["why"])
+
+    def test_an_omitted_cap_is_still_a_cap(self):
+        """the flag defaults to None, and a None cap is no cap: the download path must fill it in."""
+        from src.manage import media
+
+        class Big(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Length", str(media.MAX_BYTES + 1))
+                self.end_headers()
+                self.wfile.write(b"0" * (media.MAX_BYTES + 1))
+
+            def log_message(self, *a):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Big)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder, True)
+        code, out = self.run_cli(["media", "fetch", "--url",
+                                  f"http://127.0.0.1:{server.server_address[1]}/big", "--into", folder])
+        self.assertEqual(code, 1)
+        self.assertIn("a-picture-of-any-size", json.loads(out)["why"])
+        self.assertEqual(os.listdir(folder), [])
 
     def test_media_refuses_a_url_that_is_not_http_through_the_cli(self):
         folder = tempfile.mkdtemp()

@@ -308,7 +308,10 @@ def cmd_media(args):
     if not args.url:
         _out({"ok": False, "why": "pass a url: heyphony media fetch --url https://... --into DIR"})
         return 2
-    got = media.fetch(args.url, args.into, message_id=args.id, max_bytes=args.max_bytes)
+    # an omitted flag must mean the module's own cap, not None: None would compare a size against
+    # nothing and lift the limit the whole download path exists to enforce
+    got = media.fetch(args.url, args.into, message_id=args.id,
+                      max_bytes=args.max_bytes or media.MAX_BYTES)
     _out(got)
     return 0 if got["ok"] else 1
 
