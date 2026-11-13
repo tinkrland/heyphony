@@ -102,7 +102,10 @@ class TestThePackageIsStandalone(unittest.TestCase):
         allowed = {"argparse", "base64", "email", "hashlib", "hmac", "http", "json", "os",
                    "contextlib", "math", "pathlib", "re", "shlex", "shutil", "socket", "sqlite3", "src",
                    "subprocess", "sys", "termios", "threading", "time", "tty", "urllib", "uuid",
-                   "xml"}
+                   "struct", "wave", "xml",
+                   # livekit is the one sdk a lane may name, imported lazily inside the room bridge and
+                   # refused by name when it is absent, so the package still installs with nothing else
+                   "livekit"}
         import ast
         for path in sorted((ROOT / "src").rglob("*.py")):
             tree = ast.parse(path.read_text())
@@ -3372,6 +3375,23 @@ class TestTheBranchIndexMatchesGit(unittest.TestCase):
         self.assertNotIn("\u2014", self.page)
 
 
+class TestTheSrcPageNamesEveryFolder(unittest.TestCase):
+    """a folder nobody lists is a folder nobody reads, and this file is the one people land on."""
+
+    def test_every_folder_under_src_is_named_on_the_page(self):
+        page = (ROOT / "src" / "readme.md").read_text()
+        folders = sorted(p.name for p in (ROOT / "src").iterdir()
+                         if p.is_dir() and p.name != "__pycache__")
+        for name in folders:
+            self.assertIn(f"{name}/", page, f"src/{name}/ is not named in src/readme.md")
+
+    def test_the_page_names_no_folder_that_is_gone(self):
+        page = (ROOT / "src" / "readme.md").read_text()
+        listed = set(re.findall(r"^  ([a-z_]+)/", page, re.M))
+        have = {p.name for p in (ROOT / "src").iterdir() if p.is_dir()}
+        self.assertEqual(sorted(listed - have), [], "the page names a folder that is not there")
+
+
 class TestThePypiPackageIsTheRepoRenamed(unittest.TestCase):
     """the pypi build copies src/ to heyphony/ and rewrites imports. the claims worth pinning are the
     ones that would go wrong silently: a leaked top-level `src`, a second version, a dirty tree."""
@@ -3855,6 +3875,1154 @@ class TestTheLiveVerbAndTheScreenshotCommand(unittest.TestCase):
         for name in ("readme.md", "src/live/readme.md"):
             self.assertNotIn("\u2014", (ROOT / name).read_text(), name)
 
+
+def _response(ok=True, data=""):
+    def step(fake):
+        return [{"response": True, "ok": ok, "data": data, "token": fake.sent[-1]["token"]}]
+    return step
+
+
+def _events(*types, param=None):
+    return [{"event": "true", "class": "call", "type": name, "param": param} for name in types]
+
+
+class _FakeTransport:
+    """stands in for the socket, so the driver is proven without baresip installed anywhere."""
+
+    def __init__(self, steps):
+        self.steps = list(steps)
+        self.sent = []
+        self.closed = False
+
+    def send(self, message):
+        self.sent.append(message)
+        return message
+
+    def recv(self, timeout=None):
+        if not self.steps:
+            self.closed = True
+            return []
+        step = self.steps.pop(0)
+        return step(self) if callable(step) else step
+
+    def close(self):
+        self.closed = True
+
+
+class TestTheTaskShape(unittest.TestCase):
+    """the part a hosted tool genuinely did better, implemented here against our own client."""
+
+    def setUp(self):
+        from src.callheavy import task
+        self.t = task
+        self.schema = {"type": "object", "additionalProperties": False,
+                       "required": ["tuesday_confirmed"],
+                       "properties": {"tuesday_confirmed": {"type": "string",
+                                                           "enum": ["yes", "no", "unknown"],
+                                                           "description": "yes when tuesday is held"},
+                                      "callback_needed": {"type": "boolean"}}}
+
+    def test_a_task_says_a_goal_and_the_fields_to_bring_back(self):
+        item = self.t.task("confirm the tuesday cleaning", self.schema, "a yes or a no")
+        self.assertEqual(item["goal"], "confirm the tuesday cleaning")
+        self.assertEqual(item["must_collect"], self.schema)
+        self.assertEqual(item["success"], "a yes or a no")
+
+    def test_an_underdescribed_task_is_told_exactly_what_is_missing(self):
+        missing = self.t.clarifications(self.t.task(""), None)
+        self.assertEqual([entry["needs"] for entry in missing],
+                         ["goal", "phone", "must_collect", "success"])
+        for entry in missing:
+            self.assertIn("flag", entry)
+            self.assertIn("why", entry)
+        self.assertEqual(self.t.clarifications(self.t.task("ask about lunch", self.schema, "a yes"), "+1555"), [])
+
+    def test_an_unsupported_schema_feature_is_refused_before_the_call(self):
+        schema = {"type": "object", "properties": {"when": {"oneOf": [{"type": "string"}]}}}
+        problems = self.t.schema_problems(schema)
+        self.assertEqual(problems[0]["unsupported"], "oneOf")
+        self.assertIn("before", "before the call")
+        self.assertEqual(self.t.schema_problems({"type": "string"})[0]["unsupported"], "root")
+
+    def test_the_validator_accepts_a_good_answer_and_names_a_bad_one(self):
+        self.assertEqual(self.t.validate({"tuesday_confirmed": "yes", "callback_needed": False}, self.schema), [])
+        problems = self.t.validate({"tuesday_confirmed": "maybe", "callback_needed": "yes",
+                                    "invented": 1}, self.schema)
+        seen = {(entry["path"], entry["problem"]) for entry in problems}
+        self.assertIn(("$.tuesday_confirmed", "enum"), seen)
+        self.assertIn(("$.callback_needed", "type"), seen)
+        self.assertIn(("$.invented", "additional"), seen)
+        self.assertIn(("$.tuesday_confirmed", "required"),
+                      {(entry["path"], entry["problem"]) for entry in self.t.validate({}, self.schema)})
+
+    def test_nested_fields_are_validated_where_they_are(self):
+        schema = {"type": "object", "properties": {"slots": {"type": "array", "items": {
+            "type": "object", "required": ["day"], "properties": {"day": {"type": "string"}}}}}}
+        problems = self.t.validate({"slots": [{"day": "tuesday"}, {}]}, schema)
+        self.assertEqual([(p["path"], p["problem"]) for p in problems], [("$.slots[1].day", "required")])
+
+    def test_a_bool_is_not_an_integer_and_an_int_is_not_a_bool(self):
+        self.assertTrue(self.t.validate(True, {"type": "integer"}))
+        self.assertTrue(self.t.validate(1, {"type": "boolean"}))
+
+    def test_the_envelope_has_four_states_and_only_one_of_them_is_an_answer(self):
+        good = self.t.envelope({"tuesday_confirmed": "yes"}, self.schema, transcript=[{"speaker": "bot"}],
+                               outcome="completed")
+        self.assertEqual(good["result_status"], "available")
+        self.assertIsNone(good["error"])
+        self.assertEqual(good["call_outcome"], "completed")
+
+        invalid = self.t.envelope({"tuesday_confirmed": "maybe"}, self.schema)
+        self.assertEqual(invalid["result_status"], "unavailable")
+        self.assertEqual(invalid["error"]["code"], "result_invalid")
+        self.assertIsNone(invalid["result"], "an invalid answer is not handed on as an answer")
+
+        absent = self.t.envelope(None, self.schema)
+        self.assertEqual(absent["error"]["code"], "result_failed")
+
+        broken = self.t.envelope(None, self.schema, error="call_failed", outcome="busy")
+        self.assertEqual(broken["result_status"], "not_applicable")
+        self.assertEqual(broken["call_outcome"], "busy")
+
+    def test_an_invented_call_outcome_is_dropped_rather_than_passed_on(self):
+        self.assertIsNone(self.t.envelope(None, None, outcome="vibes")["call_outcome"])
+
+    def test_the_prompt_is_text_a_person_can_read_and_a_test_can_pin(self):
+        item = self.t.task("confirm the tuesday cleaning", self.schema, "a yes or a no")
+        prompt = self.t.extract_prompt(item, [{"offset": 0, "speaker": "bot", "text": "hello"},
+                                             {"offset": 3, "speaker": "user", "text": "tuesday is fine"}])
+        self.assertIn("confirm the tuesday cleaning", prompt)
+        self.assertIn("tuesday_confirmed", prompt)
+        self.assertIn("yes when tuesday is held", prompt)
+        self.assertIn("unknown", prompt)
+        self.assertIn("reply with one json object", prompt)
+        self.assertIn("[3] user: tuesday is fine", prompt)
+        self.assertNotIn("openai", prompt.lower())
+        self.assertNotIn("api", prompt.lower())
+
+
+class TestTheHostConfig(unittest.TestCase):
+    """the two lines that decide whether a socket can do anything at all."""
+
+    def setUp(self):
+        from src.callheavy import host
+        self.host = host
+
+    def test_the_config_loads_the_modules_a_dial_needs(self):
+        text = self.host.config_text("linux")
+        modules = self.host.loaded_modules(text)
+        for needed in ("menu.so", "ctrl_tcp.so", "alsa.so", "g711.so", "account.so"):
+            self.assertIn(needed, modules, f"the config does not load {needed}")
+
+    def test_the_control_socket_listens_on_loopback_and_not_on_the_wifi(self):
+        text = self.host.config_text("linux")
+        self.assertIn("ctrl_tcp_listen\t\t127.0.0.1:4444", text)
+        self.assertNotIn("0.0.0.0:4444", text)
+
+    def test_every_host_row_names_its_audio_driver_and_admits_what_is_unverified(self):
+        linux = self.host.host_row("linux")
+        macos = self.host.host_row("macos")
+        self.assertTrue(linux["verified"], "the linux row is the one that has been run here")
+        self.assertFalse(macos["verified"], "the mac row is not verified and says so in its own data")
+        self.assertIn("coreaudio", macos["device"])
+        self.assertIn("coreaudio.so", self.host.config_text("macos"))
+
+    def test_the_accounts_line_is_refused_when_the_host_is_a_sentence(self):
+        with self.assertRaises(ValueError):
+            self.host.accounts_text("+15551234567", "u", "p", "regional: atlanta, chicago")
+        line = self.host.accounts_text("+15551234567", "u", "p", "atlanta.voip.ms")
+        self.assertIn("<sip:u@atlanta.voip.ms>", line)
+        self.assertIn("auth_pass=p", line)
+        self.assertIn('"+15551234567"', line)
+
+    def test_both_files_are_written_0600_and_a_dry_run_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as home:
+            dry = self.host.write("+15551234567", "u", "p", "atlanta.voip.ms", home=home, dry=True)
+            self.assertTrue(dry["dry"])
+            self.assertFalse((pathlib.Path(home) / "config").exists(), "a dry run wrote a file")
+            written = self.host.write("+15551234567", "u", "p", "atlanta.voip.ms", home=home)
+            for key in ("config", "accounts"):
+                mode = os.stat(written["paths"][key]).st_mode & 0o777
+                self.assertEqual(mode, 0o600, f"{key} holds a password or a secret and is not 0600")
+            self.assertEqual(len(list(pathlib.Path(home).glob("*"))), 2)
+
+
+class TestTheSocketProtocol(unittest.TestCase):
+    """spoken the way ctrl_tcp's own source documents it, including where it contradicts itself."""
+
+    def setUp(self):
+        from src.callheavy import dial
+        self.dial = dial
+
+    def test_a_command_is_a_string_params_and_a_token(self):
+        message = self.dial.command("dial", "sip:+15551234567")
+        self.assertEqual(message["command"], "dial")
+        self.assertIsInstance(message["params"], str)
+        self.assertIn("token", message)
+
+    def test_a_netstring_round_trips(self):
+        wire = self.dial.encode({"command": "dial", "params": "sip:alice@atlanta.com"})
+        self.assertTrue(wire[:1].isdigit(), "a netstring starts with its length")
+        self.assertTrue(wire.endswith(b","))
+        messages, rest = self.dial.decode(wire)
+        self.assertEqual(messages, [{"command": "dial", "params": "sip:alice@atlanta.com"}])
+        self.assertEqual(rest, b"")
+
+    def test_two_messages_in_one_read_both_come_out_and_a_partial_one_waits(self):
+        first = self.dial.encode({"response": True, "ok": True})
+        second = self.dial.encode({"event": "true", "type": "CALL_RINGING"})
+        messages, rest = self.dial.decode(first + second + b"12:{\"event\"")
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[1]["type"], "CALL_RINGING")
+        self.assertTrue(rest.startswith(b"12:"), "the incomplete tail is kept for the next read")
+
+    def test_a_bare_json_message_parses_too(self):
+        messages, rest = self.dial.decode(b'{"response": true, "ok": true}')
+        self.assertEqual(messages, [{"response": True, "ok": True}])
+        self.assertEqual(rest, b"")
+
+    def test_the_modules_own_examples_are_the_contract(self):
+        response = {"response": True, "ok": True, "data": "", "token": "qwerasdf"}
+        event = {"event": "true", "class": "call", "type": "CALL_CLOSED", "param": "Connection reset",
+                 "accountaor": "sip:alice@atlanta.com", "direction": "incoming",
+                 "peeruri": "sip:bob@biloxy.com", "id": "73a12546589651f8"}
+        self.assertEqual(self.dial.classify(response)[0], "response")
+        self.assertEqual(self.dial.classify(event)[0], "event")
+        self.assertEqual(self.dial.classify({"event": True, "type": "CALL_RINGING"})[0], "event")
+        self.assertEqual(self.dial.classify({"nonsense": 1})[0], "noise")
+
+    def test_a_call_is_reported_as_four_separate_facts(self):
+        fake = _FakeTransport([_response(True), _events("CALL_RINGING"), _events("CALL_ESTABLISHED"),
+                               _events("CALL_CLOSED", param="normal clearing")])
+        result = self.dial.dial("sip:+15551234567", transport=fake, settle=5)
+        self.assertTrue(result["accepted"])
+        self.assertEqual(result["stopped"], "closed")
+        self.assertIsNotNone(result["ringing"])
+        self.assertIsNotNone(result["established"])
+        self.assertEqual(result["call_outcome"], "completed")
+        self.assertIn("carrier", result["note"])
+
+    def test_a_call_nobody_answered_is_not_reported_as_a_failure(self):
+        fake = _FakeTransport([_response(True), _events("CALL_RINGING"),
+                               _events("CALL_CLOSED", param="Request Timeout")])
+        result = self.dial.dial("sip:+15551234567", transport=fake, settle=5)
+        self.assertIsNone(result["established"])
+        self.assertEqual(result["call_outcome"], "no_answer")
+
+    def test_a_refused_dial_is_a_refusal_and_not_a_call(self):
+        fake = _FakeTransport([_response(False, data="command not found")])
+        result = self.dial.dial("sip:+15551234567", transport=fake, settle=5)
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["stopped"], "refused")
+        self.assertIn("command not found", result["error"])
+
+    def test_a_deadline_says_deadline_and_does_not_hang(self):
+        class Silent(_FakeTransport):
+            """accepts the dial, then never says anything and never hangs up: the ringing phone."""
+            def recv(self, timeout=None):
+                return [] if self.sent else None
+
+        fake = Silent([_response(True)])
+        started = time.monotonic()
+        result = self.dial.dial("sip:+15551234567", transport=fake, settle=0.4)
+        self.assertEqual(result["stopped"], "deadline")
+        self.assertLess(time.monotonic() - started, 5, "the driver overran its own deadline")
+
+    def test_no_socket_names_the_module_instead_of_raising(self):
+        class Broken:
+            closed = False
+            def send(self, message):
+                raise OSError("connection refused")
+            def close(self):
+                pass
+        result = self.dial.dial("sip:+15551234567", transport=Broken(), settle=1)
+        self.assertEqual(result["stopped"], "no-socket")
+        self.assertIn("ctrl_tcp", result["why"])
+        self.assertIn("baresip", result["why"])
+
+
+class TestTheAudioRails(unittest.TestCase):
+    """where the agent's voice enters, and the one link that is not free."""
+
+    def setUp(self):
+        from src.callheavy import audio
+        self.audio = audio
+
+    def test_linux_gets_a_virtual_mic_from_pactl(self):
+        row = self.audio.virtual_mic("linux")
+        self.assertEqual(len(row["commands"]), 2)
+        self.assertIn("module-null-sink", row["commands"][0])
+        self.assertIn("module-remap-source", row["commands"][1])
+        self.assertEqual(row["client_device"], "agent-mic")
+        self.assertTrue(row["oss"])
+        self.assertTrue(row["verified"])
+
+    def test_macos_names_the_reboot_and_windows_names_the_non_oss_link(self):
+        macos = self.audio.virtual_mic("macos")
+        self.assertEqual(macos["commands"], [], "blackhole is an install, not a command")
+        self.assertIn("GPL-3.0", macos["license"])
+        self.assertFalse(macos["verified"])
+        windows = self.audio.virtual_mic("windows")
+        self.assertFalse(windows["oss"])
+        self.assertIn("NOT oss", windows["license"])
+
+    def test_a_wav_can_be_a_browser_microphone(self):
+        flags = self.audio.browser_mic("/tmp/voice.wav")["args"]
+        self.assertTrue(any("--use-fake-device-for-media-stream" in flag for flag in flags))
+        self.assertTrue(any("/tmp/voice.wav" in flag for flag in flags))
+
+    def test_the_room_gate_is_closed_until_all_three_names_exist(self):
+        saved = {name: os.environ.pop(name, None) for name in self.audio.LIVEKIT_ENV}
+        try:
+            state = self.audio.room_state()
+            self.assertTrue(state["closed"])
+            self.assertEqual(sorted(state["missing"]), sorted(self.audio.LIVEKIT_ENV))
+            refuse = self.audio.publish()
+            self.assertFalse(refuse["ok"])
+            self.assertEqual(sorted(refuse["missing"]), sorted(self.audio.LIVEKIT_ENV))
+            os.environ["LIVEKIT_URL"] = "wss://example.invalid"
+            self.assertIn("LIVEKIT_API_KEY", self.audio.room_state()["missing"])
+        finally:
+            for name, value in saved.items():
+                os.environ.pop(name, None)
+                if value is not None:
+                    os.environ[name] = value
+
+    def test_a_publish_without_the_sdk_names_the_install_line(self):
+        saved = {name: os.environ.get(name) for name in self.audio.LIVEKIT_ENV}
+        for name in self.audio.LIVEKIT_ENV:
+            os.environ[name] = "set-for-this-test"
+        try:
+            answer = self.audio.publish()
+        finally:
+            for name, value in saved.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+        if answer["ok"]:
+            self.skipTest("the livekit sdk happens to be installed on this machine")
+        self.assertEqual(answer["missing"], ["livekit"])
+        self.assertIn("pip install livekit", answer["install"])
+
+    def test_the_bridge_is_named_as_not_shipped(self):
+        plan = self.audio.bridge_plan()
+        self.assertFalse(plan["shipped"])
+        self.assertIn("participant", plan["what_it_would_be"])
+        self.assertIn("not a helper", plan["why_not_shipped"])
+        self.assertEqual(self.audio.readiness("linux")["bridge"], "not shipped")
+
+
+class TestTheAudioDocsMatchTheCode(unittest.TestCase):
+    """the sentence that said pumping was not written stayed in three places after it stopped being true.
+    these pin the wording to the files, so the next gap that closes cannot leave its old sentence behind."""
+
+    def setUp(self):
+        from src.callheavy import audio
+        self.audio = audio
+        self.readme = " ".join((ROOT / "src" / "callheavy" / "readme.md").read_text().split())
+        self.doc = " ".join((audio.__doc__ or "").split())
+
+    def test_call_audio_is_reported_shipped_while_the_room_bridge_is_not(self):
+        ready = self.audio.readiness("linux")
+        self.assertEqual(ready["bridge"], "not shipped", "the room bridge is still not written")
+        self.assertTrue(ready["call_audio"]["shipped"])
+        self.assertTrue((ROOT / ready["call_audio"]["module"]).is_file(), "it points at a file that exists")
+        self.assertTrue((ROOT / "src" / "callheavy" / "rig.py").is_file())
+
+    def test_the_bridge_plan_says_what_is_shipped_instead(self):
+        plan = self.audio.bridge_plan()
+        self.assertFalse(plan["shipped"])
+        self.assertIn("pump.py", plan["what_is_shipped_instead"])
+
+    def test_no_page_says_the_pumping_is_unwritten_without_naming_the_room(self):
+        """the room bridge is the thing not written. the word pumping on its own is not."""
+        for name, text in (("readme", self.readme), ("audio.py", self.doc)):
+            low = text.lower()
+            self.assertNotIn("a participant that pumps audio in two directions, which is a real piece of "
+                             "software and is not written", low, f"{name} kept the old sentence")
+            self.assertNotIn("is a participant pumping audio two ways across two media clocks and two codecs, "
+                             "which is a project rather than a helper. what works today", low)
+
+    def test_the_readme_names_both_halves_and_what_it_asserts_not_what_it_once_measured(self):
+        for needle in ("the agent's ears and mouth on a sip call are built and tested",
+                       "what is still not shipped is a different problem",
+                       "four pulseaudio null sinks",
+                       "never one", "within 12 percent", "at least a thousand times weaker",
+                       "which is not a guarantee"):
+            self.assertIn(needle, self.readme, f"the readme lost {needle!r}")
+
+    def test_every_module_in_the_lane_is_listed_in_the_readme_file_table(self):
+        listed = set(__import__("re").findall(r"src/callheavy/([a-z_.]+)\s", (ROOT / "src" / "callheavy" / "readme.md").read_text()))
+        have = {p.name for p in (ROOT / "src" / "callheavy").iterdir() if p.suffix in (".py", ".json")}
+        self.assertEqual(have - listed, set(), "a file in the lane is missing from the readme's file table")
+
+    def test_the_ledger_claims_a_loopback_call_and_denies_a_carrier_one(self):
+        """the line that said no live call had been placed went false, and the risk on the other side is to
+        swing to claiming a carrier call. both halves are pinned: what was proven and what was not."""
+        for needle in ("proven on a real call, on a machine with no sound card and no carrier",
+                       "not proven, and this is the part that matters:** a call over a carrier",
+                       "there is still no registration here, no did, no nat and no real handset",
+                       "a live `--via calle` call has not been made",
+                       "never been called with a real key"):
+            self.assertIn(needle, self.readme, f"the ledger lost {needle!r}")
+        self.assertNotIn("no live call has been placed from this branch", self.readme)
+
+    def test_the_numbers_the_readme_asserts_are_the_ones_the_live_test_asserts(self):
+        source = (ROOT / "tests" / "selftest.py").read_text()
+        self.assertIn("delta=0.12", source, "the readme says within 12 percent")
+        self.assertIn("1000 * self.pump.tone_energy(heard, 1000)", source, "the readme says a thousand times")
+
+
+class TestTheCallHeavyCli(unittest.TestCase):
+    def setUp(self):
+        from src.callheavy import cli
+        self.cli = cli
+
+    def run_cli(self, argv):
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = self.cli.main(argv)
+        return code, json.loads(buffer.getvalue())
+
+    def test_a_dial_is_a_plan_until_run_and_needs_a_named_authoriser(self):
+        with tempfile.TemporaryDirectory() as room:
+            schema = pathlib.Path(room) / "want.json"
+            schema.write_text(json.dumps({"type": "object", "required": ["ok"],
+                                          "properties": {"ok": {"type": "string"}}}))
+            code, plan = self.run_cli(["dial", "--via", "callheavy", "--goal", "ask about tuesday",
+                                       "--to", "+15551234567", "--schema", str(schema), "--success", "a yes"])
+            self.assertEqual(code, 1)
+            self.assertEqual(plan["problems"][0]["needs"], "authorized")
+
+            code, plan = self.run_cli(["dial", "--via", "callheavy", "--goal", "ask about tuesday",
+                                       "--to", "+15551234567", "--schema", str(schema), "--success", "a yes",
+                                       "--authorized", "filmosophy"])
+            self.assertEqual(code, 0)
+            self.assertFalse(plan["sending"], "a dial without --run must not dial")
+            self.assertEqual(plan["dial"], "sip:+15551234567")
+
+    def test_a_plan_with_no_schema_is_refused_with_the_flag_to_fix(self):
+        code, answer = self.run_cli(["plan", "--via", "callheavy", "--goal", "ask about tuesday",
+                                     "--to", "+15551234567"])
+        self.assertEqual(code, 1)
+        self.assertEqual(answer["problems"][0]["flag"], "--schema")
+
+
+class TestTheCallHeavyPage(unittest.TestCase):
+    page = ROOT / "src" / "callheavy" / "readme.md"
+
+    def test_the_page_is_our_own_calls_by_default_and_the_hosted_rail_is_opt_in(self):
+        """this used to assert there was no hosted rail and no key anywhere. the owner asked for call-e to be
+        adapted, so that promise became false as written. what replaces it is narrower and, where it counts,
+        stronger: the hosted rail exists, is chosen on every call, and cannot be reached by accident."""
+        text = " ".join(self.page.read_text().split())
+        self.assertIn("our own stack", text)
+        self.assertIn("their dialler is not in this path", text)
+        self.assertIn("no hosted dialler by default, and none by accident", text)
+        self.assertIn("`--via` is required on `plan` and `dial` and has no default", text)
+        self.assertIn("never from a flag", text)
+        for gate in ("--authorized", "--run", "HEYPHONY_CALL=allowed", "CALLE_API_KEY"):
+            self.assertIn(gate, text, f"the page lost {gate}, one of the four things a hosted call needs")
+
+    def test_the_old_promise_is_gone_from_every_page_because_it_is_no_longer_true(self):
+        for path in (self.page, ROOT / "theidea" / "calling.md", ROOT / "src" / "callheavy" / "task.py"):
+            low = " ".join(path.read_text().lower().split())
+            for stale in ("there is no api key in this folder", "no vendor key is read anywhere in this folder",
+                          "no request goes to their hosted dialer, and no audio leaves the machine except the call.\n",
+                          "nothing is wired to it.", "it is **planned, and parked for v3**"):
+                self.assertNotIn(stale, low, f"{path.name} still makes a promise the code no longer keeps")
+
+    def test_the_key_is_read_from_the_environment_in_exactly_one_file(self):
+        """cli.py may name the key in a help line or a 'needs' message, but only calle.py reads it. the
+        reader is found by what a reader does, which is call .get on the environment with the key's name."""
+        readers = []
+        for path in sorted((ROOT / "src" / "callheavy").glob("*.py")):
+            text = path.read_text()
+            if "environ" in text and ("KEY_ENV" in text or "CALLE_API_KEY" in text) and "get(KEY_ENV)" in text:
+                readers.append(path.name)
+        self.assertEqual(readers, ["calle.py"])
+
+    def test_the_own_rail_modules_do_not_know_the_key_exists(self):
+        for own in ("dial.py", "host.py", "task.py", "audio.py", "pump.py", "rig.py"):
+            self.assertNotIn("CALLE_API_KEY", (ROOT / "src" / "callheavy" / own).read_text(),
+                             f"{own} is on the own rail and must not know the key exists")
+            self.assertNotIn("import calle", (ROOT / "src" / "callheavy" / own).read_text())
+
+    def test_the_page_keeps_the_credit_and_the_distinction(self):
+        text = self.page.read_text()
+        self.assertIn("call-e", text)
+        self.assertIn("MIT", text)
+        self.assertIn("borrowed", text)
+
+    def test_the_page_names_the_two_modules_and_the_loopback_bind(self):
+        text = self.page.read_text()
+        self.assertIn("commented out", text)
+        self.assertIn("menu.so", text)
+        self.assertIn("loopback", text)
+        self.assertIn("127.0.0.1:4444", text)
+
+    def test_the_page_says_what_is_refused_and_what_is_unproven(self):
+        text = self.page.read_text()
+        text = " ".join(text.split())
+        for needle in ("no otp", "no lists", "a call over a carrier", "verified: false", "not shipped"):
+            self.assertIn(needle, text, f"the page lost {needle!r}")
+        self.assertNotIn("no live call has been placed", text, "that sentence stopped being true")
+
+    def test_the_page_has_no_em_dash(self):
+        self.assertNotIn("\u2014", self.page.read_text())
+
+
+class TestTheLaneIsConfinedToItsOwnFolder(unittest.TestCase):
+    """the port onto the flat layout, and the boundary that makes the lane removable again."""
+
+    def test_the_lane_is_the_one_folder_and_one_shim(self):
+        """a fold-in that spreads through the package is a merge problem wearing a feature's clothes.
+
+        the old branch kept the package nested under `heyphony/`, which is why this claimed a diff of that
+        folder. flattened, there is no such folder and the same claim is structural: every module of the
+        lane sits in one directory, and the only thing outside it is the shim that runs it.
+        """
+        lane = ROOT / "src" / "callheavy"
+        modules = sorted(p.name for p in lane.glob("*.py"))
+        self.assertEqual(modules, ["__init__.py", "audio.py", "calle.py", "cli.py", "dial.py", "host.py",
+                                   "pump.py", "rig.py", "task.py"], f"the lane's files are {modules}")
+        self.assertFalse((ROOT / "heyphony").exists(), "the nested layout main dropped is back")
+        shim = (ROOT / "bin" / "callheavy").read_text()
+        self.assertIn("-m src.callheavy.cli", shim)
+
+    def test_the_lane_lives_in_one_place(self):
+        self.assertTrue((ROOT / "src" / "callheavy" / "dial.py").is_file())
+        self.assertTrue((ROOT / "bin" / "callheavy").is_file())
+        self.assertEqual(list((ROOT).rglob("dial.py")), [ROOT / "src" / "callheavy" / "dial.py"])
+
+    def test_nothing_outside_the_lane_imports_it(self):
+        """inside the folder the modules import each other; outside it nothing does, which is what keeps
+        the lane a thing that can be lifted out again rather than a layer everything stands on."""
+        for path in sorted((ROOT / "src").rglob("*.py")):
+            if "callheavy" in path.parts:
+                continue
+            for line in path.read_text().splitlines():
+                stripped = line.strip()
+                if stripped.startswith(("import ", "from ")):
+                    self.assertNotIn("callheavy", stripped, f"{path} imports the optional lane")
+
+    def test_the_lane_imports_nothing_but_the_standard_library(self):
+        """asked of python itself: a hand kept list of names is how `re` got refused and a real dependency
+        could be added by typing one more word. `callheavy` is this lane and `livekit` is the one optional
+        sdk, imported lazily and refused by name when absent."""
+        stdlib = set(sys.stdlib_module_names)
+        allowed = stdlib | {"src", "livekit"}
+        offenders = []
+        for path in sorted((ROOT / "src" / "callheavy").rglob("*.py")):
+            for line in path.read_text().splitlines():
+                stripped = line.strip()
+                if stripped.startswith(("import ", "from ")):
+                    name = stripped.split()[1].split(".")[0]
+                    if name not in allowed:
+                        offenders.append(f"{path.name}: {name}")
+        self.assertEqual(offenders, [], "these are not in the standard library")
+
+    def test_the_only_third_party_name_allowed_is_the_lazy_livekit_import(self):
+        for path in sorted((ROOT / "src" / "callheavy").rglob("*.py")):
+            for number, line in enumerate(path.read_text().splitlines(), 1):
+                if line.strip().startswith(("import livekit", "from livekit")):
+                    self.assertTrue(line.startswith((" ", "\t")),
+                                    f"{path.name}:{number} imports livekit at module load, which would make it a dependency")
+
+
+class TestTheHostedRail(unittest.TestCase):
+    """call-e's client: the request they accept, the answer they give, and the gate in front of the money."""
+
+    def setUp(self):
+        from src.callheavy import calle
+        self.calle = calle
+        self.contract = json.loads((ROOT / "src" / "callheavy" / "calle.contract.json").read_text())
+        self.schema = {"type": "object", "additionalProperties": False,
+                       "properties": {"can_attend": {"type": "string", "enum": ["yes", "no"]},
+                                      "party": {"type": "integer"}}}
+
+    def test_the_request_is_the_flat_agentic_one_and_not_the_legacy_recipients_shape(self):
+        body = self.calle.request_body("book it", "+442071234567", self.schema)
+        self.assertEqual(sorted(body), ["phone", "result_schema", "task"])
+        self.assertNotIn("recipients", body, "that is the older task shape and a strict server refuses it")
+        self.assertEqual(set(self.contract["request"]["required"]), {"task", "phone", "result_schema"})
+
+    def test_every_key_the_client_can_send_exists_in_the_recorded_contract(self):
+        full = self.calle.request_body("g", "+442071234567", self.schema, region="GB", locale="en-GB",
+                                       metadata={"a": 1}, webhook_url="https://x.example/hook", notes="n")
+        self.assertEqual(set(full) - set(self.contract["request"]["fields"]), set(),
+                         "the client sends a field the service does not define")
+
+    def test_optional_fields_are_left_out_and_never_sent_as_null(self):
+        body = self.calle.request_body("g", "+442071234567", self.schema)
+        self.assertNotIn(None, body.values())
+
+    def test_the_enums_the_client_pins_are_the_ones_the_service_publishes(self):
+        enums = self.contract["enums"]
+        self.assertEqual(list(self.calle.STATUS), enums["status"])
+        self.assertEqual(list(self.calle.RESULT_STATUS), enums["result_status"])
+        self.assertEqual(list(self.calle.ERROR_CODES), enums["error_code"])
+
+    def test_every_field_shape_reads_is_in_the_published_response(self):
+        read = {"id", "status", "call_outcome", "result_status", "result", "error", "transcript",
+                "call_id", "completed_at"}
+        self.assertEqual(read - set(self.contract["response_fields"]), set())
+        self.assertEqual(self.calle.shape({})["via"], "calle")
+
+    def test_the_phone_pattern_is_the_services_own_and_refuses_a_list(self):
+        self.assertEqual("^" + self.calle.PHONE.pattern + "$", self.contract["request"]["phone_pattern"])
+        self.assertTrue(self.calle.PHONE.fullmatch("+442071234567"))
+        for bad in ("442071234567", "+44 207 123 4567", "+442071234567,+442071234568", "+0442071234567", ""):
+            self.assertFalse(self.calle.PHONE.fullmatch(bad), bad)
+
+    def test_a_schema_the_hosted_profile_refuses_is_refused_before_a_key_is_spent(self):
+        nested = {"type": "object", "additionalProperties": False,
+                  "properties": {"a": {"type": "object", "properties": {"b": {"type": "string"}}}}}
+        listy = {"type": "object", "additionalProperties": False,
+                 "properties": {"a": {"type": "array", "items": {"type": "string"}}}}
+        open_ = {"type": "object", "properties": {"a": {"type": "string"}}}
+        combo = {"type": "object", "additionalProperties": False,
+                 "properties": {"a": {"anyOf": [{"type": "string"}]}}}
+        for name, bad in (("nested", nested), ("array", listy), ("open", open_), ("combinator", combo)):
+            self.assertTrue(self.calle.schema_problems(bad), f"{name} schema was accepted")
+        self.assertEqual(self.calle.schema_problems(self.schema), [])
+
+    def test_more_than_thirty_two_fields_is_refused(self):
+        wide = {"type": "object", "additionalProperties": False,
+                "properties": {f"f{i}": {"type": "string"} for i in range(33)}}
+        self.assertTrue(any(p.get("unsupported") == "size" for p in self.calle.schema_problems(wide)))
+        ok = {"type": "object", "additionalProperties": False,
+              "properties": {f"f{i}": {"type": "string"} for i in range(32)}}
+        self.assertEqual(self.calle.schema_problems(ok), [])
+
+    def test_the_hosted_profile_is_stricter_than_the_local_one_on_purpose(self):
+        from src.callheavy import task as local
+        loose = {"type": "object", "properties": {"a": {"type": "array", "items": {"type": "string"}}}}
+        self.assertEqual(local.schema_problems(loose), [], "the local rail accepts an array")
+        self.assertTrue(self.calle.schema_problems(loose), "the hosted rail does not")
+
+    def test_the_gate_needs_both_the_consent_and_a_key_and_names_what_is_missing(self):
+        shut = self.calle.gate({})
+        self.assertTrue(shut["closed"])
+        self.assertEqual({m["needs"] for m in shut["missing"]}, {"HEYPHONY_CALL=allowed", "CALLE_API_KEY"})
+        only_key = self.calle.gate({"CALLE_API_KEY": "k"})
+        self.assertEqual([m["needs"] for m in only_key["missing"]], ["HEYPHONY_CALL=allowed"])
+        wrong = self.calle.gate({"CALLE_API_KEY": "k", "HEYPHONY_CALL": "yes"})
+        self.assertTrue(wrong["closed"], "only the word allowed opens it")
+        self.assertFalse(self.calle.gate({"CALLE_API_KEY": "k", "HEYPHONY_CALL": "allowed"})["closed"])
+
+    def test_the_key_is_read_from_the_environment_and_never_from_a_flag(self):
+        import inspect
+        from src.callheavy import cli
+        source = inspect.getsource(cli)
+        self.assertNotIn("--key", source)
+        self.assertNotIn("--api-key", source)
+        self.assertEqual(self.calle.key({"CALLE_API_KEY": "  k  "}), "k")
+
+    def test_the_idempotency_key_is_stable_for_the_same_call_and_differs_for_another(self):
+        a = self.calle.idempotency_key("g", "+442071234567", self.schema)
+        self.assertEqual(a, self.calle.idempotency_key("g", "+442071234567", self.schema))
+        self.assertNotEqual(a, self.calle.idempotency_key("g2", "+442071234567", self.schema))
+        self.assertNotEqual(a, self.calle.idempotency_key("g", "+442071234568", self.schema))
+
+    def test_a_call_id_cannot_walk_the_path(self):
+        self.assertEqual(self.calle._path("call_1"), "/v2/calls/call_1")
+        self.assertNotIn("..", self.calle._path("../admin"))
+        self.assertNotIn("/", self.calle._path("a/b")[len("/v2/calls/"):])
+        self.assertIn("%2E", self.calle._path("a.b"))
+
+
+class _FakeReply:
+    def __init__(self, body):
+        self.body = body
+
+    def read(self):
+        return self.body if isinstance(self.body, bytes) else json.dumps(self.body).encode()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class TestTheHostedRailOnTheWire(unittest.TestCase):
+    """the same client, driven through an opener that records what it would have sent."""
+
+    ENV = {"CALLE_API_KEY": "k-test", "HEYPHONY_CALL": "allowed"}
+
+    def setUp(self):
+        from src.callheavy import calle
+        self.calle = calle
+        self.sent = []
+        self.schema = {"type": "object", "additionalProperties": False, "properties": {"a": {"type": "string"}}}
+
+    def opener(self, *replies):
+        queue = list(replies)
+
+        def open_(req, timeout=None):
+            self.sent.append({"method": req.get_method(), "url": req.full_url,
+                              "headers": {k.lower(): v for k, v in req.header_items()},
+                              "body": json.loads(req.data) if req.data else None})
+            reply = queue.pop(0) if len(queue) > 1 else queue[0]
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+        return open_
+
+    def test_create_posts_one_json_body_with_the_bearer_and_the_idempotency_key(self):
+        o = self.opener(_FakeReply({"id": "c1", "status": "queued", "result_status": "pending"}))
+        self.calle.create("g", "+442071234567", self.schema, "idem-1", environ=self.ENV, opener=o)
+        sent = self.sent[0]
+        self.assertEqual((sent["method"], sent["url"]), ("POST", "https://api.heycall-e.com/v2/calls"))
+        self.assertEqual(sent["headers"]["authorization"], "Bearer k-test")
+        self.assertEqual(sent["headers"]["idempotency-key"], "idem-1")
+        self.assertEqual(sent["headers"]["content-type"], "application/json")
+        self.assertEqual(len(self.sent), 1, "one request, never a retry loop")
+
+    def test_the_base_can_be_pointed_elsewhere_without_a_code_change(self):
+        o = self.opener(_FakeReply({"id": "c1"}))
+        self.calle.get("c1", environ={**self.ENV, "CALLE_API_BASE": "http://127.0.0.1:9/"}, opener=o)
+        self.assertEqual(self.sent[0]["url"], "http://127.0.0.1:9/v2/calls/c1")
+
+    def test_wait_polls_while_the_result_is_pending_even_when_the_call_has_completed(self):
+        pending = _FakeReply({"id": "c1", "status": "completed", "result_status": "pending"})
+        done = _FakeReply({"id": "c1", "status": "completed", "result_status": "available", "result": {"a": "x"}})
+        o = self.opener(pending, pending, done)
+        ticks = iter(range(0, 10))   # a bounded clock: a wrong stop condition fails fast instead of hanging
+        snap, timed_out = self.calle.wait("c1", interval=0, timeout=6, environ=self.ENV, opener=o,
+                                          clock=lambda: next(ticks), sleep=lambda s: None)
+        self.assertEqual(len(self.sent), 3, "status completed is not the stop condition, result_status is")
+        self.assertEqual(snap["result"], {"a": "x"})
+        self.assertFalse(timed_out)
+
+    def test_wait_stops_on_every_non_pending_result_status(self):
+        for status in ("available", "unavailable", "not_applicable"):
+            self.sent.clear()
+            o = self.opener(_FakeReply({"id": "c1", "result_status": status}))
+            ticks = iter(range(0, 10))   # bounded: a wrong stop condition must fail here, not wait ten minutes
+            snap, timed_out = self.calle.wait("c1", interval=0, timeout=6, environ=self.ENV, opener=o,
+                                              clock=lambda: next(ticks), sleep=lambda s: None)
+            self.assertEqual(len(self.sent), 1, status)
+            self.assertFalse(timed_out)
+
+    def test_a_deadline_returns_the_last_snapshot_so_the_call_can_be_resumed_by_id(self):
+        o = self.opener(_FakeReply({"id": "c1", "status": "in_progress", "result_status": "pending"}))
+        ticks = iter(range(0, 1000, 5))
+        snap, timed_out = self.calle.wait("c1", interval=0, timeout=12, environ=self.ENV, opener=o,
+                                          clock=lambda: next(ticks), sleep=lambda s: None)
+        self.assertTrue(timed_out)
+        self.assertEqual(snap["id"], "c1", "the id survives a timeout, which is how a long call is resumed")
+
+    def test_the_services_own_error_code_comes_through_and_a_bad_body_does_not_crash(self):
+        import urllib.error
+        body = json.dumps({"error": {"code": "invalid_request", "message": "bad phone",
+                                     "details": {"field": "phone"}}}).encode()
+        err = urllib.error.HTTPError("u", 422, "x", {}, io.BytesIO(body))
+        with self.assertRaises(self.calle.ApiError) as caught:
+            self.calle.get("c1", environ=self.ENV, opener=self.opener(err))
+        self.assertEqual((caught.exception.status, caught.exception.code), (422, "invalid_request"))
+        self.assertEqual(caught.exception.details, {"field": "phone"})
+        junk = urllib.error.HTTPError("u", 502, "x", {}, io.BytesIO(b"<html>bad gateway</html>"))
+        with self.assertRaises(self.calle.ApiError) as caught:
+            self.calle.get("c1", environ=self.ENV, opener=self.opener(junk))
+        self.assertEqual(caught.exception.code, "internal_error")
+
+    def test_a_dead_network_and_a_non_object_answer_are_named_errors(self):
+        import urllib.error
+        for reply, code in ((urllib.error.URLError("no route"), "connection"),
+                            (_FakeReply(b"[1,2]"), "not_object"), (_FakeReply(b"not json"), "not_json")):
+            with self.assertRaises(self.calle.ApiError) as caught:
+                self.calle.get("c1", environ=self.ENV, opener=self.opener(reply))
+            self.assertEqual(caught.exception.code, code)
+
+    def test_shape_returns_one_dialect_with_the_transcript_trimmed_to_its_three_fields(self):
+        snap = {"id": "c1", "call_id": "t9", "status": "completed", "call_outcome": "no_answer",
+                "result_status": "unavailable", "result": None, "error": None,
+                "transcript": [{"offset_seconds": 1, "speaker": "agent", "text": "hi", "extra": "dropped"}, "junk"]}
+        shaped = self.calle.shape(snap)
+        self.assertEqual(shaped["transcript"], [{"offset_seconds": 1, "speaker": "agent", "text": "hi"}])
+        self.assertEqual(shaped["billing_call_id"], "t9")
+        self.assertEqual(self.calle.shape(None)["via"], "calle")
+
+
+class TestTheViaFlag(unittest.TestCase):
+    """one verb, two rails, and the choice is never made for the caller."""
+
+    def setUp(self):
+        from src.callheavy import cli
+        self.cli = cli
+        self.room = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.room, True)
+        self.schema = pathlib.Path(self.room) / "want.json"
+        self.schema.write_text(json.dumps({"type": "object", "additionalProperties": False,
+                                           "properties": {"a": {"type": "string"}}}))
+        saved_env, saved_state = dict(os.environ), self.cli.STATE
+        for name in ("CALLE_API_KEY", "HEYPHONY_CALL", "CALLE_API_BASE"):
+            os.environ.pop(name, None)
+        self.cli.STATE = pathlib.Path(self.room)
+        self.addCleanup(lambda: (os.environ.clear(), os.environ.update(saved_env),
+                                 setattr(self.cli, "STATE", saved_state)))
+
+    def run_cli(self, argv):
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = self.cli.main(argv)
+        return code, json.loads(buffer.getvalue())
+
+    def base(self, verb, via):
+        """the own rail asks how anyone would know the call worked, because it does the extracting itself.
+        the hosted rail does not, because the service does, and a test that gave both the same flags
+        would hide that difference."""
+        extra = ["--success", "a clear yes or no"] if via == "callheavy" else []
+        return [verb, "--via", via, "--goal", "ask about tuesday", "--to", "+442071234567",
+                "--schema", str(self.schema)] + extra
+
+    def patch(self, name, value):
+        original = getattr(self.cli.calle, name)
+        setattr(self.cli.calle, name, value)
+        self.addCleanup(setattr, self.cli.calle, name, original)
+
+    def test_there_is_no_default_rail(self):
+        for verb in ("plan", "dial"):
+            with self.assertRaises(SystemExit) as caught, contextlib.redirect_stderr(io.StringIO()):
+                self.cli.main([verb, "--goal", "g", "--to", "+442071234567", "--schema", str(self.schema)])
+            self.assertEqual(caught.exception.code, 2, f"{verb} chose a rail on its own")
+
+    def test_an_unknown_rail_is_refused(self):
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            self.cli.main(self.base("plan", "carrier-pigeon"))
+
+    def test_both_plans_name_the_rail_and_what_it_costs(self):
+        for via in ("callheavy", "calle"):
+            code, plan = self.run_cli(self.base("plan", via))
+            self.assertEqual(code, 0, via)
+            self.assertEqual(plan["via"], via)
+            self.assertIn("spends", plan)
+            self.assertIn("returns", plan)
+
+    def test_a_hosted_plan_sends_nothing_and_shows_the_exact_request(self):
+        code, plan = self.run_cli(self.base("plan", "calle"))
+        self.assertFalse(plan["sending"])
+        self.assertEqual(sorted(plan["request"]), ["phone", "result_schema", "task"])
+        self.assertTrue(plan["gate"]["closed"])
+        self.assertTrue(plan["idempotency_key"].startswith("heyphony-"))
+
+    def test_a_hosted_plan_refuses_a_schema_the_service_would_refuse(self):
+        self.schema.write_text(json.dumps({"type": "object", "properties": {"a": {"type": "array"}}}))
+        code, answer = self.run_cli(self.base("plan", "calle"))
+        self.assertEqual(code, 1)
+        self.assertTrue(any(p["needs"] == "schema" for p in answer["problems"]))
+
+    def test_a_hosted_dial_needs_an_authoriser_before_anything_else(self):
+        code, answer = self.run_cli(self.base("dial", "calle"))
+        self.assertEqual(code, 1)
+        self.assertEqual(answer["problems"][0]["needs"], "authorized")
+
+    def test_a_hosted_dial_without_run_is_a_plan_even_with_the_gate_open(self):
+        os.environ.update({"CALLE_API_KEY": "k", "HEYPHONY_CALL": "allowed"})
+        called = []
+        self.patch("create", lambda *a, **k: called.append(1))
+        code, answer = self.run_cli(self.base("dial", "calle") + ["--authorized", "filmosophy"])
+        self.assertEqual(code, 0)
+        self.assertFalse(answer["sending"])
+        self.assertEqual(called, [], "no --run, so no request")
+
+    def test_a_hosted_run_with_a_shut_gate_sends_nothing_and_says_it_drafted(self):
+        called = []
+        self.patch("create", lambda *a, **k: called.append(1))
+        code, answer = self.run_cli(self.base("dial", "calle") + ["--authorized", "filmosophy", "--run"])
+        self.assertEqual(code, 1)
+        self.assertTrue(answer["drafted"])
+        self.assertEqual(called, [], "a shut gate must not reach the network")
+
+    def test_a_hosted_run_with_the_gate_open_creates_waits_and_returns_the_shared_shape(self):
+        os.environ.update({"CALLE_API_KEY": "k", "HEYPHONY_CALL": "allowed"})
+        sent = []
+        self.patch("create", lambda *a, **k: (sent.append((a, k)),
+                                              {"id": "c1", "status": "queued", "result_status": "pending"})[1])
+        self.patch("wait", lambda cid, **k: ({"id": "c1", "status": "completed", "call_outcome": "completed",
+                                              "result_status": "available", "result": {"a": "yes"},
+                                              "transcript": [{"offset_seconds": 0, "speaker": "agent",
+                                                              "text": "hi"}]}, False))
+        code, answer = self.run_cli(self.base("dial", "calle") + ["--authorized", "filmosophy", "--run"])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(sent), 1)
+        for key in ("via", "id", "status", "call_outcome", "result_status", "result", "transcript", "error"):
+            self.assertIn(key, answer, f"the shared shape lost {key}")
+        self.assertEqual((answer["via"], answer["result"]), ("calle", {"a": "yes"}))
+        self.assertTrue(pathlib.Path(answer["record"]).is_file())
+
+    def test_no_wait_returns_the_id_to_resume_from(self):
+        os.environ.update({"CALLE_API_KEY": "k", "HEYPHONY_CALL": "allowed"})
+        self.patch("create", lambda *a, **k: {"id": "c9", "status": "queued", "result_status": "pending"})
+        self.patch("wait", lambda *a, **k: self.fail("--no-wait must not poll"))
+        code, answer = self.run_cli(self.base("dial", "calle") + ["--authorized", "x", "--run", "--no-wait"])
+        self.assertEqual(code, 0)
+        self.assertIn("c9", answer["resume"])
+
+    def test_the_services_refusal_is_reported_and_the_idempotency_key_is_kept(self):
+        os.environ.update({"CALLE_API_KEY": "k", "HEYPHONY_CALL": "allowed"})
+        calle = self.cli.calle
+
+        def refuse(*a, **k):
+            raise calle.ApiError(402, "insufficient_credits", "no credits", {"need": 5})
+        self.patch("create", refuse)
+        code, answer = self.run_cli(self.base("dial", "calle") + ["--authorized", "x", "--run"])
+        self.assertEqual(code, 1)
+        self.assertEqual(answer["error"]["code"], "insufficient_credits")
+        self.assertTrue(answer["idempotency_key"], "kept so a retry cannot place a second call")
+
+    def test_an_own_rail_run_says_plainly_it_has_no_transcript_and_no_result(self):
+        original = self.cli.dial.dial
+        self.cli.dial.dial = lambda *a, **k: {"accepted": True, "call_outcome": "completed", "established": 1.0}
+        self.addCleanup(setattr, self.cli.dial, "dial", original)
+        code, answer = self.run_cli(self.base("dial", "callheavy") + ["--authorized", "x", "--run"])
+        self.assertEqual(answer["via"], "callheavy")
+        self.assertEqual(answer["result_status"], "not_applicable")
+        self.assertIsNone(answer["result"])
+        self.assertEqual(answer["transcript"], [])
+        self.assertIn("speech model", answer["result_status_why"])
+
+    def test_status_and_cancel_are_hosted_only_and_cancel_is_gated(self):
+        code, answer = self.run_cli(["status", "--via", "callheavy", "--id", "x"])
+        self.assertEqual(code, 1)
+        code, answer = self.run_cli(["cancel", "--via", "calle", "--id", "c1"])
+        self.assertEqual(code, 1)
+        self.assertTrue(answer["drafted"], "cancel changes a call that costs money, so it is gated too")
+        code, answer = self.run_cli(["status", "--via", "calle", "--id", "c1"])
+        self.assertEqual(answer["problems"][0]["needs"], "CALLE_API_KEY")
+
+
+class TestThePumpPlan(unittest.TestCase):
+    """what the pump decides, with nothing started: the layout, the config text, and the rules it learned."""
+
+    def setUp(self):
+        from src.callheavy import pump, rig
+        self.pump, self.rig = pump, rig
+
+    def test_there_are_four_sinks_and_no_direction_can_feed_itself(self):
+        self.assertEqual(sorted(self.pump.SINKS.values()), ["agent_hear", "agent_say", "far_hear", "far_say"])
+        self.assertTrue(self.pump.no_loop())
+        self.assertFalse(self.pump.no_loop({"say": "agent", "hear": "agent"}),
+                         "one sink for both directions is the layout that saturated the capture")
+        self.assertFalse(self.pump.no_loop({"far_say": "x", "far_hear": "x"}))
+
+    def test_the_microphone_is_the_monitor_of_the_say_sink_and_the_speaker_is_the_hear_sink(self):
+        text = self.pump.baresip_audio()
+        self.assertIn("audio_source\t\tpulse,agent_say.monitor", text)
+        self.assertIn("audio_player\t\tpulse,agent_hear", text)
+        self.assertNotIn("agent_hear.monitor", text.split("audio_source")[1].split("\n")[0])
+
+    def test_the_agent_needs_two_sinks_and_the_stand_in_adds_two(self):
+        self.assertEqual(len(self.pump.module_loads()), 2)
+        self.assertEqual(len(self.pump.module_loads(stand_in=True)), 4)
+        self.assertTrue(all("module-null-sink" in line for line in self.pump.module_loads(stand_in=True)))
+
+    def test_the_two_instances_do_not_share_a_tls_port(self):
+        """baresip binds tls on sip_listen plus one, so adjacent ports kill the second instance."""
+        self.assertTrue(self.rig.ports_apart())
+        self.assertFalse(self.rig.ports_apart({"sip": 5061}, {"sip": 5062}), "5061 and 5062 collide on tls")
+        self.assertFalse(self.rig.ports_apart({"sip": 5061}, {"sip": 5061}))
+
+    def test_each_side_reads_the_other_sides_sinks_never_its_own_output(self):
+        agent = self.rig.config_text(self.rig.AGENT, ("agent_hear", "agent_say"), "/m")
+        far = self.rig.config_text(self.rig.FAR, ("far_hear", "far_say"), "/m")
+        self.assertIn("pulse,agent_say.monitor", agent)
+        self.assertIn("pulse,far_say.monitor", far)
+        self.assertNotIn("far_", agent)
+        self.assertNotIn("agent_", far)
+
+    def test_the_settle_window_clears_the_stand_ins_answer_delay_with_room_to_spare(self):
+        """a caller that listens for exactly the delay misses the answer by milliseconds and skips the proof."""
+        self.assertGreater(self.rig.SETTLE_S, self.rig.ANSWER_DELAY_S * 2)
+
+    def test_stopping_the_rig_leaves_no_audio_server_behind(self):
+        """before this, `pactl exit` could not stop a server started with --disallow-exit, and a daemonised
+        server has no handle to stop it by, so every run left one behind. the count is taken by the rig's own
+        socket path, which is unique to it, so another user's pulseaudio is never mistaken for a leak."""
+        rig = self.rig.Rig(tempfile.mkdtemp(prefix="heyphony-rig-"))
+        if rig.missing():
+            self.skipTest("this machine has no " + ", ".join(rig.missing()))
+        self.addCleanup(shutil.rmtree, rig.root, True)
+        started = rig.start(settle=1.0)
+        self.assertTrue(started["ok"], started)
+        mine = str(rig.root)
+
+        def alive():
+            out = subprocess.run(["ps", "-eo", "args"], capture_output=True, text=True, timeout=15).stdout
+            return [l for l in out.splitlines() if mine in l and ("pulseaudio" in l or "baresip" in l)]
+        self.assertTrue(alive(), "the rig started nothing, so this test would pass for any reason")
+        rig.stop()
+        time.sleep(0.5)
+        self.assertEqual(alive(), [], "something the rig started is still running")
+
+    def test_only_the_stand_in_answers_on_its_own(self):
+        self.assertNotIn("answermode=auto", self.rig.account_text(self.rig.AGENT, False))
+        self.assertIn("answermode=auto", self.rig.account_text(self.rig.FAR, True))
+
+    def test_a_wav_the_call_cannot_carry_is_refused_by_name(self):
+        import wave
+        with tempfile.TemporaryDirectory() as room:
+            empty, narrow = pathlib.Path(room) / "e.wav", pathlib.Path(room) / "n.wav"
+            for path, width, frames in ((empty, 2, b""), (narrow, 1, b"\x80" * 100)):
+                with wave.open(str(path), "wb") as w:
+                    w.setnchannels(1); w.setsampwidth(width); w.setframerate(8000); w.writeframes(frames)
+            self.assertIn("empty", self.pump.wav_problem(empty))
+            self.assertIn("16 bit", self.pump.wav_problem(narrow))
+            self.assertIn("not a wav", self.pump.wav_problem(pathlib.Path(room) / "missing.wav"))
+            ran = []
+            answer = self.pump.speak(empty, runner=lambda *a, **k: ran.append(1))
+            self.assertFalse(answer["ok"])
+            self.assertEqual(ran, [], "a refused wav must not reach paplay")
+
+    def test_speak_plays_into_the_say_sink_and_listen_records_the_hear_monitor(self):
+        import wave
+        with tempfile.TemporaryDirectory() as room:
+            good = pathlib.Path(room) / "g.wav"
+            with wave.open(str(good), "wb") as w:
+                w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000); w.writeframes(b"\x00\x10" * 800)
+            seen = []
+
+            class Done:
+                returncode, stderr = 0, ""
+            self.pump.speak(good, runner=lambda argv, **k: (seen.append(argv), Done())[1])
+            self.assertEqual(seen[0][:2], ["paplay", "--device=agent_say"])
+
+            started = []
+
+            class Proc:
+                def terminate(self): started.append("stop")
+                def wait(self, timeout=None): return 0
+            self.pump.listen(pathlib.Path(room) / "o.wav", 0.01, popen=lambda argv, **k: (started.append(argv), Proc())[1],
+                             sleep=lambda s: None)
+            self.assertEqual(started[0][0], "parecord")
+            self.assertIn("--device=agent_hear.monitor", started[0])
+            self.assertEqual(started[-1], "stop", "the recorder is stopped by the function that started it")
+
+    def test_levels_tells_speech_from_silence_and_a_tone_from_noise(self):
+        import math, struct, wave
+        with tempfile.TemporaryDirectory() as room:
+            def write(name, samples):
+                path = pathlib.Path(room) / name
+                with wave.open(str(path), "wb") as w:
+                    w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000)
+                    w.writeframes(b"".join(struct.pack("<h", s) for s in samples))
+                return path
+            silent = write("s.wav", [0] * 8000)
+            tone = write("t.wav", [0] * 4000 + [int(8000 * math.sin(2 * math.pi * 1000 * i / 8000)) for i in range(4000)])
+            self.assertTrue(self.pump.levels(silent)["silent"])
+            lv = self.pump.levels(tone)
+            self.assertFalse(lv["silent"])
+            self.assertAlmostEqual(lv["starts_s"], 0.5, delta=0.11)
+            self.assertAlmostEqual(lv["peak"], 8000, delta=200)
+            self.assertGreater(self.pump.tone_energy(tone, 1000), 1000 * self.pump.tone_energy(tone, 2300))
+
+    def test_the_plan_says_what_is_shipped_and_what_still_is_not(self):
+        plan = self.pump.plan()
+        self.assertTrue(plan["shipped"])
+        self.assertTrue(plan["no_loop"])
+        text = " ".join(plan["not_included"]).lower()
+        self.assertIn("transcript", text)
+        self.assertIn("livekit", text)
+        self.assertIn("agent_say", plan["baresip"])
+
+
+class TestThePumpOnARealCall(unittest.TestCase):
+    """two real baresip instances call each other and a tone crosses in each direction.
+
+    this is the proof the plan tests cannot give: the null sink keeps its own clock, baresip carries g711
+    over rtp, and the level and the timing come out the other end. it needs pulseaudio and baresip with its
+    pulse and ctrl_tcp modules, so it skips by name on a machine without them rather than passing empty.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from src.callheavy import dial, pump, rig
+        cls.dial, cls.pump, cls.rig = dial, pump, rig
+        cls.root = pathlib.Path(tempfile.mkdtemp(prefix="heyphony-rig-"))
+        cls.machine = rig.Rig(cls.root)
+        gone = cls.machine.missing()
+        if gone:
+            shutil.rmtree(cls.root, ignore_errors=True)
+            raise unittest.SkipTest("this machine has no " + ", ".join(gone))
+        cls.started = cls.machine.start()
+        if not cls.started["ok"]:
+            cls.machine.stop()
+            shutil.rmtree(cls.root, ignore_errors=True)
+            raise unittest.SkipTest(f"the rig did not start: {cls.started}")
+        cls.env = cls.machine.environment()
+        call = dial.dial(cls.started["far_uri"], host="127.0.0.1", port=rig.AGENT["ctrl"], settle=rig.SETTLE_S)
+        if not call.get("accepted") or call.get("established") is None:
+            cls.machine.stop()
+            shutil.rmtree(cls.root, ignore_errors=True)
+            raise unittest.SkipTest(f"the call did not establish on this machine: {call.get('error') or call.get('stopped')}")
+        time.sleep(2.5)
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            cls.dial.hangup(host="127.0.0.1", port=cls.rig.AGENT["ctrl"])
+        finally:
+            cls.machine.stop()
+            shutil.rmtree(cls.root, ignore_errors=True)
+
+    def tone(self, name, freq, amp, secs=2, rate=48000):
+        import math, struct, wave
+        path = self.root / name
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate)
+            w.writeframes(b"".join(struct.pack("<h", int(amp * math.sin(2 * math.pi * freq * i / rate)))
+                                   for i in range(rate * secs)))
+        return path
+
+    def cross(self, wav, speak_sink, listen_sink, out):
+        import threading
+        recorder = threading.Thread(target=lambda: self.pump.listen(self.root / out, 4.0, sink=listen_sink,
+                                                                   environment=self.env))
+        recorder.start()
+        time.sleep(0.8)
+        self.pump.speak(wav, sink=speak_sink, environment=self.env)
+        recorder.join()
+        return self.root / out
+
+    def test_the_far_end_is_heard_by_the_agent_at_the_level_it_spoke(self):
+        heard = self.cross(self.tone("far.wav", 1000, 12000), self.pump.SINKS["far_say"],
+                           self.pump.SINKS["hear"], "ears.wav")
+        lv = self.pump.levels(heard)
+        self.assertFalse(lv["silent"], "the ears recorded nothing")
+        self.assertAlmostEqual(lv["peak"] / 12000, 1.0, delta=0.12, msg=f"level {lv['peak']} against 12000")
+        self.assertAlmostEqual(lv["ends_s"] - lv["starts_s"], 2.0, delta=0.4)
+        ratio = self.pump.tone_energy(heard, 1000) / max(1, self.pump.tone_energy(heard, 2300))
+        self.assertGreater(ratio, 1000, "the energy is not at the tone's frequency")
+
+    def test_the_agent_is_heard_by_the_far_end_and_the_other_direction_stays_out(self):
+        heard = self.cross(self.tone("agent.wav", 600, 9000), self.pump.SINKS["say"],
+                           self.pump.SINKS["far_hear"], "farheard.wav")
+        lv = self.pump.levels(heard)
+        self.assertFalse(lv["silent"], "the far end heard nothing")
+        self.assertGreater(self.pump.tone_energy(heard, 600), 1000 * self.pump.tone_energy(heard, 1000),
+                           "the other direction's tone leaked into this one")
+
+    def test_a_silent_call_records_silence_so_a_loop_cannot_hide(self):
+        import threading
+        out = {}
+        recorder = threading.Thread(target=lambda: out.update(
+            self.pump.listen(self.root / "quiet.wav", 2.0, environment=self.env)))
+        recorder.start()
+        recorder.join()
+        quiet = self.pump.levels(self.root / "quiet.wav")
+        self.assertTrue(quiet["silent"] or quiet["peak"] < 50,
+                        f"a quiet line recorded peak {quiet['peak']}: something is feeding the ears")
+
+
+if __name__ == "__main__":
+    suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])
+    result = unittest.TextTestRunner(verbosity=0).run(suite)
+    failed = len(result.failures) + len(result.errors)
+    print(f"selftest: {result.testsRun - failed}/{result.testsRun} pass")
+    sys.exit(1 if failed else 0)
 
 if __name__ == "__main__":
     suite = unittest.defaultTestLoader.loadTestsFromModule(sys.modules[__name__])

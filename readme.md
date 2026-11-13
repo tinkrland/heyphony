@@ -123,6 +123,42 @@ part that is ours. a registration at a carrier, and a carrier's own mms arriving
 not proven and are not claimed. the audio stays `baresip`'s: joining the call to a livekit room and
 turning it into a transcript are still not shipped.
 
+### placing a call, and the lane that owns it
+
+the inbound rails are the ones that work while nothing is awake. outbound is the opposite trade: it
+needs somebody present, it needs media, and it is the only thing in this package that rings a real
+person. so it lives in its own lane, `src/callheavy/`, behind its own shim, `bin/callheavy`, and it is
+driven by a task rather than by an argument.
+
+```bash
+bin/callheavy host                       # write the baresip config and accounts this lane drives
+bin/callheavy plan --via callheavy --goal "confirm tuesday at seven"
+bin/callheavy dial --via callheavy --goal "confirm tuesday at seven" --send
+bin/callheavy status --id <call>         # or cancel --id <call>, for the hosted rail
+bin/callheavy mic                        # the capture device, and what it costs
+bin/callheavy room                       # the livekit gate, and the bridge that is not shipped
+```
+
+nothing has a default rail: `--via callheavy|calle` is required, because "dial this" is a sentence
+whose meaning changed the moment there were two ways to dial it. `callheavy` is baresip over its own
+`ctrl_tcp` socket, which is the rail that has been proven here. `calle` is a hosted voice agent, a
+client written against their published spec and audited against it, and it refuses to run without
+`HEYPHONY_CALL=allowed` **and** `CALLE_API_KEY`: handing a third party the audio and the reasoning is a
+decision somebody makes on purpose, not a convenience.
+
+**the ears and the mouth are built.** `src/callheavy/pump.py` puts the agent's voice where baresip
+reads its microphone and records what baresip plays, through four pulseaudio null sinks, two per side,
+because a sink whose monitor is also the microphone feeds the call's own playback straight back and
+saturates the capture. pulseaudio's null sink keeps its own clock, so this works on a machine with no
+sound card. `src/callheavy/rig.py` starts two real baresip instances that call each other over
+loopback and the suite carries a tone in each direction, at the level it was spoken and at least a
+thousand times weaker in the other direction.
+
+honest gaps, and they are specific: no call has been placed over a carrier registration, joining the
+call to a livekit room is not shipped (`bridge_plan` says why: two media clocks and two codecs is a
+project), and the audio is not turned into a transcript. a real call with a real person is the next
+proof, and it is the only one that settles it.
+
 ### leaving a voicemail is the same act, with a voice
 
 `heyphony voicemail --to +1... --message "..." --send` places **one** call and speaks a message you wrote. the pstn leg comes from your livekit trunk rather than from this repo, and the speaking half is a python worker (`livekit-agents`, apache-2.0) that heyphony writes to disk so you can read it, edit it and run it yourself: a call that only exists while some service worker is alive deserves to be visible rather than magic.

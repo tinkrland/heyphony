@@ -9,8 +9,13 @@ src/
   linphone/      the sip client, wrapped so the rest of the code never touches a config file
   setup/         no number yet, and then a number that answers
   manage/        the number answering, for as long as you keep it
+  lookup/        what a number is, from the plan that issued it, without messaging anybody
+  live/          a call and a text arriving at once, on one number and in one program
+  callheavy/     a call placed on purpose, and the agent's ears and mouth on it
   onramp/        rails that want a phone number before they will talk to you
 ```
+
+`live/` is the only folder that is a pair: the call socket and the text webhook are two deliveries to one did, and the reason they are one module is that the ordering between them is the question.
 
 the split is by lifetime, not by technology. `setup/` is work you do once per number and then never again. `manage/` is what runs every day after, which is where the agent actually lives. `onramp/` is opt in and stays opt in: a rail is opened deliberately, by name, with `heyphony get`.
 

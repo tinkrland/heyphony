@@ -1,0 +1,75 @@
+{
+  "enums": {
+    "call_outcome": [
+      "completed",
+      "no_answer",
+      "busy",
+      "declined",
+      null
+    ],
+    "error_code": [
+      "call_failed",
+      "timed_out",
+      "result_invalid",
+      "result_failed"
+    ],
+    "result_status": [
+      "pending",
+      "available",
+      "unavailable",
+      "not_applicable"
+    ],
+    "status": [
+      "queued",
+      "in_progress",
+      "completed",
+      "failed",
+      "canceled"
+    ]
+  },
+  "paths": [
+    "/v2/calls",
+    "/v2/calls/{call_id}",
+    "/v2/calls/{call_id}/cancel",
+    "/v2/calls/{call_id}/events"
+  ],
+  "request": {
+    "additionalProperties": false,
+    "fields": [
+      "locale",
+      "metadata",
+      "phone",
+      "region",
+      "result_schema",
+      "task",
+      "webhook_url"
+    ],
+    "phone_pattern": "^\\+[1-9][0-9]{7,14}$",
+    "region_pattern": "^[A-Z]{2}$",
+    "required": [
+      "task",
+      "phone",
+      "result_schema"
+    ]
+  },
+  "response_fields": [
+    "call_id",
+    "call_outcome",
+    "completed_at",
+    "created_at",
+    "error",
+    "id",
+    "locale",
+    "metadata",
+    "object",
+    "phone",
+    "region",
+    "result",
+    "result_status",
+    "status",
+    "task",
+    "transcript"
+  ],
+  "source": "CALLE-AI/server-sdk-python openapi/calle.openapi.yaml, MIT, read 2026-11-09",
+  "why_recorded": "the spec lives outside this repo, so the facts the client depends on are pinned here and a test compares the client to them"
+}

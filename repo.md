@@ -18,7 +18,7 @@ this repo is one package and several lines of work beside it. `main` is the numb
 | `mcp` | the stdio server, the sdk, the lookup, the groups and the inbound allowlist, as one tree | this is it |
 | `lookup` | what a number is from the plan that issued it, handles and addresses beside numbers, and groups as a carrier thread | yes |
 | `allow` | the inbound policy: a list, a home country, or chosen countries, closed by default | yes |
-| `callheavy` | our own outbound calls arranged around a task, driving baresip over its control socket | no |
+| `callheavy` | our own outbound calls arranged around a task, driving baresip over its control socket (ported into `mcp` at `src/callheavy/`, so the branch is copy history rather than an unmerged lane) | no |
 | `mobile` | the phone as a device, the host bridge that answers for it, and the ring rail | no |
 | `omni` | the rest of the carriers, as lanes beside the number | no |
 | `meetings` | joining the room where the humans are | no |
