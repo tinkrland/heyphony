@@ -2585,6 +2585,155 @@ class TestACapabilityIsABooleanAndExistenceIsNot(unittest.TestCase):
             self.assertIn(needle, page)
 
 
+class TestTheCallWePlacedOurselves(unittest.TestCase):
+    """the question after "both rails at once": what if the call is one this program dialled?
+
+    the far end is a socketpair that answers the dial verb and then reports ringing, established and
+    closed, which is exactly what baresip does on the connection the command arrived on. the text side
+    is a real http server, because the catcher is the code being trusted.
+    """
+
+    def setUp(self):
+        from src.live import both
+        self.both = both
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir, True)
+
+    def wire(self):
+        near, far = socket.socketpair()
+        self.addCleanup(near.close)
+        self.addCleanup(far.close)
+        timeline = self.both.Timeline()
+        call = self.both.CallRail(timeline, sock=near)
+        call.open = True
+        inbox = self.both.InboxRail(timeline, port=0, path=os.path.join(self.dir, "inbox.jsonl"),
+                                    policy={"mode": "list", "allow_numbers": ["+15550000001"]})
+        inbox.start()
+        self.addCleanup(inbox.stop)
+        return {"far": far, "timeline": timeline, "call": call, "inbox": inbox}
+
+    def say(self, far, event, **fields):
+        payload = {"event": "true", "class": "call", "type": event}
+        payload.update(fields)
+        far.sendall(self.both.netstring(payload))
+
+    def what_far_end_got(self, far):
+        far.settimeout(2.0)
+        messages, _rest = self.both.decode(far.recv(65536))
+        return messages[0]
+
+    def test_the_dial_goes_on_the_wire_as_baresip_expects_it(self):
+        """params is a *string* in this protocol, which is the trap the calling lane's page records."""
+        wired = self.wire()
+        wired["call"].place("+15550000001")
+        sent = self.what_far_end_got(wired["far"])
+        self.assertEqual(sent["command"], "dial")
+        self.assertEqual(sent["params"], "sip:+15550000001")
+        self.assertIsInstance(sent["params"], str, "a dict here is a dial that silently never leaves")
+
+    def test_a_bare_number_and_a_uri_are_the_same_call(self):
+        wired = self.wire()
+        self.assertEqual(wired["call"].place("+1555")["uri"], "sip:+1555")
+        self.assertEqual(wired["call"].place("sip:ada@example.net")["uri"], "sip:ada@example.net")
+        self.assertEqual([e["uri"] for e in wired["timeline"].events("call")],
+                         ["sip:+1555", "sip:ada@example.net"], "the log says what was dialled")
+
+    def test_the_call_we_placed_is_the_call_that_watched_the_text(self):
+        """the whole point: one program, one socket, and an order that can be read back."""
+        wired = self.wire()
+        wired["call"].place("+15550000001")
+        self.say(wired["far"], "CALL_RINGING", peeruri="sip:ada@example.net", id="c1")
+        self.assertEqual([e["what"] for e in wired["call"].read_once()], ["ringing at the far end"])
+        self.say(wired["far"], "CALL_ESTABLISHED", peeruri="sip:ada@example.net", id="c1")
+        self.assertEqual([e["what"] for e in wired["call"].read_once()], ["answered, both ways are open"])
+
+        payload = {"from": "+15550000001", "to": "+15550000002", "body": "sent you the screenshot",
+                   "media": ["https://carrier.example/m/7.jpg"], "id": "m1"}
+        request = urllib.request.Request(f"http://127.0.0.1:{wired['inbox'].port}/sms/flowroute",
+                                         data=json.dumps(payload).encode(),
+                                         headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=5) as response:
+            self.assertEqual(response.status, 200)
+        self.say(wired["far"], "CALL_CLOSED", peeruri="sip:ada@example.net", id="c1")
+        self.assertEqual([e["what"] for e in wired["call"].read_once()], ["hung up"])
+
+        order = [e["what"] for e in wired["timeline"].events()]
+        self.assertEqual(order, ["webhook listening", "dialled from here", "ringing at the far end",
+                                 "answered, both ways are open", "text arrived", "hung up"],
+                         "placed, answered, interrupted by a text, ended: in one log and in that order")
+        same = wired["timeline"].events("call")
+        self.assertTrue(all(e["rail"] == "call" for e in same))
+
+    def test_placing_a_call_is_recorded_even_when_the_socket_is_shut(self):
+        """a dial that could not leave is a fact worth logging, not an exception to swallow."""
+        timeline = self.both.Timeline()
+        call = self.both.CallRail(timeline, sock=None)
+        placed = call.place("+15550000001")
+        self.assertFalse(placed["ok"])
+        self.assertEqual([e["what"] for e in timeline.events("call")], ["dialled from here"])
+        self.assertIn("not connected", timeline.events("call")[0]["why"])
+
+    def test_the_session_places_before_it_waits_and_hangs_up_on_the_way_out(self):
+        wired = self.wire()
+        session = self.both.Session(wired["timeline"], call=wired["call"], inbox=wired["inbox"])
+        placed = session.place("+15550000001")
+        self.assertTrue(placed["ok"])
+        self.assertEqual([e["what"] for e in wired["timeline"].events("call")],
+                         ["dialled from here", "placing call"])
+        self.assertTrue(session.hangup()["ok"])
+        wired["far"].settimeout(2.0)
+        on_the_wire = [m["command"] for m in self.both.decode(wired["far"].recv(65536))[0]]
+        self.assertEqual(on_the_wire, ["dial", "hangup"],
+                         "one socket, the call placed and then ended, in that order")
+        self.assertIn("hung up from here", [e["what"] for e in wired["timeline"].events("call")])
+
+    def test_hanging_up_a_closed_socket_says_so_rather_than_pretending(self):
+        session = self.both.Session(self.both.Timeline(), call=self.both.CallRail(self.both.Timeline()),
+                                    inbox=self.both.InboxRail(self.both.Timeline(), port=0))
+        said = session.hangup()
+        self.assertFalse(said["ok"])
+        self.assertIn("not open", said["why"])
+
+    def test_the_gate_is_the_calling_lanes_gate(self):
+        """a call placed from the live verb is still a call: no goal, no schema, no authoriser, no ring."""
+        cli = subprocess.run([str(ROOT / "bin" / "heyphony"), "live", "--dial",
+                              "--to", "+15550000001", "--goal", "confirm tuesday"],
+                             capture_output=True, text=True, timeout=120,
+                             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+        self.assertEqual(cli.returncode, 2)
+        said = json.loads(cli.stdout)
+        self.assertFalse(said["ok"])
+        flags = {p["flag"] for p in said["problems"]}
+        self.assertEqual(flags, {"--schema", "--success", "--authorized"},
+                         f"the gate named {flags}")
+        self.assertIn("still a call", said["means"])
+
+    def test_a_complete_plan_still_sends_nothing(self):
+        schema = pathlib.Path(self.dir) / "schema.json"
+        schema.write_text(json.dumps({"type": "object", "required": ["tuesday_confirmed"],
+                                      "properties": {"tuesday_confirmed": {"type": "string",
+                                                                           "enum": ["yes", "no"]}}}))
+        cli = subprocess.run([str(ROOT / "bin" / "heyphony"), "live", "--dial",
+                              "--to", "+15550000001", "--goal", "confirm tuesday",
+                              "--schema", str(schema), "--success", "tuesday_confirmed answered",
+                              "--authorized", "tinkrland"],
+                             capture_output=True, text=True, timeout=120,
+                             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+        self.assertEqual(cli.returncode, 0, cli.stdout + cli.stderr)
+        said = json.loads(cli.stdout)
+        self.assertFalse(said["dial"]["sending"], "a plan that sends is not a plan")
+        self.assertEqual(said["dial"]["authorized_by"], "tinkrland")
+        self.assertEqual(said["dial"]["to"], "+15550000001")
+        self.assertIn("call_out", said["rails"], "the plan names placing as its own rail")
+
+    def test_the_plan_carries_its_own_honest_limits(self):
+        said = self.both.plan()
+        self.assertIn("--dial", said["rails"]["call"])
+        joined = " ".join(said["not_included"])
+        self.assertIn("no registration", joined)
+        self.assertNotIn("livekit room join is shipped", joined)
+
+
 class TestTheLadderWhenOneRailIsNotThere(unittest.TestCase):
     """an address holds imessage whatever it is, and a line climbs to rcs when apple is not there."""
 
@@ -4396,16 +4545,28 @@ class TestTheLaneIsConfinedToItsOwnFolder(unittest.TestCase):
         self.assertTrue((ROOT / "bin" / "callheavy").is_file())
         self.assertEqual(list((ROOT).rglob("dial.py")), [ROOT / "src" / "callheavy" / "dial.py"])
 
-    def test_nothing_outside_the_lane_imports_it(self):
-        """inside the folder the modules import each other; outside it nothing does, which is what keeps
-        the lane a thing that can be lifted out again rather than a layer everything stands on."""
+    def test_only_the_front_door_names_the_lane_and_only_inside_a_function(self):
+        """inside the folder the modules import each other; outside it, one file may, because
+        `heyphony live --dial` asks the lane's own gate before it rings anybody. that import is lazy on
+        purpose: a module level one would make the package import the lane to print --version.
+        """
+        allowed = {ROOT / "src" / "runner" / "cli.py"}
         for path in sorted((ROOT / "src").rglob("*.py")):
             if "callheavy" in path.parts:
                 continue
-            for line in path.read_text().splitlines():
-                stripped = line.strip()
-                if stripped.startswith(("import ", "from ")):
-                    self.assertNotIn("callheavy", stripped, f"{path} imports the optional lane")
+            text = path.read_text()
+            if path not in allowed:
+                for line in text.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith(("import ", "from ")):
+                        self.assertNotIn("callheavy", stripped, f"{path} imports the optional lane")
+                continue
+            lines = text.splitlines()
+            for number, line in enumerate(lines):
+                if "callheavy" in line and line.strip().startswith(("import ", "from ")):
+                    self.assertTrue(line.startswith(("    ", "\t")),
+                                    f"{path.name}:{number + 1} imports the lane at module level")
+                    self.assertIn("lazy", text.lower())
 
     def test_the_lane_imports_nothing_but_the_standard_library(self):
         """asked of python itself: a hand kept list of names is how `re` got refused and a real dependency

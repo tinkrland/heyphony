@@ -8,7 +8,6 @@ import argparse
 import json
 import os
 import pathlib
-import pathlib
 import sys
 
 from src import __version__
@@ -275,11 +274,41 @@ def cmd_allow(args):
     return 0
 
 
+def _live_task(args):
+    """the calling lane's gate, asked here too: a call we place is still somebody's phone ringing.
+
+    the import is lazy and stays that way: `heyphony --version` must not pull in a lane it never uses.
+    """
+    from src.callheavy import task as tasks
+    schema = None
+    if args.schema:
+        schema = json.loads(pathlib.Path(args.schema).read_text())
+    item = tasks.task(args.goal, schema, args.success, args.notes, args.language)
+    missing = tasks.clarifications(item, args.to)
+    if not getattr(args, "authorized", None):
+        missing.append({"needs": "authorized", "flag": "--authorized",
+                        "why": "a call is somebody's phone ringing; the record says who asked for it"})
+    return item, missing
+
+
 def cmd_live(args):
     """one number, both rails, in one process: the call socket and the text webhook together."""
     from src.live import both
+    item = missing = None
+    if args.dial:
+        item, missing = _live_task(args)
+        if missing:
+            _out({"ok": False, "problems": missing,
+                  "means": "nothing was dialled. the same gate the calling lane uses, because a call "
+                           "placed from here is still a call"})
+            return 2
     if not args.run:
-        _out(both.plan())
+        plan = both.plan()
+        if args.dial:
+            plan["dial"] = {"to": args.to, "task": item, "authorized_by": args.authorized,
+                            "sending": False,
+                            "note": "plan only. --run places it, and the same socket then watches it"}
+        _out(plan)
         return 0
     host, _, port = args.sip.rpartition(":")
     timeline = both.Timeline()
@@ -287,16 +316,26 @@ def cmd_live(args):
                            call=both.CallRail(timeline, addr=(host or "127.0.0.1", int(port or 4444))),
                            inbox=both.InboxRail(timeline, port=args.port, path=args.inbox))
     session.start()
+    placed = None
     try:
+        if args.dial:
+            placed = session.place(args.to)
         events = session.waiting(seconds=args.seconds, answer=not args.no_answer)
     finally:
+        ended = session.hangup() if args.dial else None
         session.stop()
-    _out({"events": events, "count": len(events),
-          "rails": sorted({e["rail"] for e in events if e["rail"] in both.RAILS}),
-          "means": ("one ordered log from two rails, so 'i just sent it' can be checked against "
-                    "whether the call was still up. the sip side was read from baresip's own "
-                    "socket, and the webhook side is a real http server")})
-    return 0
+    said = {"events": events, "count": len(events),
+            "rails": sorted({e["rail"] for e in events if e["rail"] in both.RAILS}),
+            "means": ("one ordered log from two rails, so 'i just sent it' can be checked against "
+                      "whether the call was still up. the sip side was read from baresip's own "
+                      "socket, and the webhook side is a real http server")}
+    if args.dial:
+        said["dial"] = {**placed, "task": item, "authorized_by": args.authorized,
+                        "hangup": ended,
+                        "means": "this call was placed by the same process that watched it, so an "
+                                 "arrival can be placed relative to the dial rather than to a guess"}
+    _out(said)
+    return 0 if (placed is None or placed["ok"]) else 1
 
 
 def cmd_media(args):
@@ -560,6 +599,15 @@ def build_parser():
     lv.add_argument("--sip", default="127.0.0.1:4444", help="baresip's ctrl_tcp address")
     lv.add_argument("--inbox", help="where an arriving text is written")
     lv.add_argument("--no-answer", action="store_true", help="do not answer a ringing call")
+    lv.add_argument("--dial", action="store_true",
+                    help="place the call from this process instead of waiting for one, then watch it")
+    lv.add_argument("--to", help="e164, for --dial")
+    lv.add_argument("--authorized", help="who asked for this call, recorded with it")
+    lv.add_argument("--goal", help="what the call is for, refused if there is none")
+    lv.add_argument("--schema", help="a json file naming the facts to collect")
+    lv.add_argument("--success", help="what makes this call a success")
+    lv.add_argument("--notes", help="anything the task should carry")
+    lv.add_argument("--language", help="the language to hold the call in")
     lv.set_defaults(func=cmd_live)
     md = sub.add_parser("media", help="the picture an mms carried: the url is kept, this fetches it")
     md.add_argument("action", nargs="?", choices=["fetch", "plan"], default="fetch")

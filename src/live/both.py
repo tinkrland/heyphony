@@ -173,6 +173,20 @@ class CallRail:
         except OSError as error:
             return {"ok": False, "why": str(error)}
 
+    def place(self, to):
+        """place the call from this process, so the socket that dialled it is the socket watching it.
+
+        the same `dial` verb the calling lane sends, on the same socket, with one difference that is the
+        whole point: this one does not hang up its connection afterwards. baresip reports ringing,
+        established and closed down the connection a command arrived on, so a dialer that closes on
+        accept is a dialer that then has to guess what happened.
+        """
+        uri = str(to) if ":" in str(to) else "sip:%s" % to
+        sent = self.command("dial", uri)
+        self.timeline.add("call", "dialled from here", uri=uri, sent=bool(sent.get("ok")),
+                          why=None if sent.get("ok") else sent.get("why"))
+        return {"ok": bool(sent.get("ok")), "uri": uri, "sent": sent}
+
     def answer(self):
         return self.command("answer")
 
@@ -289,6 +303,14 @@ class Session:
                 self.timeline.add("call", "no sip socket", why=str(error))
         return self
 
+    def hangup(self):
+        """end a call this session placed. named separately from stop, because stop closes a socket."""
+        if not self.call.open:
+            return {"ok": False, "why": "the call socket is not open"}
+        sent = self.call.hangup()
+        self.timeline.add("call", "hung up from here", sent=bool(sent.get("ok")))
+        return sent
+
     def stop(self):
         self.inbox.stop()
         if self.call.sock is not None:
@@ -298,6 +320,12 @@ class Session:
                 pass
             self.call.open = False
             self.timeline.add("call", "socket closed")
+
+    def place(self, to):
+        """place a call through the call rail, before the wait begins."""
+        placed = self.call.place(to)
+        self.timeline.add("call", "placing call", uri=placed["uri"])
+        return placed
 
     def waiting(self, seconds=30, answer=True):
         """hold both open, and hand back whatever the rails said, in order."""
@@ -318,7 +346,10 @@ def plan():
         "shipped": True,
         "what": ("the call rail (baresip ctrl_tcp) and the text rail (the carrier's webhook) in one "
                  "process, writing one ordered log, with a wait that is woken by either"),
-        "rails": {"call": "sip invite on the socket baresip owns, answered from here",
+        "rails": {"call": ("sip invite on the socket baresip owns, answered from here, or placed from "
+                           "here with --dial, in which case the socket that dialled is the socket that "
+                           "watches"),
+                  "call_out": "dial/answer/hangup on baresip's ctrl_tcp, token-matched replies",
                   "sms": "the catcher, now threaded, so a webhook never queues behind a call"},
         "timeline": ["seq", "at", "rail", "what", "sender", "body", "media", "peer", "call"],
         "media": "an inbound url is kept on the envelope; manage.media.fetch downloads it under a cap",

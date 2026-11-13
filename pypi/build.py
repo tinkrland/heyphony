@@ -25,7 +25,7 @@ GENERATED = [OUT, PYPI / "LICENSE", PYPI / "readme.md", PYPI / "dist", PYPI / "b
 
 # prose that travels with the code: an agent reads these, so they are part of the product.
 SHIPPED_DIRS = ["journal", "providers", "theidea"]
-SHIPPED_FILES = ["directory.md"]
+SHIPPED_FILES = ["directory.md", "logo.png"]
 
 IMPORT = re.compile(r"^(\s*)(from|import)\s+src(\b)", re.M)
 

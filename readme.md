@@ -1,5 +1,7 @@
 # heyphony
 
+<img src="https://raw.githubusercontent.com/tinkrland/heyphony/mcp/logo.png" alt="heyphony: a purple cat-shaped speech bubble" width="120" align="right">
+
 *a jerryrigged workaround for giving your ai agent a phone number of its own, one you can actually reach*
 
 there is no product that sells a phone number to a program. there are products that sell a phone number to a company that happens to have an ai agent, at a markup, behind a dashboard nobody's risk engine reads. this repo is the other route: a number bought for about a dollar a month, registered to a client on a host you already run, with a cli in front of it so the thing that answers is a process and not a person.
@@ -153,6 +155,24 @@ saturates the capture. pulseaudio's null sink keeps its own clock, so this works
 sound card. `src/callheavy/rig.py` starts two real baresip instances that call each other over
 loopback and the suite carries a tone in each direction, at the level it was spoken and at least a
 thousand times weaker in the other direction.
+
+### the call this program placed itself
+
+waiting for a call and placing one were two programs until they were one flag. `heyphony live --dial`
+asks the calling lane's own gate, dials over the socket it is about to watch, and then keeps watching:
+
+```bash
+heyphony live --run --dial --to +15550000001 --goal "confirm tuesday at seven" \
+  --schema tuesday.json --success "tuesday_confirmed answered" --authorized "tinkrland"
+```
+
+the same gate the lane uses, because a call is somebody's phone ringing whichever verb asked for it:
+no `--goal`, no `--schema`, no `--success` and no `--authorized` means nothing is dialled, and the
+refusal names each missing flag. the difference from `bin/callheavy dial` is where the socket goes
+afterwards. that verb follows the call and closes its connection, which is right for one call and
+wrong for a program that also has to hear a text arrive mid-sentence. here the socket that dialled is
+the socket that watches, so the log can say "dialled, answered, a text arrived, hung up" as one order
+rather than as two files someone lines up by hand.
 
 honest gaps, and they are specific: no call has been placed over a carrier registration, joining the
 call to a livekit room is not shipped (`bridge_plan` says why: two media clocks and two codecs is a
