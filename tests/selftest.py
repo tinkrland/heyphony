@@ -4574,11 +4574,51 @@ class TestTheLaneIsConfinedToItsOwnFolder(unittest.TestCase):
                                     f"{path.name}:{number + 1} imports the lane at module level")
                     self.assertIn("lazy", text.lower())
 
+    @staticmethod
+    def standard_library():
+        """the standard library, asked of the interpreter rather than kept as a list here.
+
+        python 3.8 and 3.9 have no `sys.stdlib_module_names`, and this package still claims 3.8, so there
+        the same question is answered by where each module's file actually lives. a hand kept list is how
+        `re` got refused while a real dependency got through, which is the failure this avoids."""
+        names = getattr(sys, "stdlib_module_names", None)
+        if names is not None:
+            return set(names)
+        import sysconfig
+        stdlib = set()
+        for path in (ROOT / "src" / "callheavy").rglob("*.py"):
+            for line in path.read_text().splitlines():
+                stripped = line.strip()
+                if stripped.startswith(("import ", "from ")):
+                    stdlib.add(stripped.split()[1].split(".")[0])
+        found = set()
+        for name in stdlib:
+            if name in sys.builtin_module_names:
+                found.add(name)
+                continue
+            try:
+                spec = importlib.util.find_spec(name)
+            except (ImportError, ValueError):
+                continue
+            if spec is None:
+                # not importable at all, so it is not the standard library and not a dependency either:
+                # whatever it is, this is not the test that should pass it
+                continue
+            origin = spec.origin
+            if origin in ("built-in", "frozen"):
+                found.add(name)
+                continue
+            roots = {pathlib.Path(sysconfig.get_paths()["stdlib"]).resolve(),
+                     pathlib.Path(sysconfig.get_paths()["stdlib"]).resolve().parent}
+            if any(root in pathlib.Path(origin).resolve().parents for root in roots):
+                found.add(name)
+        return found
+
     def test_the_lane_imports_nothing_but_the_standard_library(self):
         """asked of python itself: a hand kept list of names is how `re` got refused and a real dependency
         could be added by typing one more word. `callheavy` is this lane and `livekit` is the one optional
         sdk, imported lazily and refused by name when absent."""
-        stdlib = set(sys.stdlib_module_names)
+        stdlib = self.standard_library()
         allowed = stdlib | {"src", "livekit"}
         offenders = []
         for path in sorted((ROOT / "src" / "callheavy").rglob("*.py")):
