@@ -275,6 +275,44 @@ def cmd_allow(args):
     return 0
 
 
+def cmd_live(args):
+    """one number, both rails, in one process: the call socket and the text webhook together."""
+    from src.live import both
+    if not args.run:
+        _out(both.plan())
+        return 0
+    host, _, port = args.sip.rpartition(":")
+    timeline = both.Timeline()
+    session = both.Session(timeline,
+                           call=both.CallRail(timeline, addr=(host or "127.0.0.1", int(port or 4444))),
+                           inbox=both.InboxRail(timeline, port=args.port, path=args.inbox))
+    session.start()
+    try:
+        events = session.waiting(seconds=args.seconds, answer=not args.no_answer)
+    finally:
+        session.stop()
+    _out({"events": events, "count": len(events),
+          "rails": sorted({e["rail"] for e in events if e["rail"] in both.RAILS}),
+          "means": ("one ordered log from two rails, so 'i just sent it' can be checked against "
+                    "whether the call was still up. the sip side was read from baresip's own "
+                    "socket, and the webhook side is a real http server")})
+    return 0
+
+
+def cmd_media(args):
+    """the picture behind an mms: the url was kept, this fetches it, nothing reads it."""
+    from src.manage import media
+    if args.action == "plan":
+        _out(media.plan())
+        return 0
+    if not args.url:
+        _out({"ok": False, "why": "pass a url: heyphony media fetch --url https://... --into DIR"})
+        return 2
+    got = media.fetch(args.url, args.into, message_id=args.id, max_bytes=args.max_bytes)
+    _out(got)
+    return 0 if got["ok"] else 1
+
+
 def cmd_serve(args):
     from src.manage import catcher
     catcher.serve(port=args.port, token=args.token)
@@ -511,6 +549,22 @@ def build_parser():
     s.add_argument("--did-type", default="GEOGRAPHIC",
                    choices=["GEOGRAPHIC", "NATIONAL", "TOLLFREE", "MOBILE"])
     s.set_defaults(func=cmd_setup)
+    lv = sub.add_parser("live", help="the call socket and the text webhook at once, one ordered log")
+    lv.add_argument("--run", action="store_true",
+                    help="hold both rails open for --seconds instead of printing the plan")
+    lv.add_argument("--seconds", type=float, default=30)
+    lv.add_argument("--port", type=int, default=8099, help="the webhook port the carrier posts to")
+    lv.add_argument("--sip", default="127.0.0.1:4444", help="baresip's ctrl_tcp address")
+    lv.add_argument("--inbox", help="where an arriving text is written")
+    lv.add_argument("--no-answer", action="store_true", help="do not answer a ringing call")
+    lv.set_defaults(func=cmd_live)
+    md = sub.add_parser("media", help="the picture an mms carried: the url is kept, this fetches it")
+    md.add_argument("action", nargs="?", choices=["fetch", "plan"], default="fetch")
+    md.add_argument("--url", help="the media url from the message's `media` list")
+    md.add_argument("--into", default=".", help="a directory to write the file into")
+    md.add_argument("--id", help="the message id, so the file name says which message it belongs to")
+    md.add_argument("--max-bytes", dest="max_bytes", type=int, default=None)
+    md.set_defaults(func=cmd_media)
     st = sub.add_parser("status"); st.set_defaults(func=cmd_status)
     c = sub.add_parser("connect")
     c.add_argument("target", choices=["sip"])

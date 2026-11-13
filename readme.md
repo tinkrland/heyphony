@@ -87,6 +87,42 @@ signal wants a phone number before it will talk to you, so `heyphony get signal`
 
 `heyphony send` exists, and it is the narrowest version of outbound that is still useful: one recipient, one body, drafted unless the gate is open and the call asks for it. a reply to somebody who wrote first is the case it was built for, and a loop over a list is the case it refuses.
 
+### on a call while a text arrives, which is the question people actually ask
+
+the scenario is not exotic, it is tuesday: the agent is on a call and the person decides explaining is
+slower than sending the thing. *"hold on, i just sent you a screenshot"*, said out loud, mid-sentence.
+
+a number carries both because a text never rides sip and a call never rides http, so they are two
+deliveries to one did. what has to be true is on our side, and it is three small things.
+
+**two doors, no queue.** the invite arrives on the socket `baresip` already owns; the text arrives as
+an http post to the catcher. the catcher is threaded now, because a single thread meant a slow carrier
+could hold the door shut while a call was up. a test makes the store slow to prove two webhooks are
+served at once rather than one after the other.
+
+**one log, with sequence numbers.** `heyphony live --run` holds both rails and writes one ordered
+timeline, so `answered -> text -> hung up` is a claim you can check instead of reconstruct from two
+files. that ordering is the whole answer to "i just sent it", because the alternative is an agent
+answering a text that arrived before it heard the sentence.
+
+**the picture is reachable.** an mms is a text plus urls on the carrier's own host, so the envelope
+now carries `media` for ten provider shapes, and `heyphony media fetch --url ... --into DIR` downloads
+one under an 8 MB cap, naming the file for its content type. it refuses a non-http url
+(`fetch-the-whole-internet`), an oversize file (`a-picture-of-any-size`) and a type that is not a
+picture or a voice note (`read-as-an-image-what-is-not`). fetching a jpeg is not describing it, and a
+url behind the account's login answers 401 rather than pretending.
+
+```bash
+heyphony live                        # what this is, what it refuses, what was never proven
+heyphony live --run --seconds 300    # hold the call socket and the webhook, print the timeline
+heyphony media fetch --url https://carrier.example/m/9.jpg --into ~/media --id msg_1281
+```
+
+honest scope: the suite proves this over a fake sip socket and a real local webhook, which is the
+part that is ours. a registration at a carrier, and a carrier's own mms arriving on a live call, are
+not proven and are not claimed. the audio stays `baresip`'s: joining the call to a livekit room and
+turning it into a transcript are still not shipped.
+
 ### leaving a voicemail is the same act, with a voice
 
 `heyphony voicemail --to +1... --message "..." --send` places **one** call and speaks a message you wrote. the pstn leg comes from your livekit trunk rather than from this repo, and the speaking half is a python worker (`livekit-agents`, apache-2.0) that heyphony writes to disk so you can read it, edit it and run it yourself: a call that only exists while some service worker is alive deserves to be visible rather than magic.

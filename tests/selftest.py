@@ -14,13 +14,17 @@ import os
 import pathlib
 import re
 import shutil
+import socket
 import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 import urllib.parse
+import urllib.request
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 # this repo carries no .gitignore, so nothing here may leave __pycache__ behind
 sys.dont_write_bytecode = True
@@ -96,8 +100,9 @@ class TestThePackageIsStandalone(unittest.TestCase):
 
     def test_no_import_reaches_outside_the_package_or_the_standard_library(self):
         allowed = {"argparse", "base64", "email", "hashlib", "hmac", "http", "json", "os",
-                   "contextlib", "math", "pathlib", "re", "shlex", "shutil", "sqlite3", "src",
-                   "subprocess", "sys", "termios", "time", "tty", "urllib", "uuid", "xml"}
+                   "contextlib", "math", "pathlib", "re", "shlex", "shutil", "socket", "sqlite3", "src",
+                   "subprocess", "sys", "termios", "threading", "time", "tty", "urllib", "uuid",
+                   "xml"}
         import ast
         for path in sorted((ROOT / "src").rglob("*.py")):
             tree = ast.parse(path.read_text())
@@ -3475,6 +3480,353 @@ class TestThePypiPackageIsTheRepoRenamed(unittest.TestCase):
 
     def test_no_em_dash(self):
         self.assertNotIn("\u2014", self.script.read_text())
+
+class TestBothRailsAtOnce(unittest.TestCase):
+    """one number, a call in progress and a text arriving on it, in the same second.
+
+    the fake far end is a socketpair: the far side writes what baresip writes (its own documented
+    event names, netstring framed), and the rail under test reads it exactly as it would read the
+    real socket. the text side is a *real* http server on an ephemeral port, because the catcher is
+    the code being trusted and stubbing it would test the stub.
+    """
+
+    def setUp(self):
+        from src.live import both
+        self.both = both
+        self.session_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.session_dir, True)
+
+    def open_to(self, numbers):
+        """the policy shape allow.decide actually reads: a mode and a list, not an allow/refuse pair."""
+        return {"mode": "list", "allow_numbers": list(numbers)}
+
+    def wire(self, policy=None):
+        """a session whose call socket is one end of a socketpair and whose webhook is real."""
+        near, far = socket.socketpair()
+        self.addCleanup(near.close)
+        self.addCleanup(far.close)
+        timeline = self.both.Timeline()
+        call = self.both.CallRail(timeline, sock=near)
+        call.open = True
+        inbox = self.both.InboxRail(timeline, port=0, path=os.path.join(self.session_dir, "inbox.jsonl"),
+                                    policy=policy or self.open_to(["+15550000001"]))
+        inbox.start()
+        self.addCleanup(inbox.stop)
+        return {"near": near, "far": far, "timeline": timeline, "call": call, "inbox": inbox}
+
+    def say(self, far, event, **fields):
+        payload = {"event": "true", "class": "call", "type": event}
+        payload.update(fields)
+        far.sendall(self.both.netstring(payload))
+
+    def text(self, port, body, sender="+15550000001", **extra):
+        # flowroute's documented webhook body: lowercase from/to/body, posted to /sms/flowroute
+        payload = {"from": sender, "to": "+15550000002", "body": body, "id": f"m{time.time_ns()}"}
+        payload.update(extra)
+        request = urllib.request.Request(f"http://127.0.0.1:{port}/sms/flowroute",
+                                         data=json.dumps(payload).encode(),
+                                         headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return json.loads(response.read())
+
+    def test_a_text_lands_while_the_call_is_still_up(self):
+        """the actual question: on a call, somebody sends a picture instead of explaining.
+
+        asserted as an order, not as two separate arrivals, because "at the same time" only means
+        something if the log can say the text came after the call was answered and before it ended.
+        """
+        wired = self.wire()
+        self.say(wired["far"], "CALL_ESTABLISHED", peeruri="sip:ada@example.net", id="c1")
+        self.assertEqual(wired["call"].read_once()[0]["what"], "answered, both ways are open")
+        self.text(wired["inbox"].port, "just sent you the screenshot",
+                  media=["https://carrier.example/m/9.jpg"])
+        self.say(wired["far"], "CALL_CLOSED", peeruri="sip:ada@example.net", id="c1")
+        read = wired["call"].read_once()
+        self.assertEqual([e["what"] for e in read], ["hung up"])
+
+        order = [e["what"] for e in wired["timeline"].events()]
+        self.assertEqual(order, ["webhook listening", "answered, both ways are open",
+                                 "text arrived", "hung up"],
+                         "the three events have to be one ordered log, or nothing can be said about "
+                         "what the caller meant by 'just sent it'")
+        arrived = wired["timeline"].first("sms", "text arrived")
+        self.assertEqual(arrived["media"], ["https://carrier.example/m/9.jpg"])
+        self.assertEqual(arrived["sender"], "+15550000001")
+        # the text arrived inside the call, which is the whole claim
+        answered = wired["timeline"].first("call", "answered, both ways are open")
+        closed = wired["timeline"].first("call", "hung up")
+        self.assertLess(answered["seq"], arrived["seq"])
+        self.assertLess(arrived["seq"], closed["seq"])
+
+    def test_the_stored_message_keeps_the_media_urls(self):
+        wired = self.wire()
+        self.text(wired["inbox"].port, "look at this",
+                  media=["https://c.example/1.jpg", "https://c.example/2.png"])
+        stored = inbox.read(os.path.join(self.session_dir, "inbox.jsonl"))
+        self.assertEqual(stored[-1]["media"], ["https://c.example/1.jpg", "https://c.example/2.png"])
+
+    def test_neither_rail_waits_for_the_other(self):
+        """two rails on one thread would pass the ordering test above while still being useless."""
+        wired = self.wire()
+        stop = {"at": time.time() + 3}
+        reader = threading.Thread(target=wired["call"].pump,
+                                  kwargs={"answer_on_incoming": False,
+                                          "stop": lambda: time.time() > stop["at"]})
+        reader.start()
+        try:
+            for i in range(6):
+                self.text(wired["inbox"].port, f"message {i}")
+                self.say(wired["far"], "CALL_ESTABLISHED", id=f"c{i}")
+                time.sleep(0.05)
+        finally:
+            stop["at"] = 0
+            reader.join(timeout=3)
+        self.assertFalse(reader.is_alive(), "the pump did not notice it was told to stop")
+        texts = wired["timeline"].events("sms")
+        self.assertEqual(len([e for e in texts if e["what"] == "text arrived"]), 6,
+                         "a webhook was dropped while the call socket was being read")
+        self.assertGreaterEqual(len(wired["timeline"].events("call")), 6)
+
+    def test_two_webhooks_are_served_at_once_not_one_after_the_other(self):
+        """the catcher was a single thread, so a slow carrier could hold the door while a call was up.
+
+        proved by making the store slow: three posts that each take 0.4s finish in about one of
+        them when the server threads, and in three of them when it does not.
+        """
+        wired = self.wire()
+        real = inbox.append
+        calls = []
+
+        def slow(entry, path=None):
+            calls.append(entry.get("body"))
+            time.sleep(0.4)
+            return real(entry, path)
+
+        inbox.append = slow
+        self.addCleanup(setattr, inbox, "append", real)
+        started = time.time()
+        threads = [threading.Thread(target=self.text, args=(wired["inbox"].port, f"n{i}"))
+                   for i in range(3)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=6)
+        took = time.time() - started
+        self.assertEqual(sorted(calls), ["n0", "n1", "n2"], "a webhook was lost")
+        self.assertLess(took, 1.0, f"three posts took {took:.2f}s, so they queued behind each other")
+
+    def test_a_refused_sender_is_still_news_on_the_log(self):
+        wired = self.wire(policy=self.open_to(["+15550000001"]))
+        answer = self.text(wired["inbox"].port, "hello", sender="+15559999999")
+        self.assertEqual(answer.get("stored"), False)
+        refused = wired["timeline"].first("sms", "text refused")
+        self.assertIsNotNone(refused, "the rail went quiet about a sender it refused")
+        self.assertEqual(refused["sender"], "+15559999999")
+        self.assertIn("refused", refused["reason"])
+
+    def test_answering_is_one_command_over_the_same_socket(self):
+        wired = self.wire()
+        self.say(wired["far"], "CALL_INCOMING", peeruri="sip:ada@example.net", id="c9")
+        wired["far"].settimeout(2)
+        read = wired["call"].read_once()
+        self.assertEqual(read[0]["what"], "ringing at this number")
+        self.assertTrue(wired["call"].answer()["ok"])
+        sent, rest = self.both.decode(wired["far"].recv(4096))
+        self.assertEqual(sent[0]["command"], "answer")
+        self.assertEqual(sent[0]["params"], "", "baresip takes params as a string, empty here")
+
+    def test_the_wait_is_woken_by_the_rail_that_speaks(self):
+        wired = self.wire()
+        started = time.time()
+        seen = {}
+
+        def post():
+            time.sleep(0.15)
+            self.text(wired["inbox"].port, "sent it")
+
+        threading.Thread(target=post, daemon=True).start()
+        event = wired["timeline"].next_event(timeout=3)
+        seen["event"] = event
+        self.assertIsNotNone(event, "a wait that watches both rails timed out on a text")
+        self.assertEqual(event["rail"], "sms")
+        self.assertLess(time.time() - started, 3)
+
+    def test_the_wait_ignores_a_rail_it_was_not_asked_for(self):
+        wired = self.wire()
+        seen = wired["timeline"].events()[-1]["seq"]
+        wired["timeline"].add("call", "socket open")
+        self.assertIsNone(wired["timeline"].next_event(since=seen, rails=("sms",), timeout=0.3))
+        self.assertEqual(wired["timeline"].next_event(since=seen, rails=("call",), timeout=0.3)["what"],
+                         "socket open")
+
+    def test_the_protocol_is_read_the_way_baresip_writes_it(self):
+        wired = self.wire()
+        body = self.both.netstring({"event": "true", "class": "call", "type": "CALL_RINGING",
+                                    "peeruri": "sip:ada@example.net", "id": "c1"})
+        wired["far"].sendall(body[:7])
+        time.sleep(0.05)
+        self.assertEqual(wired["call"].read_once(), [], "a half netstring is not an event yet")
+        wired["far"].sendall(body[7:])
+        time.sleep(0.05)
+        self.assertEqual(wired["call"].read_once()[0]["what"], "ringing at the far end")
+
+    def test_a_bare_json_event_is_baresips_own_example(self):
+        wired = self.wire()
+        wired["far"].sendall(b'{"event":"true","class":"call","type":"CALL_CLOSED"}')
+        time.sleep(0.05)
+        self.assertEqual(wired["call"].read_once()[0]["what"], "hung up")
+
+    def test_the_plan_states_what_was_not_proven(self):
+        plan = self.both.plan()
+        self.assertTrue(plan["shipped"])
+        joined = " ".join(plan["not_included"])
+        self.assertIn("no registration", joined)
+        self.assertIn("a real carrier", joined)
+        self.assertEqual(self.both.plan()["rails"]["sms"][:14], "the catcher, n")
+
+
+class TestTheScreenshotIsReachable(unittest.TestCase):
+    """an mms is a text plus urls on somebody else's server, so the claim is three small ones."""
+
+    def setUp(self):
+        from src.manage import media
+        from src.setup import routes
+        self.media = media
+        self.routes = routes
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir, True)
+
+    def serve(self, body, content_type="image/png", status=200):
+        """a real http server, because the fetch path is the code under test."""
+        class Handler(SimpleHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(status)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return server.server_address[1]
+
+    def test_three_carrier_shapes_and_a_nested_one_all_keep_their_urls(self):
+        one = [
+            {"media": ["https://c/a.jpg"]},
+            {"attachments": [{"url": "https://c/a.jpg"}]},
+            {"wrapper": {"media": [{"MediaUrl": "https://c/a.jpg"}]}},
+        ]
+        for shape in one:
+            self.assertEqual(self.routes.media_of(shape), ["https://c/a.jpg"],
+                             f"{shape} did not yield its url")
+        # a comma string is one carrier's whole answer, so both urls survive and in order
+        self.assertEqual(self.routes.media_of({"MediaUrls": "https://c/a.jpg, https://c/b.png"}),
+                         ["https://c/a.jpg", "https://c/b.png"])
+
+    def test_a_text_with_no_media_says_so_with_an_empty_list(self):
+        entry = phone_catcher.normalize({"from": "+1555", "body": "no pictures"})
+        self.assertEqual(entry["media"], [])
+
+    def test_a_picture_is_fetched_and_named_for_its_type(self):
+        port = self.serve(b"\x89PNG\r\n\x1a\n" + b"0" * 40)
+        got = self.media.fetch(f"http://127.0.0.1:{port}/x", self.dir, message_id="m1")
+        self.assertTrue(got["ok"], got.get("why"))
+        self.assertTrue(got["path"].endswith("m1-0.png"))
+        self.assertEqual(got["bytes"], 48)
+        self.assertTrue(os.path.exists(got["path"]))
+
+    def test_a_url_that_is_not_http_is_refused_by_name(self):
+        got = self.media.fetch("file:///etc/passwd", self.dir)
+        self.assertFalse(got["ok"])
+        self.assertIn("fetch-the-whole-internet", got["why"])
+
+    def test_something_too_big_is_refused_and_leaves_nothing_behind(self):
+        port = self.serve(b"0" * 5000)
+        got = self.media.fetch(f"http://127.0.0.1:{port}/x", self.dir, max_bytes=1000)
+        self.assertFalse(got["ok"])
+        self.assertIn("a-picture-of-any-size", got["why"])
+        self.assertEqual(os.listdir(self.dir), [], "a partial file stayed on disk")
+
+    def test_a_type_that_is_not_a_picture_is_not_named_as_one(self):
+        port = self.serve(b"<html>", content_type="text/html")
+        got = self.media.fetch(f"http://127.0.0.1:{port}/x", self.dir)
+        self.assertFalse(got["ok"])
+        self.assertIn("read-as-an-image-what-is-not", got["why"])
+
+    def test_a_carrier_that_wants_a_login_is_reported_as_one(self):
+        port = self.serve(b"nope", status=401)
+        got = self.media.fetch(f"http://127.0.0.1:{port}/x", self.dir)
+        self.assertFalse(got["ok"])
+        self.assertIn("401", got["why"])
+        self.assertIn("login", got["why"])
+
+    def test_a_message_with_two_pictures_reports_two_results(self):
+        port = self.serve(b"\x89PNG\r\n\x1a\n" + b"0" * 8)
+        entry = {"id": "m7", "sender": "+1555",
+                 "media": [f"http://127.0.0.1:{port}/1", "file:///nope"]}
+        got = self.media.fetch_all(entry, self.dir)
+        self.assertEqual(len(got["results"]), 2)
+        self.assertEqual(len(got["kept"]), 1)
+        self.assertEqual(got["failed"], ["file:///nope"])
+        self.assertTrue(got["kept"][0].endswith("m7-0.png"))
+
+    def test_the_plan_says_fetching_is_not_reading(self):
+        plan = self.media.plan()
+        self.assertTrue(plan["shipped"])
+        self.assertIn("not describing it", " ".join(plan["not_included"]))
+        self.assertIn("a-picture-of-any-size", plan["refused"])
+
+
+class TestTheLiveVerbAndTheScreenshotCommand(unittest.TestCase):
+    """the two verbs the multi-rail work is reachable from, and the prose that limits them."""
+
+    def run_cli(self, argv):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = telephony_cli.main(argv)
+        return code, out.getvalue()
+
+    def test_live_prints_the_plan_and_the_part_that_is_not_proven(self):
+        code, out = self.run_cli(["live"])
+        plan = json.loads(out)
+        self.assertEqual(code, 0)
+        self.assertTrue(plan["shipped"])
+        self.assertIn("no registration", " ".join(plan["not_included"]))
+        self.assertIn("one-rail-at-a-time", plan["refused"])
+
+    def test_media_with_no_url_says_what_to_pass(self):
+        code, out = self.run_cli(["media", "fetch"])
+        self.assertEqual(code, 2)
+        self.assertIn("--url", json.loads(out)["why"])
+
+    def test_media_refuses_a_url_that_is_not_http_through_the_cli(self):
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder, True)
+        code, out = self.run_cli(["media", "fetch", "--url", "file:///etc/passwd", "--into", folder])
+        self.assertEqual(code, 1)
+        self.assertIn("fetch-the-whole-internet", json.loads(out)["why"])
+        self.assertEqual(os.listdir(folder), [])
+
+    def test_the_readme_does_not_claim_a_carrier_proof(self):
+        page = (ROOT / "readme.md").read_text()
+        self.assertIn("### on a call while a text arrives", page)
+        self.assertIn("not proven and are not claimed", page)
+        self.assertIn("fetch-the-whole-internet", page)
+
+    def test_the_live_page_names_both_doors(self):
+        page = (ROOT / "src/live/readme.md").read_text()
+        self.assertIn("ctrl_tcp", page)
+        self.assertIn("ThreadingHTTPServer", page)
+        self.assertIn("not proven", page)
+
+    def test_no_page_picked_up_an_em_dash(self):
+        for name in ("readme.md", "src/live/readme.md"):
+            self.assertNotIn("\u2014", (ROOT / name).read_text(), name)
 
 
 if __name__ == "__main__":

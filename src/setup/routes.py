@@ -11,6 +11,7 @@ which url to paste and, where an api exists, to set it for you.
 import hashlib
 import json
 import os
+import re
 import time
 import urllib.parse
 import urllib.request
@@ -243,6 +244,49 @@ THREAD_KEYS = ("thread", "thread_id", "threadId", "group_id", "groupId", "conver
                "conversationId", "message_thread_id", "chat_id", "chatId")
 PARTICIPANT_KEYS = ("participants", "recipients", "to_participants", "group_members", "members")
 
+# a carrier never puts pixels in a webhook. an mms arrives as a text plus one or more urls on the
+# carrier's own host, so "the agent can see the picture" starts with keeping those urls, and this is
+# the list of names the ten providers use. a shape nobody predicted still round-trips inside raw.
+MEDIA_KEYS = ("media", "media_url", "mediaUrl", "media_urls", "mediaUrls", "MediaUrl", "MediaUrls",
+              "image", "images", "attachment", "attachments", "mms", "MMS")
+
+
+def _urls(value, depth=0):
+    """every url in whatever the carrier called media: a string, a list, or a list of objects."""
+    if depth > 4 or value in (None, ""):
+        return []
+    if isinstance(value, str):
+        return [part.strip() for part in re.split(r"[,\s]+", value) if part.strip().startswith("http")]
+    if isinstance(value, dict):
+        for key in ("url", "media_url", "href", "uri", "MediaUrl", "src"):
+            if value.get(key):
+                return _urls(value[key], depth + 1)
+        return []
+    if isinstance(value, (list, tuple)):
+        found = []
+        for item in value:
+            found += _urls(item, depth + 1)
+        return found
+    return []
+
+
+def media_of(payload):
+    """the media urls in one inbound payload, in the order the carrier wrote them."""
+    if not isinstance(payload, dict):
+        return []
+    out = []
+    for key in MEDIA_KEYS:
+        for url in _urls(payload.get(key)):
+            if url not in out:
+                out.append(url)
+    if not out:
+        for value in payload.values():
+            if isinstance(value, dict):
+                for url in media_of(value):
+                    if url not in out:
+                        out.append(url)
+    return out
+
 
 def normalize(provider, payload):
     """one envelope out of every shape. a shape nobody predicted is still stored."""
@@ -270,7 +314,8 @@ def normalize(provider, payload):
     return {"id": ident, "channel": "sms", "direction": "inbound", "sender": sender,
             "recipient": recipient, "subject": None, "body": body, "at": at,
             "thread": str(thread) if thread not in (None, "") else None,
-            "participants": participants, "reply_to": None, "raw": payload}
+            "participants": participants, "media": media_of(payload),
+            "reply_to": None, "raw": payload}
 
 
 def apply_hook(provider, base=BASE, did=None):

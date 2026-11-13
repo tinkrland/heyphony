@@ -90,6 +90,7 @@ def _rows(home=None, path=None):
             # the carrier's own thread id, kept apart from the display thread above: one names a
             # conversation the carrier carries, the other is a handle this view invented
             "carrier_thread": entry.get("thread"),
+            "media": entry.get("media") or [],
             "raw": entry.get("raw"),
         })
     for entry in sip.messages(home=home, limit=200):
