@@ -291,6 +291,30 @@ refused messages are never stored, but they are counted: the reason, the region 
 
 ### what a host can tell you about itself
 
+`heyphony --status` is one line per rail, and it only ever reads: the number, the inbox, the call log, the
+config that is already on disk. green means something proved it, orange means shipped and unproven, red
+means absent, dim means nothing has been tried. a pipe gets no colour, and `status --json` is the same
+rows for a script.
+
+```
+✓ sms inbound           2 texts stored through the email route, the newest 12 days ago
+✓ sms outbound          wired, and 608 messages have gone out; the gate is shut now, so a new send drafts
+⚠ call inbound (live)   the live lane ships here and no call has been answered through it yet
+⚠ call inbound          a registration is written and no call has been logged: ringing is unproven
+⚠ call outbound (live)  the lane ships; with the trunk env missing the agent cannot join the call
+⚠ call outbound         the dial lane ships; the trunk env is missing LIVEKIT_URL, so a dial would refuse
+✓ voicemail catch       1 recording stored, readable with `heyphony open voicemail --play 1`
+✗ call forwarding       no forwarding rules in this build: src/forwarding.py is absent
+```
+
+**`--status` reads. `--test` tries.** `heyphony --test` prints what it would provoke and touches nothing;
+`heyphony --test --run --to +1...` actually sends one text, places one call or joins one room, and writes
+the outcome to `trials.jsonl`, which `--status` then reads. the four rails that can only be proved by a
+phone the agent does not hold (a text in, a call in, a live answer, a missed call) say so instead of
+pretending to try.
+
+## what a host can tell you about itself
+
 `heyphony --status` is one line per capability, with a mark rather than a paragraph: green means
 something proved it, orange means configured and unproven, red means it is not there, dim means nothing
 has been tried. every red or orange line carries the command that fixes it, and the whole thing is the

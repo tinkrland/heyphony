@@ -112,6 +112,24 @@ def cmd_setup_select(args):
     if not did and not new:
         _out(flow.needs("did", flow.DID_CHOICES))
         return 0
+    # a new number is bought in a browser, so the browser is where this step belongs. Enter opens it;
+    # typing no prints the url instead, and a server says plainly that it has no page to open.
+    opened = None
+    if new:
+        from src.setup import handoff as doors
+        want = True if getattr(args, "open", False) else None
+        if want is None and interactive:
+            try:
+                answer = flow.ask("press Enter to open {} and buy a number there (or type no): ".format(key))
+            except (EOFError, KeyboardInterrupt):
+                answer = ""
+            want = str(answer).strip().lower() not in ("no", "n")
+        if want:
+            opened = doors.open_links([key])
+            if interactive:
+                first = opened["opened"][0]
+                print("opened {}".format(first["url"]) if first["opened"]
+                      else "no browser on this host: {}".format(first["url"]))
     if did and not flow.valid_did(did):
         _out({"ok": False, "why": "that is not a number in e164 form",
               "got": did, "example": "+15551234567"})
@@ -121,6 +139,9 @@ def cmd_setup_select(args):
     except ValueError as exc:
         _out({"ok": False, "why": str(exc)})
         return 1
+    if opened is not None:
+        plan["opened"] = opened
+        plan["what_to_copy"] = "the number in e164, from the vendor's own page"
     if interactive:
         print(flow.render(plan))
     else:
@@ -247,6 +268,38 @@ def cmd_setup_areas(args):
                                   did_type=args.did_type)
     _out(answer)
     return 0 if answer.get("ok") else 1
+
+
+def cmd_test(args):
+    """try the rails again, as opposed to reading what is already here.
+
+    `--status` reads. this provokes, and the difference is the whole point: four of the eight rails can
+    only be provoked by a second phone, so they name the human act rather than pretending to try. a trial
+    that runs writes one line to the trials file, and the next `--status` can see it.
+    """
+    from src.runner import lines as status_lines
+    ctx = status_lines.context()
+    target = getattr(args, "to", None)
+    rail = getattr(args, "rail", None)
+    if rail and rail not in status_lines.TRIALS:
+        _out({"ok": False, "why": "no rail called {}; known: {}".format(rail, ", ".join(status_lines.TRIALS))})
+        return 1
+    planned = status_lines.plan(ctx, rail=rail, target=target)
+    if not getattr(args, "run", False):
+        _out({"plan": planned, "tried": 0,
+              "means": ("--status reads what is already on this host; --test --run provokes a rail and "
+                        "records whether it answered")})
+        return 0
+    results = []
+    for row in planned:
+        if not row["can_try"]:
+            results.append({"rail": row["rail"], "tried": False, "why": row["blocked"]})
+            continue
+        results.append(status_lines.attempt(ctx, row["rail"], target=target))
+    failed = [row for row in results if row.get("tried") and not row.get("ok")]
+    _out({"results": results, "tried": len([row for row in results if row.get("tried")]),
+          "failed": len(failed), "trials": str(status_lines.trials_path())})
+    return 1 if failed else 0
 
 
 def cmd_status_lines(args):
@@ -623,6 +676,8 @@ def build_parser():
     # checked with the command the install put on the path: `heyphony --version`.
     p.add_argument("--version", action="version", version=__version__)
     p.add_argument("--setup", action="store_true", help="print the telephony setup plan as json and stop")
+    p.add_argument("--test", action="store_true",
+                   help="try the rails again: the active half of --status, which only reads")
     p.add_argument("--status", action="store_true",
                    help="one line per capability, green proved, orange unproven, red missing")
     sub = p.add_subparsers(dest="cmd")
@@ -635,7 +690,7 @@ def build_parser():
                    help="order one in the browser instead")
     s.add_argument("--json", action="store_true", help="json even on a terminal")
     s.add_argument("--open", action="store_true",
-                   help="with `setup links`: open the portal in a browser, when this host has one")
+                   help="open the vendor's own page: with `setup links`, and with `setup select --new`")
     s.add_argument("--area-code", help="with `setup areas`: the area code an agent wants to see")
     s.add_argument("--area-name", help="with `setup areas`: a city or region fragment")
     s.add_argument("--country-id", help="with `setup areas`: anveo's country id")
@@ -668,6 +723,11 @@ def build_parser():
     md.add_argument("--id", help="the message id, so the file name says which message it belongs to")
     md.add_argument("--max-bytes", dest="max_bytes", type=int, default=None)
     md.set_defaults(func=cmd_media)
+    ts = sub.add_parser("test", help="try the rails again; --status reads, --test provokes")
+    ts.add_argument("rail", nargs="?", help="one rail by name, or every rail")
+    ts.add_argument("--run", action="store_true", help="actually place the message or the call")
+    ts.add_argument("--to", help="the number a trial is aimed at, so somebody can confirm it landed")
+    ts.set_defaults(func=cmd_test)
     st = sub.add_parser("status", help="the state of this host: json by default, --lines for a person")
     st.add_argument("--lines", action="store_true", help="a mark per capability, with the fix on its line")
     st.add_argument("--json", action="store_true", help="the same rows as json")
@@ -807,6 +867,8 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "--setup":
         argv = ["setup"] + argv[1:]
+    if argv and argv[0] == "--test":
+        argv = ["test"] + argv[1:]
     if argv and argv[0] == "--status":
         # the flag people type before they read any help: the same view as `status --lines`
         argv = ["status", "--lines"] + argv[1:]

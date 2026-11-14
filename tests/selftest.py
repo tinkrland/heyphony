@@ -2735,36 +2735,38 @@ class TestTheCallWePlacedOurselves(unittest.TestCase):
 
 
 class TestTheStatusLines(unittest.TestCase):
-    """`heyphony --status`: one line per capability, a mark, and the fix on the line that needs it.
+    """`heyphony --status`: eight rails, a mark each, and a reason that is true for this host.
 
-    the marks are the whole contract, so they are tested as marks: green only where something proves it,
-    orange where it is configured and unproven, red where nothing is there, dim where nothing was tried.
-    colour is tested as a decision about the stream, because a cli that writes ansi into a pipe breaks
-    whatever is reading it.
+    the marks are the contract, and so is the boundary the owner drew: status READS. it never sends a
+    text, never rings a number, never asks a carrier anything. the tests below enforce that by making any
+    attempt fatal while status runs.
     """
 
     def setUp(self):
         from src.runner import lines
         self.lines = lines
+        self.rails = [name for name, _means in lines.RAILS]
 
-    def rows(self, **kwargs):
-        return self.lines.checks(**kwargs)
+    def test_the_eight_rails_are_the_moments_the_package_claims(self):
+        self.assertEqual(self.rails, ["sms inbound", "sms outbound", "call inbound (live)",
+                                      "call inbound", "call outbound (live)", "call outbound",
+                                      "voicemail catch", "call forwarding"])
 
     def test_every_state_has_a_mark_and_a_colour(self):
         self.assertEqual(set(self.lines.MARKS), {"ok", "partial", "missing", "unknown"})
-        plain = {state: symbol for state, (symbol, _code) in self.lines.MARKS.items()}
-        self.assertEqual(plain["ok"], "\u2713")
-        self.assertEqual(plain["missing"], "\u2717")
-        self.assertEqual(len(set(plain.values())), 4, "two states sharing a mark is a lie about one of them")
+        symbols = {state: symbol for state, (symbol, _code) in self.lines.MARKS.items()}
+        self.assertEqual(symbols["ok"], "\u2713")
+        self.assertEqual(symbols["partial"], "\u26a0")
+        self.assertEqual(symbols["missing"], "\u2717")
+        self.assertEqual(len(set(symbols.values())), 4, "two states sharing a mark lies about one of them")
 
     def test_a_pipe_gets_no_escape_codes_and_a_tty_does(self):
-        rows = self.rows(message_count=3)
+        rows = self.lines.checks()
         plain = self.lines.render(rows, on=False)
         coloured = self.lines.render(rows, on=True)
         self.assertNotIn("\x1b[", plain)
-        self.assertIn("\x1b[", coloured)
-        self.assertIn("\x1b[32m", coloured, "green is the proved state and has to be green")
-        self.assertIn("\x1b[31m", coloured, "a missing thing has to be red")
+        self.assertIn("\x1b[32m", coloured)
+        self.assertIn("\x1b[31m", coloured)
 
     def test_colour_is_a_decision_about_the_stream(self):
         class NotATty(object):
@@ -2779,40 +2781,50 @@ class TestTheStatusLines(unittest.TestCase):
         self.assertTrue(self.lines.colour_on(stream=ATty(), environ={}))
         self.assertFalse(self.lines.colour_on(stream=ATty(), environ={"NO_COLOR": "1"}))
         self.assertTrue(self.lines.colour_on(stream=NotATty(), environ={"FORCE_COLOR": "1"}))
-        self.assertFalse(self.lines.colour_on(stream=ATty(), flag=False, environ={}),
-                         "an explicit --no-color wins over a terminal")
-        self.assertTrue(self.lines.colour_on(stream=NotATty(), flag=True, environ={}),
-                        "an explicit colour request wins over a pipe")
+        self.assertFalse(self.lines.colour_on(stream=ATty(), flag=False, environ={}))
+        self.assertTrue(self.lines.colour_on(stream=NotATty(), flag=True, environ={}))
 
-    def test_a_green_line_can_only_be_green_because_something_proves_it(self):
-        """the honesty rule: no messages means the inbound line cannot be a tick, however configured it is."""
-        none = {row["name"]: row for row in self.rows(message_count=0)}
-        some = {row["name"]: row for row in self.rows(message_count=4)}
-        self.assertNotEqual(none["texts inbound"]["state"], "ok")
-        self.assertEqual(some["texts inbound"]["state"], "ok")
-        self.assertEqual(none["a text has arrived"]["state"], "missing")
-        self.assertEqual(some["a text has arrived"]["state"], "ok")
+    def test_a_green_rail_can_only_be_green_because_something_proves_it(self):
+        """no arrival, no tick: this is the rule that stops the view from flattering the build."""
+        empty = {row["name"]: row for row in self.lines.checks(
+            inbox_rows=[], call_rows=[], voicemail_count=0,
+            config={"telephony": {"did": "+15550000001", "provider": "flowroute"}},
+            env={}, policy={"mode": "list", "allow_numbers": ["+15550000001"]})}
+        self.assertNotEqual(empty["sms inbound"]["state"], "ok")
+        self.assertEqual(empty["voicemail catch"]["state"], "partial")
+        self.assertIn("not the same as none arriving", empty["voicemail catch"]["why"])
 
-    def test_an_empty_allowlist_is_not_a_working_door(self):
-        empty = {row["name"]: row for row in self.rows(policy={"mode": "list", "allow_numbers": []},
-                                                       message_count=1)}
-        said = empty["who may reach you"]
-        self.assertEqual(said["state"], "missing")
-        self.assertIn("nothing can reach", said["why"])
-        self.assertTrue(said["fix"], "a red line without a fix is a complaint")
+        arrived = {row["name"]: row for row in self.lines.checks(
+            inbox_rows=[{"channel": "sms", "direction": "inbound", "at": 1, "body": "hi"}],
+            call_rows=[], voicemail_count=1,
+            config={"telephony": {"did": "+15550000001", "provider": "flowroute"}},
+            env={}, policy={"mode": "list", "allow_numbers": ["+15550000001"]})}
+        self.assertEqual(arrived["sms inbound"]["state"], "ok")
+        self.assertEqual(arrived["voicemail catch"]["state"], "ok")
+        self.assertNotEqual(arrived["call inbound"]["state"], "ok",
+                            "a text arriving must not tick a call rail")
 
-        open_policy = {row["name"]: row for row in self.rows(policy={"mode": "open"}, message_count=1)}
-        self.assertEqual(open_policy["who may reach you"]["state"], "partial")
+    def test_an_empty_allowlist_keeps_the_door_shut_on_the_inbound_rail(self):
+        rows = {row["name"]: row for row in self.lines.checks(
+            inbox_rows=[], call_rows=[],
+            config={"telephony": {"did": "+15550000001", "provider": "flowroute"}},
+            env={}, policy={"mode": "list", "allow_numbers": []})}
+        self.assertEqual(rows["sms inbound"]["state"], "missing")
+        self.assertIn("allowlist is empty", rows["sms inbound"]["why"])
+        self.assertIn("heyphony allow", rows["sms inbound"]["fix"])
 
-        listed = {row["name"]: row for row in self.rows(
-            policy={"mode": "list", "allow_numbers": ["+15550000001"]}, message_count=1)}
-        self.assertEqual(listed["who may reach you"]["state"], "ok")
+    def test_a_rail_with_no_number_says_the_number_first(self):
+        rows = {row["name"]: row for row in self.lines.checks(
+            inbox_rows=[], call_rows=[], config={}, env={}, policy={"mode": "list", "allow_numbers": []})}
+        for name in ("sms inbound", "sms outbound", "call inbound", "call outbound"):
+            self.assertEqual(rows[name]["state"], "missing", name)
+            self.assertIn("connect sip", rows[name]["why"] + rows[name].get("fix", ""), name)
 
-    def test_the_verdict_is_the_worst_line_not_the_average(self):
+    def test_the_verdict_is_the_worst_rail_not_the_average(self):
         rows = [{"name": "a", "state": "ok", "why": ""}, {"name": "b", "state": "missing", "why": ""}]
         said = self.lines.summary(rows)
         self.assertEqual(said["worst"], "missing")
-        self.assertIn("missing", said["verdict"])
+        self.assertIn("absent", said["verdict"])
         self.assertEqual(self.lines.summary([{"name": "a", "state": "ok", "why": ""}])["worst"], "ok")
 
     def test_the_flag_and_the_subcommand_are_the_same_view(self):
@@ -2822,8 +2834,23 @@ class TestTheStatusLines(unittest.TestCase):
         sub = subprocess.run([str(ROOT / "bin" / "heyphony"), "status", "--lines"],
                              capture_output=True, text=True, timeout=120, env=env)
         self.assertEqual(flag.returncode, 0, flag.stderr)
-        self.assertEqual(flag.stdout, sub.stdout, "two spellings, one view, or people learn the wrong one")
-        self.assertNotIn("\x1b[", flag.stdout, "a captured pipe must not receive colour")
+        self.assertEqual(flag.stdout, sub.stdout, "two spellings, one view")
+        self.assertNotIn("\x1b[", flag.stdout)
+
+    def test_status_reads_and_never_tries(self):
+        """the boundary: with every attempt made fatal, status still has to work."""
+        from unittest import mock
+        original = self.lines.attempt
+
+        def fatal(*args, **kwargs):
+            raise AssertionError("status provoked something")
+
+        self.lines.attempt = fatal
+        try:
+            self.assertTrue(self.lines.payload()["lines"])
+            self.assertTrue(self.lines.checks())
+        finally:
+            self.lines.attempt = original
 
     def test_json_is_the_same_rows_and_not_a_second_opinion(self):
         run = subprocess.run([str(ROOT / "bin" / "heyphony"), "status", "--lines", "--json"],
@@ -2832,9 +2859,7 @@ class TestTheStatusLines(unittest.TestCase):
         self.assertEqual(run.returncode, 0, run.stderr)
         said = json.loads(run.stdout)
         self.assertEqual(set(said), {"lines", "counts", "worst", "verdict"})
-        for row in said["lines"]:
-            self.assertIn(row["state"], {"ok", "partial", "missing", "unknown"})
-            self.assertTrue(row["why"], "a line with no reason is a mood, not a status")
+        self.assertEqual([row["name"] for row in said["lines"]], self.rails)
 
     def test_strict_is_a_gate_and_the_default_is_not(self):
         env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
@@ -2843,15 +2868,189 @@ class TestTheStatusLines(unittest.TestCase):
         strict = subprocess.run([str(ROOT / "bin" / "heyphony"), "status", "--lines", "--strict"],
                                 capture_output=True, text=True, timeout=120, env=env)
         self.assertEqual(plain.returncode, 0)
-        said = self.lines.payload()
-        self.assertEqual(strict.returncode, 0 if said["worst"] == "ok" else 1,
-                         "strict has to agree with the worst line it just printed")
+        self.assertEqual(strict.returncode, 0 if self.lines.payload()["worst"] == "ok" else 1)
 
     def test_the_commands_index_names_the_new_views(self):
         index = (ROOT / "src" / "setup" / "commands" / "readme.md").read_text()
         self.assertIn("setup links", index)
         self.assertIn("--template", index)
-        self.assertIn("status --lines", index)
+        self.assertIn("status [--lines]", index)
+        self.assertIn("--test", index)
+
+
+class TestTheTestTries(unittest.TestCase):
+    """`heyphony --test`: the active half. it provokes one rail and records whether it answered.
+
+    four of the eight rails cannot be provoked from the agent's own host, because what they test is
+    whether an outside phone can reach this number. those refuse by name instead of faking a try.
+    """
+
+    def setUp(self):
+        from src.runner import lines
+        self.lines = lines
+        self.ctx = lines.context(
+            inbox_rows=[], call_rows=[], voicemail_count=0,
+            config={"telephony": {"did": "+15550000001", "provider": "flowroute"}},
+            env={"HEYPHONY_SEND": "allowed"},
+            policy={"mode": "list", "allow_numbers": ["+15550000001"]},
+            paths={"state": "wired"})
+        self.tmp = tempfile.mkdtemp(prefix="heyphony-trials-")
+        self.trials = os.path.join(self.tmp, "trials.jsonl")
+        self._old = os.environ.get("HEYPHONY_TRIALS")
+        os.environ["HEYPHONY_TRIALS"] = self.trials
+
+    def tearDown(self):
+        if self._old is None:
+            os.environ.pop("HEYPHONY_TRIALS", None)
+        else:
+            os.environ["HEYPHONY_TRIALS"] = self._old
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_a_second_phone_is_named_instead_of_faked(self):
+        for rail in ("sms inbound", "call inbound", "call inbound (live)", "voicemail catch"):
+            said = self.lines.attempt(self.ctx, rail, target="+15550000002",
+                                      runner=lambda cmd: (_ for _ in ()).throw(AssertionError("dialled")))
+            self.assertFalse(said["tried"], rail)
+            self.assertTrue(said["why"], f"{rail} refuses without saying why")
+
+    def test_a_trial_with_no_target_refuses_before_it_dials(self):
+        said = self.lines.attempt(self.ctx, "call outbound", target=None,
+                                  runner=lambda cmd: (_ for _ in ()).throw(AssertionError("dialled")))
+        self.assertFalse(said["tried"])
+        self.assertIn("--to", said["why"])
+
+    def test_the_shut_gate_is_named_rather_than_worked_around(self):
+        ctx = dict(self.ctx, env={})
+        said = self.lines.attempt(ctx, "sms outbound", target="+15550000002",
+                                  runner=lambda cmd: (_ for _ in ()).throw(AssertionError("sent")))
+        self.assertFalse(said["tried"])
+        self.assertIn("HEYPHONY_SEND", said["why"])
+
+    def test_a_missing_trunk_stops_the_dial(self):
+        said = self.lines.attempt(self.ctx, "call outbound", target="+15550000002",
+                                  runner=lambda cmd: (_ for _ in ()).throw(AssertionError("dialled")))
+        self.assertFalse(said["tried"])
+        self.assertIn("LIVEKIT", said["why"])
+
+    def test_a_trial_that_works_is_recorded_and_status_sees_it(self):
+        said = self.lines.attempt(
+            self.ctx, "sms outbound", target="+15550000002",
+            runner=lambda cmd: (True, "one message sent"))
+        self.assertTrue(said["tried"])
+        self.assertTrue(said["ok"])
+        self.assertIn("send", said["cmd"])
+        stored = self.lines.read_trials()
+        self.assertEqual(len(stored), 1)
+        self.assertTrue(stored[0]["ok"])
+        self.assertEqual(stored[0]["rail"], "sms outbound")
+
+    def trunked(self):
+        """a host whose trunk env is complete, which is the only host that may attempt a dial."""
+        return dict(self.ctx, env={"HEYPHONY_SEND": "allowed", "LIVEKIT_URL": "https://lk.example",
+                                   "LIVEKIT_API_KEY": "k", "LIVEKIT_SIP_TRUNK": "t"})
+
+    def test_a_trial_that_fails_is_recorded_and_does_not_turn_a_rail_green(self):
+        said = self.lines.attempt(self.trunked(), "call outbound", target="+15550000002",
+                                  runner=lambda cmd: (False, "carrier said no"))
+        self.assertTrue(said["tried"])
+        self.assertFalse(said["ok"])
+        rows = {row["name"]: row for row in self.lines.checks(**self.evidence())}
+        self.assertNotEqual(rows["call outbound"]["state"], "ok")
+
+    def test_a_passed_trial_is_what_turns_a_rail_green(self):
+        self.lines.attempt(self.trunked(), "call outbound", target="+15550000002",
+                           runner=lambda cmd: (True, "call placed"))
+        rows = {row["name"]: row for row in self.lines.checks(**self.evidence())}
+        self.assertEqual(rows["call outbound"]["state"], "ok")
+        self.assertIn("a call placed from this host", rows["call outbound"]["why"])
+
+    def test_a_corrupt_trial_line_is_skipped_not_fatal(self):
+        pathlib.Path(self.trials).write_text('{"rail": "sms outbound", "ok": true}\nnot json\n')
+        stored = self.lines.read_trials()
+        self.assertEqual(len(stored), 1)
+
+    def test_the_plan_touches_nothing(self):
+        planned = self.lines.plan(self.ctx, target="+15550000002")
+        self.assertEqual([row["rail"] for row in planned],
+                         ["sms inbound", "sms outbound", "call inbound (live)", "call inbound",
+                          "call outbound (live)", "call outbound", "voicemail catch", "call forwarding"])
+        self.assertFalse(os.path.exists(self.trials), "the plan is a description, not an attempt")
+
+    def test_the_cli_prints_a_plan_and_touches_nothing(self):
+        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "HEYPHONY_TRIALS": self.trials}
+        run = subprocess.run([str(ROOT / "bin" / "heyphony"), "--test"],
+                             capture_output=True, text=True, timeout=120, env=env)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        said = json.loads(run.stdout)
+        self.assertEqual(said["tried"], 0)
+        self.assertEqual(len(said["plan"]), 8)
+        self.assertFalse(os.path.exists(self.trials))
+
+    def test_running_it_with_nothing_available_tries_nothing_and_exits_clean(self):
+        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "HEYPHONY_TRIALS": self.trials,
+               "HEYPHONY_SEND": ""}
+        run = subprocess.run([str(ROOT / "bin" / "heyphony"), "test", "--run", "--to", "+15550000002"],
+                             capture_output=True, text=True, timeout=180, env=env)
+        said = json.loads(run.stdout)
+        self.assertEqual(said["tried"], 0)
+        self.assertEqual(run.returncode, 0, "nothing available is not a failure")
+
+    def test_an_unknown_rail_is_refused_with_the_list(self):
+        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "HEYPHONY_TRIALS": self.trials}
+        run = subprocess.run([str(ROOT / "bin" / "heyphony"), "test", "sms sideways"],
+                             capture_output=True, text=True, timeout=120, env=env)
+        self.assertEqual(run.returncode, 1)
+        self.assertIn("sms inbound", json.loads(run.stdout)["why"])
+
+    def evidence(self):
+        """the same host, minus the overrides, so checks() reads the trials file it was given."""
+        return {"inbox_rows": [], "call_rows": [], "voicemail_count": 0,
+                "config": {"telephony": {"did": "+15550000001", "provider": "flowroute"}},
+                "env": {"HEYPHONY_SEND": "allowed"},
+                "policy": {"mode": "list", "allow_numbers": ["+15550000001"]},
+                "paths": {"state": "wired"}}
+
+
+class TestANewNumberOpensThePage(unittest.TestCase):
+    """the owner's point: buying a number happens in a browser, so the browser is where that step goes.
+
+    Enter opens the vendor's own page rather than printing prose about it, `--open` does the same for a
+    script, and neither happens unless somebody asked. a host with no browser says the url and stops.
+    """
+
+    def run_setup(self, *extra, **env_extra):
+        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", **env_extra}
+        return subprocess.run([str(ROOT / "bin" / "heyphony"), "setup", "select", "sip"] + list(extra),
+                              capture_output=True, text=True, timeout=180, env=env)
+
+    def test_a_new_number_offers_the_vendor_page_rather_than_prose(self):
+        said = self.run_setup("--provider", "voip.ms", "--new", "--open", "--json")
+        self.assertEqual(said.returncode, 0, said.stderr)
+        plan = json.loads(said.stdout)
+        opened = plan.get("opened") or {}
+        self.assertTrue(opened.get("opened"), "the vendor's page is where a number is bought")
+        self.assertEqual(opened["opened"][0]["url"], "https://voip.ms")
+        self.assertIn("e164", plan["what_to_copy"])
+
+    def test_nothing_opens_unless_it_was_asked_for(self):
+        said = self.run_setup("--provider", "voip.ms", "--new", "--json")
+        self.assertEqual(said.returncode, 0, said.stderr)
+        plan = json.loads(said.stdout)
+        self.assertNotIn("opened", plan, "a plan must not open a browser behind somebody's back")
+
+    def test_the_choice_is_the_vendor_that_was_picked(self):
+        for vendor, portal in (("flowroute", "https://manage.flowroute.com"),
+                               ("anveo", "https://www.anveo.com")):
+            said = self.run_setup("--provider", vendor, "--new", "--open", "--json")
+            plan = json.loads(said.stdout)
+            self.assertEqual(plan["opened"]["opened"][0]["url"], portal, vendor)
+
+    def test_a_host_with_no_browser_prints_the_url_and_stops(self):
+        from src.setup import handoff
+        said = handoff.open_links(["voip.ms"], opener=lambda url: (_ for _ in ()).throw(RuntimeError("no display")))
+        self.assertFalse(said["any"])
+        self.assertIn("no display", said["opened"][0]["why"])
+        self.assertTrue(said["without_a_browser"])
 
 
 class TestTheHumanActsHaveADoor(unittest.TestCase):

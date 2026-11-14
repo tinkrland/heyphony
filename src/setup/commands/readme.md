@@ -7,8 +7,10 @@ one table, because the most common confusion in this package was not knowing whi
 | `heyphony setup` | setup | prints the whole plan for this host as json | yes, it only reads |
 | `heyphony setup links [vendor] --open` | setup | each human act with a link to the vendor's own portal, the section as the vendor labels it, and the string to copy back | yes, it only reads |
 | `heyphony hooks <vendor> --template` | setup | the paste-ready block: url, method, a sample body the catcher's own parser is checked against, and the curl that proves it | yes |
-| `heyphony --status` (or `status --lines`) | manage | one line per capability: green proved, orange configured-but-unproven, red missing, dim not tried, with the fix on its line | yes |
+| `heyphony test [rail] --to +1... --run` (also `--test`) | manage | provokes a rail and records whether it answered: one text, one call, one live dial. without `--run` it prints the plan and touches nothing. the rails a second phone has to prove refuse by name | yes, each trial is a new line |
+| `heyphony status [--lines] [--json] [--no-color] [--strict]` (also `--status`) | manage | one line per capability: green proved, orange configured-but-unproven, red missing, dim not tried, with the fix on its line | yes |
 | `heyphony setup areas --area-code 212` | setup (buy) | which area codes have stock, the price per rate plan, and the order command it implies | yes, and it is closed rather than guessed without the anveo keys |
+| `heyphony setup select sip --new --open` | setup | with a new number: opens the vendor's own page in a browser (Enter, when the flow is interactive) and names what to copy back | yes |
 | `heyphony setup select sip` | setup | vendor, then existing or new did, then the plan | yes |
 | `heyphony setup provision --provider anveo` | setup (buy) | area stock and price, and a prepared order | yes, dry by default |
 | `heyphony provision --purchase` | setup (buy) | the order itself | not written on purpose: it spends money |
