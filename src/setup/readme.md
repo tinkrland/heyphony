@@ -44,5 +44,6 @@ that last row is the whole ethos in one line: a number that has never received a
 - `flow.py`: the setup plan as data, per vendor, including the flags that let an agent drive the menu.
 - `provision.py`: anveo, end to end: signature, areas, order, arm the sms url, verify.
 - `routes.py`: per vendor, how texts arrive, what the payload looks like, and the call that arms it.
+- `handoff.py`: per vendor, *where* each human act happens: the portal, the section as the vendor labels it, the string to copy back and the key it becomes. it exists because "fetch the sip credentials" is not an instruction to somebody who has never opened the portal. `heyphony setup links` reads it, and `heyphony hooks <vendor> --template` is the same layer for the arming step, including the sample body the catcher's own parser is checked against.
 - `test/`: the proof step, described.
 - `commands/`: which command settles which part, in one table.

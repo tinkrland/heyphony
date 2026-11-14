@@ -102,7 +102,7 @@ class TestThePackageIsStandalone(unittest.TestCase):
         allowed = {"argparse", "base64", "email", "hashlib", "hmac", "http", "json", "os",
                    "contextlib", "math", "pathlib", "re", "shlex", "shutil", "socket", "sqlite3", "src",
                    "subprocess", "sys", "termios", "threading", "time", "tty", "urllib", "uuid",
-                   "struct", "wave", "xml",
+                   "struct", "wave", "webbrowser", "xml",
                    # livekit is the one sdk a lane may name, imported lazily inside the room bridge and
                    # refused by name when it is absent, so the package still installs with nothing else
                    "livekit"}
@@ -2732,6 +2732,247 @@ class TestTheCallWePlacedOurselves(unittest.TestCase):
         joined = " ".join(said["not_included"])
         self.assertIn("no registration", joined)
         self.assertNotIn("livekit room join is shipped", joined)
+
+
+class TestTheStatusLines(unittest.TestCase):
+    """`heyphony --status`: one line per capability, a mark, and the fix on the line that needs it.
+
+    the marks are the whole contract, so they are tested as marks: green only where something proves it,
+    orange where it is configured and unproven, red where nothing is there, dim where nothing was tried.
+    colour is tested as a decision about the stream, because a cli that writes ansi into a pipe breaks
+    whatever is reading it.
+    """
+
+    def setUp(self):
+        from src.runner import lines
+        self.lines = lines
+
+    def rows(self, **kwargs):
+        return self.lines.checks(**kwargs)
+
+    def test_every_state_has_a_mark_and_a_colour(self):
+        self.assertEqual(set(self.lines.MARKS), {"ok", "partial", "missing", "unknown"})
+        plain = {state: symbol for state, (symbol, _code) in self.lines.MARKS.items()}
+        self.assertEqual(plain["ok"], "\u2713")
+        self.assertEqual(plain["missing"], "\u2717")
+        self.assertEqual(len(set(plain.values())), 4, "two states sharing a mark is a lie about one of them")
+
+    def test_a_pipe_gets_no_escape_codes_and_a_tty_does(self):
+        rows = self.rows(message_count=3)
+        plain = self.lines.render(rows, on=False)
+        coloured = self.lines.render(rows, on=True)
+        self.assertNotIn("\x1b[", plain)
+        self.assertIn("\x1b[", coloured)
+        self.assertIn("\x1b[32m", coloured, "green is the proved state and has to be green")
+        self.assertIn("\x1b[31m", coloured, "a missing thing has to be red")
+
+    def test_colour_is_a_decision_about_the_stream(self):
+        class NotATty(object):
+            def isatty(self):
+                return False
+
+        class ATty(NotATty):
+            def isatty(self):
+                return True
+
+        self.assertFalse(self.lines.colour_on(stream=NotATty(), environ={}))
+        self.assertTrue(self.lines.colour_on(stream=ATty(), environ={}))
+        self.assertFalse(self.lines.colour_on(stream=ATty(), environ={"NO_COLOR": "1"}))
+        self.assertTrue(self.lines.colour_on(stream=NotATty(), environ={"FORCE_COLOR": "1"}))
+        self.assertFalse(self.lines.colour_on(stream=ATty(), flag=False, environ={}),
+                         "an explicit --no-color wins over a terminal")
+        self.assertTrue(self.lines.colour_on(stream=NotATty(), flag=True, environ={}),
+                        "an explicit colour request wins over a pipe")
+
+    def test_a_green_line_can_only_be_green_because_something_proves_it(self):
+        """the honesty rule: no messages means the inbound line cannot be a tick, however configured it is."""
+        none = {row["name"]: row for row in self.rows(message_count=0)}
+        some = {row["name"]: row for row in self.rows(message_count=4)}
+        self.assertNotEqual(none["texts inbound"]["state"], "ok")
+        self.assertEqual(some["texts inbound"]["state"], "ok")
+        self.assertEqual(none["a text has arrived"]["state"], "missing")
+        self.assertEqual(some["a text has arrived"]["state"], "ok")
+
+    def test_an_empty_allowlist_is_not_a_working_door(self):
+        empty = {row["name"]: row for row in self.rows(policy={"mode": "list", "allow_numbers": []},
+                                                       message_count=1)}
+        said = empty["who may reach you"]
+        self.assertEqual(said["state"], "missing")
+        self.assertIn("nothing can reach", said["why"])
+        self.assertTrue(said["fix"], "a red line without a fix is a complaint")
+
+        open_policy = {row["name"]: row for row in self.rows(policy={"mode": "open"}, message_count=1)}
+        self.assertEqual(open_policy["who may reach you"]["state"], "partial")
+
+        listed = {row["name"]: row for row in self.rows(
+            policy={"mode": "list", "allow_numbers": ["+15550000001"]}, message_count=1)}
+        self.assertEqual(listed["who may reach you"]["state"], "ok")
+
+    def test_the_verdict_is_the_worst_line_not_the_average(self):
+        rows = [{"name": "a", "state": "ok", "why": ""}, {"name": "b", "state": "missing", "why": ""}]
+        said = self.lines.summary(rows)
+        self.assertEqual(said["worst"], "missing")
+        self.assertIn("missing", said["verdict"])
+        self.assertEqual(self.lines.summary([{"name": "a", "state": "ok", "why": ""}])["worst"], "ok")
+
+    def test_the_flag_and_the_subcommand_are_the_same_view(self):
+        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+        flag = subprocess.run([str(ROOT / "bin" / "heyphony"), "--status"],
+                              capture_output=True, text=True, timeout=120, env=env)
+        sub = subprocess.run([str(ROOT / "bin" / "heyphony"), "status", "--lines"],
+                             capture_output=True, text=True, timeout=120, env=env)
+        self.assertEqual(flag.returncode, 0, flag.stderr)
+        self.assertEqual(flag.stdout, sub.stdout, "two spellings, one view, or people learn the wrong one")
+        self.assertNotIn("\x1b[", flag.stdout, "a captured pipe must not receive colour")
+
+    def test_json_is_the_same_rows_and_not_a_second_opinion(self):
+        run = subprocess.run([str(ROOT / "bin" / "heyphony"), "status", "--lines", "--json"],
+                             capture_output=True, text=True, timeout=120,
+                             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+        self.assertEqual(run.returncode, 0, run.stderr)
+        said = json.loads(run.stdout)
+        self.assertEqual(set(said), {"lines", "counts", "worst", "verdict"})
+        for row in said["lines"]:
+            self.assertIn(row["state"], {"ok", "partial", "missing", "unknown"})
+            self.assertTrue(row["why"], "a line with no reason is a mood, not a status")
+
+    def test_strict_is_a_gate_and_the_default_is_not(self):
+        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+        plain = subprocess.run([str(ROOT / "bin" / "heyphony"), "--status"],
+                               capture_output=True, text=True, timeout=120, env=env)
+        strict = subprocess.run([str(ROOT / "bin" / "heyphony"), "status", "--lines", "--strict"],
+                                capture_output=True, text=True, timeout=120, env=env)
+        self.assertEqual(plain.returncode, 0)
+        said = self.lines.payload()
+        self.assertEqual(strict.returncode, 0 if said["worst"] == "ok" else 1,
+                         "strict has to agree with the worst line it just printed")
+
+    def test_the_commands_index_names_the_new_views(self):
+        index = (ROOT / "src" / "setup" / "commands" / "readme.md").read_text()
+        self.assertIn("setup links", index)
+        self.assertIn("--template", index)
+        self.assertIn("status --lines", index)
+
+
+class TestTheHumanActsHaveADoor(unittest.TestCase):
+    """the complaint this exists for: "fetch the sip credentials" is not an instruction to somebody who
+    has never opened the portal. every act a person must do has to arrive with a link, the section the
+    vendor calls it, the string to copy, and the key it becomes. a template is the other half: what to
+    paste, and a body the catcher's own parser is checked against.
+    """
+
+    def setUp(self):
+        from src.setup import handoff, routes, flow
+        self.handoff, self.routes, self.flow = handoff, routes, flow
+
+    def test_every_vendor_in_the_route_table_has_a_door(self):
+        self.assertEqual(set(self.handoff.ENTRANCES), set(self.routes.ROUTES),
+                         "a vendor with a route and no portal is a dead end for a person")
+        for name, door in self.handoff.ENTRANCES.items():
+            self.assertTrue(door["portal"].startswith("https://"), name)
+            self.assertTrue(door["docs"].startswith("https://"), name)
+            self.assertGreaterEqual(len(self.handoff.ACTS[name]), 2, f"{name} has almost no acts")
+
+    def test_an_act_says_where_to_click_and_what_comes_back(self):
+        for name in self.handoff.ENTRANCES:
+            for act in self.handoff.acts(name):
+                for field in ("act", "where", "section", "copy", "lands_in", "why", "docs"):
+                    self.assertTrue(str(act.get(field) or "").strip(),
+                                    f"{name} act {act['n']} has no {field}")
+                self.assertTrue(act["where"].startswith("https://"), f"{name} act {act['n']}")
+                self.assertIn(act["where"], {self.handoff.ENTRANCES[name]["portal"]},
+                              "an act must link to its own vendor, not to a directory")
+                self.assertFalse(act["verified"], "no portal has been clicked with a real account here")
+
+    def test_every_value_a_person_is_asked_for_has_a_door(self):
+        """the join that was missing: flow.py asks for three things, so handoff has to answer all three."""
+        for provider in [row["key"] for row in self.flow.PROVIDER_CHOICES]:
+            plan = self.flow.plan_sip(provider, did="+15550000001")
+            asked = plan.get("from_owner") or []
+            self.assertTrue(asked, f"{provider} asks a person for nothing, which is its own bug")
+            landed = " ".join((act["lands_in"] + " " + act["copy"]).lower()
+                              for act in self.handoff.acts(provider))
+            for need in asked:
+                word = str(need).lower().replace("the ", "").strip()
+                self.assertIn(word.split()[0], landed,
+                              f"{provider} asks for '{need}' and no act says where it goes")
+
+    def test_a_template_carries_a_sample_its_own_parser_accepts(self):
+        """derived from the route's parse map, so a rename on one side cannot quietly orphan the other."""
+        for name, row in self.routes.ROUTES.items():
+            template = self.handoff.template(name, base="https://host.example:8099")
+            if row["kind"] not in ("webhook-json", "url-forward", "post-to-url"):
+                self.assertIsNone(template["url"], f"{name} claims a url it cannot have")
+                self.assertTrue(template["instead"], f"{name} refuses a url without saying what to do")
+                continue
+            self.assertEqual(template["url"], "https://host.example:8099" + row["path"],
+                             f"{name}'s url is not the paste url")
+            self.assertEqual(template["method"], "POST")
+            self.assertIn("curl", template["verify"])
+            envelope = self.routes.normalize(name, template["sample"])
+            self.assertTrue(envelope.get("sender"), f"{name}'s sample has no sender the parser sees")
+            self.assertTrue(envelope.get("body"), f"{name}'s sample has no body the parser sees")
+            self.assertFalse(template["verified"])
+
+    def test_the_paste_url_points_at_the_port_the_server_binds(self):
+        """the bug this found: the base said 8098 while serve and live both bind 8099, so the one url a
+        person is told to paste was a port nothing answers on."""
+        port = int(self.routes.BASE.rsplit(":", 1)[1])
+        for path in ("src/runner/cli.py", "src/manage/serve.py"):
+            text = (ROOT / path).read_text() if (ROOT / path).exists() else ""
+            for line in text.splitlines():
+                if "--port" in line and "default=" in line and "8099" in line:
+                    self.assertIn(str(port), line, f"{path} binds a different port than the paste url")
+
+    def test_opening_a_portal_says_what_it_actually_opened(self):
+        seen = []
+        answer = self.handoff.open_links(["voip.ms", "flowroute"], opener=lambda url: seen.append(url) or True)
+        self.assertEqual(seen, ["https://voip.ms", "https://manage.flowroute.com"])
+        self.assertTrue(answer["any"])
+
+    def test_a_server_with_no_browser_says_so_instead_of_pretending(self):
+        def refuse(url):
+            raise RuntimeError("no display")
+        answer = self.handoff.open_links(["voip.ms"], opener=refuse)
+        self.assertFalse(answer["any"])
+        self.assertFalse(answer["opened"][0]["opened"])
+        self.assertIn("no display", answer["opened"][0]["why"])
+        self.assertIn("urls in this payload", answer["without_a_browser"])
+
+    def test_the_cli_answers_one_vendor_and_refuses_an_unknown_one(self):
+        one = subprocess.run([str(ROOT / "bin" / "heyphony"), "setup", "links", "voip.ms"],
+                             capture_output=True, text=True, timeout=120,
+                             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+        self.assertEqual(one.returncode, 0, one.stderr)
+        said = json.loads(one.stdout)
+        self.assertEqual(list(said["providers"]), ["voip.ms"])
+        self.assertEqual(said["counts"]["voip.ms"], len(self.handoff.ACTS["voip.ms"]))
+
+        bad = subprocess.run([str(ROOT / "bin" / "heyphony"), "setup", "links", "not-a-vendor"],
+                             capture_output=True, text=True, timeout=120,
+                             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+        self.assertEqual(bad.returncode, 1)
+        why = json.loads(bad.stdout)["why"]
+        self.assertIn("voip.ms", why, "the refusal lists the vendors so a typo costs one line")
+
+    def test_the_template_reaches_the_cli(self):
+        run = subprocess.run([str(ROOT / "bin" / "heyphony"), "hooks", "flowroute", "--template",
+                              "--base", "https://host.example:8099"],
+                             capture_output=True, text=True, timeout=120,
+                             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+        self.assertEqual(run.returncode, 0, run.stderr)
+        said = json.loads(run.stdout)
+        self.assertEqual(said["url"], "https://host.example:8099/sms/flowroute")
+        self.assertIn("from", said["sample"])
+        self.assertFalse(said["verified"])
+
+    def test_a_vendor_whose_texts_arrive_by_email_says_so_in_its_own_template(self):
+        voip = self.handoff.template("voip.ms")
+        self.assertIsNone(voip["url"])
+        self.assertIn("import --file", voip["instead"])
+        self.assertTrue(voip["email_instead"]["section"])
+        quest = self.handoff.template("questblue")
+        self.assertIn("email", quest["email_instead"]["section"].lower())
 
 
 class TestTheLadderWhenOneRailIsNotThere(unittest.TestCase):

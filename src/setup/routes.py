@@ -18,7 +18,7 @@ import urllib.request
 
 from src import providers
 
-BASE = "https://<host>:8098"
+BASE = "https://<host>:8099"  # the port `heyphony serve` and `heyphony live` both bind
 
 
 def pick(payload, keys, depth=0):

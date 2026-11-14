@@ -44,7 +44,34 @@ def _out(obj):
     print(json.dumps(obj, indent=2, sort_keys=True))
 
 
+def cmd_setup_links(args):
+    """the human acts with a door on each: a link, the section as the vendor labels it, what to copy.
+
+    `--open` is the one place this cli touches a desktop, so it reports what it actually opened rather
+    than assuming a browser exists. a server has no screen and says so.
+    """
+    from src.setup import handoff
+    provider = args.provider or args.rail
+    if provider:
+        try:
+            answer = handoff.links(provider)
+        except KeyError as exc:
+            _out({"ok": False, "why": str(exc).strip("'\"")})
+            return 1
+        if args.open:
+            answer["opened"] = handoff.open_links([provider])
+        _out(answer)
+        return 0
+    answer = handoff.links()
+    if args.open:
+        answer["opened"] = handoff.open_links(list(handoff.ENTRANCES))
+    _out(answer)
+    return 0
+
+
 def cmd_setup(args):
+    if getattr(args, "what", None) == "links":
+        return cmd_setup_links(args)
     if getattr(args, "what", None) == "areas":
         return cmd_setup_areas(args)
     if getattr(args, "what", None) == "select":
@@ -197,6 +224,10 @@ def cmd_hooks(args):
               "how": "heyphony hooks <provider> --base https://your-host:8099"})
         return 0
     try:
+        if getattr(args, "template", False):
+            from src.setup import handoff
+            _out(handoff.template(args.provider, base=args.base))
+            return 0
         if getattr(args, "apply", False):
             answer = routes.apply_hook(args.provider, args.base, getattr(args, "did", None))
             _out(answer)
@@ -218,7 +249,24 @@ def cmd_setup_areas(args):
     return 0 if answer.get("ok") else 1
 
 
+def cmd_status_lines(args):
+    """the same facts as `status`, rendered for a person: a mark per line and the fix where there is one."""
+    from src.runner import lines as status_lines
+    data = status_lines.payload()
+    on = status_lines.colour_on(flag=(False if getattr(args, "no_color", False) else None))
+    if getattr(args, "json", False):
+        _out(data)
+        return 0
+    print(status_lines.render(data["lines"], on=on))
+    print("\n{}".format(data["verdict"]))
+    if getattr(args, "strict", False) and data["worst"] != "ok":
+        return 1
+    return 0
+
+
 def cmd_status(args):
+    if getattr(args, "lines", False) or getattr(args, "as_lines", False):
+        return cmd_status_lines(args)
     _out({"rc": str(sip.rc_path()), "rc_present": sip.rc_path().is_file(),
           "provider": providers.profile("voip.ms")["provider"],
           "sms_inbox": inbox.count(), "host_client": sip.host_client()["client"],
@@ -575,15 +623,19 @@ def build_parser():
     # checked with the command the install put on the path: `heyphony --version`.
     p.add_argument("--version", action="version", version=__version__)
     p.add_argument("--setup", action="store_true", help="print the telephony setup plan as json and stop")
+    p.add_argument("--status", action="store_true",
+                   help="one line per capability, green proved, orange unproven, red missing")
     sub = p.add_subparsers(dest="cmd")
     s = sub.add_parser("setup", help="the plan, `setup select sip` to walk it, or `setup areas` to choose one")
-    s.add_argument("what", nargs="?", choices=["select", "plan", "areas"])
+    s.add_argument("what", nargs="?", choices=["select", "plan", "areas", "links"])
     s.add_argument("rail", nargs="?")
     s.add_argument("--provider")
     s.add_argument("--did", help="a did you already hold, in e164")
     s.add_argument("--new", "--get-new", dest="new", action="store_true",
                    help="order one in the browser instead")
     s.add_argument("--json", action="store_true", help="json even on a terminal")
+    s.add_argument("--open", action="store_true",
+                   help="with `setup links`: open the portal in a browser, when this host has one")
     s.add_argument("--area-code", help="with `setup areas`: the area code an agent wants to see")
     s.add_argument("--area-name", help="with `setup areas`: a city or region fragment")
     s.add_argument("--country-id", help="with `setup areas`: anveo's country id")
@@ -616,7 +668,12 @@ def build_parser():
     md.add_argument("--id", help="the message id, so the file name says which message it belongs to")
     md.add_argument("--max-bytes", dest="max_bytes", type=int, default=None)
     md.set_defaults(func=cmd_media)
-    st = sub.add_parser("status"); st.set_defaults(func=cmd_status)
+    st = sub.add_parser("status", help="the state of this host: json by default, --lines for a person")
+    st.add_argument("--lines", action="store_true", help="a mark per capability, with the fix on its line")
+    st.add_argument("--json", action="store_true", help="the same rows as json")
+    st.add_argument("--no-color", action="store_true", help="never use ansi colour")
+    st.add_argument("--strict", action="store_true", help="exit 1 unless every line is proved")
+    st.set_defaults(func=cmd_status)
     c = sub.add_parser("connect")
     c.add_argument("target", choices=["sip"])
     c.add_argument("--provider"); c.add_argument("--voipms", action="store_true")
@@ -689,6 +746,8 @@ def build_parser():
     hk.add_argument("--base", default=routes_base())
     hk.add_argument("--did")
     hk.add_argument("--apply", action="store_true", help="set it over the provider's api, when that exists")
+    hk.add_argument("--template", action="store_true",
+                    help="the paste-ready block: url, method, sample body, and the curl that proves it")
     hk.set_defaults(func=cmd_hooks)
     lk = sub.add_parser("lookup", help="what a number is: line class, text, service support")
     lk.add_argument("number")
@@ -748,6 +807,9 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "--setup":
         argv = ["setup"] + argv[1:]
+    if argv and argv[0] == "--status":
+        # the flag people type before they read any help: the same view as `status --lines`
+        argv = ["status", "--lines"] + argv[1:]
     if argv and argv[0] == "--lookup":
         return cmd_lookup(_lookup_args(argv[1:]))
     if argv and argv[0] == "lookup":

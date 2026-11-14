@@ -289,6 +289,22 @@ refused messages are never stored, but they are counted: the reason, the region 
 
 ## get it
 
+### what a host can tell you about itself
+
+`heyphony --status` is one line per capability, with a mark rather than a paragraph: green means
+something proved it, orange means configured and unproven, red means it is not there, dim means nothing
+has been tried. every red or orange line carries the command that fixes it, and the whole thing is the
+same rows as `heyphony status --json`, so a person and a script are never reading two different opinions.
+
+```
+✓ number              +15550000001
+! texts inbound       webhook-json route is designed: the url is not proof
+    → heyphony hooks flowroute --template
+✗ who may reach you   mode list with an empty list, so nothing can reach this number
+    → heyphony allow allow +15550000001 for the people who should get through
+```
+
+
 ```
 npm i -g heyphony
 ```
