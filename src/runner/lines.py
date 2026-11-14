@@ -251,18 +251,23 @@ def _forwarding(ctx):
 TRIALS = {
     "sms inbound": {"can_try": False,
                     "needs": "a text from a phone that is not this number, sent while the catcher runs"},
-    "sms outbound": {"can_try": True, "needs_target": True,
+    "sms outbound": {"can_try": True, "needs_target": True, "gate": "HEYPHONY_SEND",
                      "how": "send one text to a number you can check",
-                     "cmd": ["send", "--text", "heyphony trial: one text"]},
+                     "cmd": ["send", "--text", "heyphony trial: one text", "--send"]},
     "call inbound (live)": {"can_try": False,
                             "needs": "a call from outside while `heyphony live --run` watches"},
     "call inbound": {"can_try": False, "needs": "a call from a phone you hold"},
     "call outbound (live)": {"can_try": True, "needs_target": True, "needs_trunk": True,
-                             "how": "dial with the agent in the room",
-                             "cmd": ["live", "--dial"]},
+                             "gate": "HEYPHONY_CALL",
+                             "how": "place a call with the agent in the room",
+                             "cmd": ["live", "--dial", "--run", "--seconds", "20",
+                                     "--goal", "heyphony trial: prove this number can place a call",
+                                     "--success", "the call is answered and then hung up",
+                                     "--authorized", "heyphony --test"]},
     "call outbound": {"can_try": True, "needs_target": True, "needs_trunk": True,
+                      "gate": "HEYPHONY_CALL",
                       "how": "place one call and speak one line",
-                      "cmd": ["voicemail", "--message", "heyphony trial: one call"]},
+                      "cmd": ["voicemail", "--message", "heyphony trial: one call", "--send"]},
     "voicemail catch": {"can_try": False, "needs": "a call from outside that nobody answers"},
     "call forwarding": {"can_try": True, "needs_module": "forwarding",
                         "how": "write one no-answer rule and see the carrier follow it"},
@@ -292,7 +297,7 @@ def attempt(ctx, name, target=None, runner=None):
     blocked = _blocked(name, spec, ctx, target)
     if blocked:
         return {"rail": name, "tried": False, "why": blocked}
-    command = list(spec["cmd"]) + (["--to", target] if spec.get("needs_target") else []) + ["--send"]
+    command = list(spec["cmd"]) + (["--to", target] if spec.get("needs_target") else [])
     if runner is None:
         runner = _run_cli
     ok, detail = runner(command)
@@ -314,11 +319,11 @@ def _blocked(name, spec, ctx, target):
             return "trunk env missing: " + ", ".join(trunk["missing"])
     if spec.get("needs_module") and not ctx["home"].get(spec["needs_module"]):
         return "the {} module is not in this build".format(spec["needs_module"])
-    if name == "sms outbound":
-        if not (ctx["paths"] or {}).get("state") == "wired":
-            return "the provider path is not wired"
-        if ctx["env"].get("HEYPHONY_SEND") != "allowed":
-            return "the send gate is shut: HEYPHONY_SEND=allowed"
+    if spec.get("gate"):
+        if ctx["env"].get(spec["gate"]) != "allowed":
+            return "the {} gate is shut: {}=allowed".format(spec["gate"], spec["gate"])
+    if name == "sms outbound" and not (ctx["paths"] or {}).get("state") == "wired":
+        return "the provider path is not wired"
     return None
 
 

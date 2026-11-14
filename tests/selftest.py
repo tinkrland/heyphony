@@ -2946,7 +2946,8 @@ class TestTheTestTries(unittest.TestCase):
 
     def trunked(self):
         """a host whose trunk env is complete, which is the only host that may attempt a dial."""
-        return dict(self.ctx, env={"HEYPHONY_SEND": "allowed", "LIVEKIT_URL": "https://lk.example",
+        return dict(self.ctx, env={"HEYPHONY_SEND": "allowed", "HEYPHONY_CALL": "allowed",
+                                   "LIVEKIT_URL": "https://lk.example",
                                    "LIVEKIT_API_KEY": "k", "LIVEKIT_SIP_TRUNK": "t"})
 
     def test_a_trial_that_fails_is_recorded_and_does_not_turn_a_rail_green(self):
@@ -3001,6 +3002,53 @@ class TestTheTestTries(unittest.TestCase):
                              capture_output=True, text=True, timeout=120, env=env)
         self.assertEqual(run.returncode, 1)
         self.assertIn("sms inbound", json.loads(run.stdout)["why"])
+
+    def test_every_trial_command_is_one_this_parser_accepts(self):
+        """the bug this guard exists for: --send was appended to every rail, and `live` has no --send.
+
+        a trial that dies in argparse is recorded as the carrier's fault, which is the worst kind of
+        evidence. so the commands are parsed for real, here, before anybody's phone rings.
+        """
+        from src.runner import cli
+        parser = cli.build_parser()
+        for rail, spec in self.lines.TRIALS.items():
+            if not spec.get("cmd"):
+                continue
+            command = list(spec["cmd"]) + (["--to", "+15550000002"] if spec.get("needs_target") else [])
+            try:
+                parsed = parser.parse_args(command)
+            except SystemExit:
+                self.fail("{} would die in argparse: heyphony {}".format(rail, " ".join(command)))
+            self.assertTrue(getattr(parsed, "func", None), rail)
+
+    def test_each_rail_names_its_own_gate(self):
+        trunk = {"LIVEKIT_URL": "https://lk.example", "LIVEKIT_API_KEY": "k", "LIVEKIT_SIP_TRUNK": "t"}
+        sms_only = dict(self.ctx, env={**trunk, "HEYPHONY_SEND": "allowed"})
+        calls_only = dict(self.ctx, env={**trunk, "HEYPHONY_CALL": "allowed"})
+
+        blocked = self.lines.attempt(calls_only, "sms outbound", target="+15550000002",
+                                     runner=lambda cmd: (_ for _ in ()).throw(AssertionError("sent")))
+        self.assertIn("HEYPHONY_SEND", blocked["why"], "a text is not gated by the call consent")
+
+        blocked = self.lines.attempt(sms_only, "call outbound", target="+15550000002",
+                                     runner=lambda cmd: (_ for _ in ()).throw(AssertionError("dialled")))
+        self.assertIn("HEYPHONY_CALL", blocked["why"], "a call is not gated by the text consent")
+
+    def test_the_live_trial_satisfies_the_lanes_own_gate(self):
+        """`live --dial` refuses without a goal, a success condition and an authoriser, by design."""
+        from src.runner import cli
+        command = list(self.lines.TRIALS["call outbound (live)"]["cmd"]) + ["--to", "+15550000002"]
+        parsed = cli.build_parser().parse_args(command)
+        self.assertTrue(parsed.dial)
+        self.assertTrue(parsed.run, "without --run the lane prints a plan and dials nothing")
+        self.assertTrue(parsed.goal and parsed.success, "the lane will not dial without a task")
+        self.assertTrue(parsed.authorized, "somebody has to be on the record for a phone ringing")
+
+    def test_a_trial_never_answers_its_own_rail_with_a_flag_it_was_not_given(self):
+        seen = {}
+        self.lines.attempt(self.ctx, "sms outbound", target="+15550000002",
+                           runner=lambda cmd: (seen.setdefault("cmd", cmd), (True, "sent"))[1])
+        self.assertEqual(seen["cmd"].count("--send"), 1, "one --send, in the rail's own command")
 
     def evidence(self):
         """the same host, minus the overrides, so checks() reads the trials file it was given."""
