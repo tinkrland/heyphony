@@ -15,8 +15,8 @@ LANE = {
     "intake": "secret-token header -> one envelope",
     "relay": "sendmessage, one chat at a time",
     "gate": ("TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"),
-    "state": "designed",
-    "evidence": "the header gate and the group refusal are tested; no bot has been created yet",
+    "state": "built",
+    "evidence": "one endpoint, one header and a group refusal, and the suite drives a good post, a 401 and a group; no real update has arrived",
 }
 
 

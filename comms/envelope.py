@@ -46,8 +46,25 @@ def gates(spec):
     return (g,) if isinstance(g, str) else tuple(g)
 
 
+# the ladder, weakest to strongest. `built` is the rung this page was missing: the gate and the
+# intake are in this tree and the suite drives them, and no message from the real carrier has arrived.
+# without it every implemented lane had to call itself `designed`, which reads as "not set up yet"
+# to anybody who did not write the vocabulary.
+STATES = ("designed", "built", "verified", "closed", "refused")
+MEANS = {
+    "designed": "the gate and the payload shape were read from the carrier's own documentation",
+    "built": "the gate and the intake are here, and this branch's suite drives them; no real message yet",
+    "verified": "one real message arrived and was stored, and the evidence is named",
+    "closed": "the secret is unset. unset is closed, never open",
+    "refused": "this carrier cannot be reached this way, and the reason is the refusal",
+}
+
+
 def state_for(spec, env=None):
     """closed when the gate is unset. a lane nobody opened is not 'ready'."""
+    claimed = spec.get("state", "designed")
+    if claimed not in STATES:
+        raise ValueError(f"{spec.get('name')} claims state {claimed!r}; the rungs are {', '.join(STATES)}")
     env = env if env is not None else os.environ
     if spec.get("state") == "refused":
         return {"lane": spec.get("name"), "state": "refused", "why": spec.get("evidence")}
@@ -55,5 +72,5 @@ def state_for(spec, env=None):
     if missing:
         return {"lane": spec.get("name"), "state": "closed", "missing": missing,
                 "why": "credentials unset. unset is closed, never open"}
-    return {"lane": spec.get("name"), "state": spec.get("state", "designed"),
-            "evidence": spec.get("evidence")}
+    return {"lane": spec.get("name"), "state": claimed, "evidence": spec.get("evidence"),
+            "means": MEANS[claimed]}

@@ -9,8 +9,8 @@ LANE = {
     "intake": "signed event -> one envelope",
     "relay": "chat.postMessage with a bot token",
     "gate": ("SLACK_SIGNING_SECRET",),
-    "state": "designed",
-    "evidence": "the v0 gate is tested; the app has never been installed",
+    "state": "built",
+    "evidence": "url verification is answered first, and the suite drives the challenge and a stale signature; no real event has arrived",
 }
 
 

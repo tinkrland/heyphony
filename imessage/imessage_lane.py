@@ -19,8 +19,8 @@ LANE = {
     "gate": ("PHOTON_SIGNING_SECRET",),
     "scope": ("not a beast: photon free tier for whitelisted people, rcs fallback, and plain sms "
               "on the heyphony did underneath. no bridge of our own and no number ownership attempt"),
-    "state": "designed",
-    "evidence": "the v0 gate is ported and tested here; no real blue bubble has arrived",
+    "state": "built",
+    "evidence": "the v0 signature is checked against the raw body, and the suite drives a signed post; no real message has arrived",
 }
 
 

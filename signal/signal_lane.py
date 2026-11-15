@@ -12,8 +12,8 @@ LANE = {
     "intake": "the linked device's own message stream",
     "relay": "same device, same cli",
     "gate": ("SIGNAL_CLI_URL",),
-    "state": "designed",
-    "evidence": "the three paths are named and the number dependency is explicit; no device has been linked",
+    "state": "built",
+    "evidence": "the linked device's own stream, planned and refused by name, and the suite drives both; nothing has been linked",
     "bootstrap": "heyphony get signal",
 }
 

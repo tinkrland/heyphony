@@ -15,8 +15,8 @@ LANE = {
     "intake": "hmac webhook -> one envelope",
     "relay": "the same session the human uses",
     "gate": ("WAHA_HMAC_KEY",),
-    "state": "designed",
-    "evidence": "gate and whitelist ported; nobody has messaged this session yet",
+    "state": "built",
+    "evidence": "the hmac and the digits whitelist are here, and the suite drives a signed post and a group refusal; no real message has arrived",
 }
 
 # the number problem, as data so a card or a plan cannot improvise a different answer.

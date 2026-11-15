@@ -21,8 +21,8 @@ LANE = {
     "intake": "webhook -> one envelope in the shared jsonl inbox",
     "relay": "smtp only, gated by SMTP_URL",
     "gate": ("CARLYEMAIL_SIGNING_SECRET", "HEYPHONY_MAIL_SECRET"),
-    "state": "designed",
-    "evidence": "signature check, whitelist and normalisation ported from working code; this branch has not received real mail",
+    "state": "built",
+    "evidence": "the signature, the whitelist and the normalisation are here, and the suite drives a signed post through them; no real mail has arrived",
 }
 
 PROVIDERS = {

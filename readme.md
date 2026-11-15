@@ -12,17 +12,17 @@ if you are looking for the number, the inbox, the call log or the install, you a
 
 one folder per carrier, because a carrier is the unit of anything that can be documented, gated and refused in the same shape. the table is read out of the `LANE` dicts, and a test fails if a folder and its row disagree.
 
-| lane | the carrier | intake | gated by | state |
+| lane | the carrier | intake | gated by | state of the lane |
 | --- | --- | --- | --- | --- |
-| `email` | agentmail and carlyemail | signed webhook, or smtp for the outbound leg | `CARLYEMAIL_SIGNING_SECRET`, `HEYPHONY_MAIL_SECRET` | designed |
-| `imessage` | photon spectrum | v0 signed webhook, verified against the raw body | `PHOTON_SIGNING_SECRET` | designed |
-| `whatsapp` | waha | hmac webhook, sha256 or sha512, digits whitelist | `WAHA_HMAC_KEY` | designed |
-| `signal` | signal-cli, linked device or registered number | the linked device's own message stream | `SIGNAL_CLI_URL` | designed |
-| `telegram` | bot api | a secret-token header, then signed events | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` | designed |
-| `slack` | events api | url verification answered first, then signed events | `SLACK_SIGNING_SECRET` | designed |
-| `discord` | gateway websocket, rest for replies | guild events and mentions, read only until addressed | `DISCORD_BOT_TOKEN` | designed |
-| `meetings` | a browser in a spawnable, plus livekit for the audio | the room: speech, chat, transcript | `ZOOM_SDK_KEY`, `ZOOM_SDK_SECRET` | designed |
-| `streaming` | rtmp ingest, obs for scenes | chat, where the platform's api allows reading it | `TWITCH_CLIENT_ID`, `KICK_STREAM_KEY` | designed |
+| `email` | agentmail and carlyemail | signed webhook, or smtp for the outbound leg | `CARLYEMAIL_SIGNING_SECRET`, `HEYPHONY_MAIL_SECRET` | built |
+| `imessage` | photon spectrum | v0 signed webhook, verified against the raw body | `PHOTON_SIGNING_SECRET` | built |
+| `whatsapp` | waha | hmac webhook, sha256 or sha512, digits whitelist | `WAHA_HMAC_KEY` | built |
+| `signal` | signal-cli, linked device or registered number | the linked device's own message stream | `SIGNAL_CLI_URL` | built |
+| `telegram` | bot api | a secret-token header, then signed events | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` | built |
+| `slack` | events api | url verification answered first, then signed events | `SLACK_SIGNING_SECRET` | built |
+| `discord` | gateway websocket, rest for replies | guild events and mentions, read only until addressed | `DISCORD_BOT_TOKEN` | built |
+| `meetings` | a browser in a spawnable, plus livekit for the audio | the room: speech, chat, transcript | `ZOOM_SDK_KEY`, `ZOOM_SDK_SECRET` | built |
+| `streaming` | rtmp ingest, obs for scenes | chat, where the platform's api allows reading it | `TWITCH_CLIENT_ID`, `KICK_STREAM_KEY` | built |
 
 two of those are not webhooks and the difference is worth keeping straight. the meetings lane joins a room instead of waiting for a post: zoom, google meet and teams, with livekit carrying the audio and screen sharing as the second rail, because a meeting is the one place the agent has to be present rather than reachable. the rcs fallback rides beside imessage as the floor under it, and streaming is the only lane that publishes, which is why a human presses go-live rather than a schedule.
 
@@ -32,16 +32,18 @@ two of those are not webhooks and the difference is worth keeping straight. the 
 
 the modules are the ideas: `envelope.py` is the one shape and the refusal list, `gates.py` is the three signature schemes, `registry.py` finds folders instead of reading a list, `catcher.py` is the http routes and the store, `cards.py` is this repo's front door to the contact book, `signup.py` is what a carrier wants before it will talk, and `audio.py` is the microphone story per room.
 
-turnkey is the ambition here rather than the current state, and the two words are worth separating: one command, one plan per lane, one gate each, and `designed` on every row until a message actually arrives.
+turnkey is where this is going, and the honest place to measure from is what already runs: every lane on this branch is **built**, and the word is doing exact work: the gate, the payload shape and the catcher route are in this tree, and this branch's suite drives a signed post through each one. what is missing is not code, it is a message from the real carrier, which is the only thing that makes a lane `verified`. `bin/comms status` reports the rung per lane, and an unset secret reads `closed` rather than either of them.
 
-four states, defined once in `envelope.py` and used everywhere:
+five states, defined once in `envelope.py` as `STATES` with the one-line `MEANS` beside it, so a lane cannot claim a rung that does not exist:
 
 - **verified** one real message arrived and was stored, and the evidence is named
-- **designed** the gate and the payload shape were read from the carrier's own documentation
+- **built** the gate and the intake are here, and this branch's suite drives them; no real message yet
+- **designed** the gate and the payload shape were read from the carrier's own documentation, and
+  nothing here exercises them yet
 - **closed** the secret is unset. unset is closed, never open
 - **refused** a real blocker stands, and wiring will not remove it
 
-every row here sits at `designed`, and that is the honest word: the shapes are read from source, and nothing in this list has received a message yet. the moment one arrives and is stored, that lane moves to `verified` and the page says which one.
+every row here sits at `built`, and that is the honest word: the shape and the gate are in this tree and the suite drives them, and nothing in this list has received a message from its carrier yet. the moment one arrives and is stored, that lane moves to `verified` and the page says which one, with the evidence named.
 
 ## the dependency runs one way
 

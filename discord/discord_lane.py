@@ -11,8 +11,8 @@ LANE = {
     "intake": "guild events, mentions, watched voice states",
     "relay": "bot message, only in a channel that addressed it",
     "gate": ("DISCORD_BOT_TOKEN",),
-    "state": "designed",
-    "evidence": "the watch contract is defined and the token gate is tested; no live gateway connection has run here",
+    "state": "built",
+    "evidence": "gateway events, answered only when addressed, and the suite drives both plans; nothing is connected",
 }
 
 WATCH_STATE = {"one_watcher_per_process": True, "token_from_env": True, "routes_read_only": True,

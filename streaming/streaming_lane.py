@@ -3,9 +3,9 @@ import os
 
 PLATFORMS = {
     "twitch": {"ingest": "rtmp/rtmps with a stream key", "api": "official helix",
-               "gate": ("TWITCH_CLIENT_ID", "TWITCH_CLIENT_SECRET"), "state": "designed"},
+               "gate": ("TWITCH_CLIENT_ID", "TWITCH_CLIENT_SECRET"), "state": "built"},
     "kick": {"ingest": "rtmp with a stream key", "api": "unofficial, so no api calls from here",
-             "gate": ("KICK_STREAM_KEY",), "state": "designed"},
+             "gate": ("KICK_STREAM_KEY",), "state": "built"},
 }
 
 LANE = {
@@ -14,8 +14,8 @@ LANE = {
     "intake": "chat, if the platform's api allows reading it",
     "relay": "the stream itself: the one lane that publishes",
     "gate": ("TWITCH_CLIENT_ID", "KICK_STREAM_KEY"),
-    "state": "designed",
-    "evidence": "ingest paths named per platform; nothing has streamed",
+    "state": "built",
+    "evidence": "the one lane that publishes, so a human presses go-live, and the suite drives the plan; nothing has been streamed",
 }
 
 

@@ -14,20 +14,20 @@ import time
 
 PLATFORMS = {
     "zoom": {"join": "web sdk in the spawnable browser, signed token",
-             "gate": ("ZOOM_SDK_KEY", "ZOOM_SDK_SECRET"), "state": "designed",
+             "gate": ("ZOOM_SDK_KEY", "ZOOM_SDK_SECRET"), "state": "built",
              "signal": "raise hand, reactions, screenshare"},
     "meet": {"join": "the room's own web client, no token",
-             "gate": (), "state": "designed",
+             "gate": (), "state": "built",
              "signal": "browser ui only, no host api"},
     "teams": {"join": "web client, tenant permission needed for the app",
-              "gate": ("MS_TENANT_ID",), "state": "designed",
+              "gate": ("MS_TENANT_ID",), "state": "built",
               "signal": "browser ui only"},
 }
 
 RAILS = {
     "audio": {"how": "livekit room the meeting already has: join as a participant, publish tts, subscribe for stt",
               "why": "no new person requests into the call; the agent is a mouth on the connection it holds",
-              "gate": ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"), "state": "designed"},
+              "gate": ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"), "state": "built"},
     "screenshare": {"how": "getdisplaymedia from inside the spawnable (headed chrome under xvfb, https)",
                     "why": "the browser shares its own screen; nothing is re-streamed through us",
                     "gate": (), "state": "verified in a spawnable, unverified in a real meeting"},
@@ -39,8 +39,8 @@ LANE = {
     "intake": "the room: speech, chat, transcript",
     "relay": "speech and a shared screen, never a recording posted anywhere",
     "gate": ("ZOOM_SDK_KEY", "ZOOM_SDK_SECRET"),
-    "state": "designed",
-    "evidence": "zoom signing round-trip tested here; no real meeting has been joined from this branch",
+    "state": "built",
+    "evidence": "the zoom join token is minted and re-verified, and the suite drives both; no room has been joined",
 }
 
 

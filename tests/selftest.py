@@ -157,7 +157,7 @@ class TestTelegram(unittest.TestCase):
 
     def test_the_lane_is_discovered_by_the_registry(self):
         self.assertIn("telegram", registry.lanes())
-        self.assertEqual(self.tg.LANE["state"], "designed")
+        self.assertEqual(self.tg.LANE["state"], "built")
 
 
     def test_the_regions_that_work_are_the_ones_whose_law_says_mobile(self):
@@ -540,6 +540,34 @@ class TestTheCatcherStoresWhatItVerifies(unittest.TestCase):
         self.assertEqual(set(payload["lanes"]), set(registry.folders()))
 
 
+class TestTheLadderHasARungForBuiltWork(unittest.TestCase):
+    """the bug this fixes: nine lanes that ship code had no word for it, so they said `designed`, and
+    every reader who did not write the vocabulary read that as "not set up yet"."""
+
+    def test_the_rungs_are_ordered_and_built_sits_between_them(self):
+        self.assertEqual(envelope.STATES, ("designed", "built", "verified", "closed", "refused"))
+        for rung in envelope.STATES:
+            self.assertIn(rung, envelope.MEANS, f"{rung} has no one-line meaning")
+
+    def test_a_lane_that_ships_code_can_say_so(self):
+        for name, spec in registry.lanes().items():
+            self.assertEqual(spec["state"], "built",
+                             f"{name} ships its gate and its intake; if that changes, say which rung it fell to")
+            self.assertTrue(spec.get("evidence"), f"{name} claims a rung with no evidence beside it")
+
+    def test_a_made_up_rung_is_refused_rather_than_printed(self):
+        with self.assertRaises(ValueError) as caught:
+            envelope.state_for({"name": "email", "state": "mostly-there", "gate": ("X",)}, env={"X": "1"})
+        self.assertIn("the rungs are", str(caught.exception))
+
+    def test_verified_still_means_a_real_message_arrived(self):
+        """a lane may not skip the rung that costs something: verified needs evidence a person can read."""
+        for name, spec in registry.lanes().items():
+            self.assertNotEqual(spec["state"], "verified",
+                                f"{name} claims a real message; name the message or come back a rung")
+            self.assertTrue(spec.get("evidence"), f"{name} sits on a rung with nothing beside it")
+
+
 class TestTheNumberIsReachedByName(unittest.TestCase):
     """the one import this branch makes into the other half: it has to name the inbox module, not
     the folder that holds it, because an empty __init__ is not an inbox."""
@@ -599,7 +627,7 @@ class TestTheReadmesCannotDrift(unittest.TestCase):
             lane_dict = lane(folder).LANE
             for fact in ("name", "carrier", "intake", "relay", "gate", "state"):
                 self.assertIn(fact, lane_dict, f"{folder}_lane.py is missing {fact!r}")
-            self.assertIn(lane_dict["state"], ("verified", "designed", "closed", "refused"),
+            self.assertIn(lane_dict["state"], envelope.STATES,
                           f"{folder} invented a state")
 
     def test_no_lane_claims_a_message_it_never_received(self):
