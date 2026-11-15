@@ -20,8 +20,8 @@ this repo is one package and several lines of work beside it. `main` is the numb
 | `allow` | the inbound policy: a list, a home country, or chosen countries, closed by default | yes |
 | `callheavy` | our own outbound calls arranged around a task, driving baresip over its control socket (ported into `mcp` at `src/callheavy/`, so the branch is copy history rather than an unmerged lane) | no |
 | `mobile` | the phone as a device, the host bridge that answers for it, and the ring rail | no |
-| `omni` | the rest of the carriers, as lanes beside the number | no |
-| `meetings` | joining the room where the humans are | no |
+| `omni` | the rest of the carriers, as nine lanes beside the number: one catcher, one gate each, every lane built and none yet verified by a real message | no |
+| `meetings` | joining the room where the humans are: three platforms, the zoom join token, the audio rail, built and not yet verified by a room | no |
 | `setup` | where the machine holding the number lives, as three modes | no |
 | `new` | forwarding, and why a call handoff is not a text handoff | no |
 
