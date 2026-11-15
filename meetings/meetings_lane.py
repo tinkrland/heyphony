@@ -30,9 +30,9 @@ LANE = {
     "intake": "the room: speech, chat, transcript",
     "relay": "speech and a shared screen, never a recording posted anywhere",
     "gate": ("ZOOM_SDK_KEY", "ZOOM_SDK_SECRET"),
-    "state": "designed",
-    "evidence": "the zoom join token is minted and re-verified in tests/selftest.py; "
-                "no real meeting has been joined from this branch",
+    "state": "built",
+    "evidence": "the zoom join token is minted and re-verified by this branch's suite, and the "
+                "per-platform join plan is driven for all three; no real meeting has been joined",
 }
 
 PLATFORMS = {
@@ -52,13 +52,13 @@ RAILS = {
         "how": "livekit room the meeting already has: join as a participant, publish tts, subscribe for stt",
         "why": "no new person is requested into the call; the agent is a mouth on the connection it holds",
         "gate": ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"),
-        "state": "designed",
+        "state": "built",
     },
     "screenshare": {
         "how": "getdisplaymedia from inside the browser that joined",
         "why": "the browser shares its own screen; nothing is re-streamed through us",
         "gate": (),
-        "state": "designed in a real meeting, verified in a spawnable",
+        "state": "built",
     },
 }
 

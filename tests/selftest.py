@@ -39,7 +39,7 @@ class TestTheRailsAreData(unittest.TestCase):
     def test_nothing_claims_a_joined_meeting(self):
         self.assertEqual(rails.by_state("verified"), [],
                          "no meeting has been joined, so `verified` is not available yet")
-        self.assertEqual(sorted(rails.by_state("designed")), sorted(rails.RAILS),
+        self.assertEqual(sorted(rails.by_state("built")), sorted(rails.RAILS),
                          "every rail is designed: the join path is read and implemented")
 
     def test_only_zoom_carries_a_signature(self):
@@ -70,7 +70,7 @@ class TestTheLaneReadsTheRails(unittest.TestCase):
         self.assertEqual(set(lane.LANE["gate"]), set(rails.RAILS["zoom"]["gate"]))
 
     def test_the_lane_carries_evidence_rather_than_a_claim(self):
-        self.assertEqual(lane.LANE["state"], "designed")
+        self.assertEqual(lane.LANE["state"], "built")
         for fact in ("carrier", "intake", "relay", "gate", "state", "evidence"):
             self.assertIn(fact, lane.LANE)
         self.assertIn("no real meeting has been joined", lane.LANE["evidence"])
@@ -229,7 +229,7 @@ class TestTheOneCommand(unittest.TestCase):
     def test_status_lists_the_missing_gate_per_platform(self):
         status = meetings_cli.status_payload({})
         self.assertEqual(status["platforms"]["zoom"]["missing"], ["ZOOM_SDK_KEY", "ZOOM_SDK_SECRET"])
-        self.assertEqual(status["platforms"]["teams"]["state"], "designed")
+        self.assertEqual(status["platforms"]["teams"]["state"], "built")
         self.assertIn("audio", status)
 
     def test_the_shim_is_a_shim(self):
@@ -252,9 +252,15 @@ class TestThePageMatchesTheData(unittest.TestCase):
             self.assertIn(audio_path, text, f"the page does not name {name}'s audio path")
 
     def test_the_page_admits_what_the_state_is(self):
+        """the page has to name the rung the data is actually on, in the same words the data uses."""
         text = self.page.read_text()
-        self.assertIn("state is `designed` on every row", text)
+        rungs = {row["state"] for row in rails.RAILS.values()}
+        for rung in rungs:
+            self.assertIn(f"state is `{rung}` on every row", text,
+                          f"the page does not admit that every row is {rung}")
         self.assertIn("nothing on this branch joins a meeting yet", text)
+        self.assertNotIn("state is `designed`", text,
+                         "the page kept the rung every row moved off")
 
     def test_the_page_names_the_rename(self):
         text = self.page.read_text()

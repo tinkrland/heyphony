@@ -32,7 +32,7 @@ RAILS = {
         "gate": ["ZOOM_SDK_KEY", "ZOOM_SDK_SECRET"],
         "signal": "raise hand, reactions and the screen share, all through the room's own ui",
         "evidence": "the join token is minted and re-verified in tests/selftest.py; no meeting joined",
-        "state": "designed",
+        "state": "built",
         "refused": ["a cold join from a meeting id", "recording without the host's consent"],
         "scope": "the one platform with a documented programmatic join, so the one where a wrong "
                  "field is a silent failure",
@@ -46,7 +46,7 @@ RAILS = {
         "gate": ["MEETING_BROWSER_PROFILE"],
         "signal": "browser ui only: there is no host api to raise a hand through",
         "evidence": "the browser room is the whole join path; no browser has been sent to one",
-        "state": "designed",
+        "state": "built",
         "refused": ["a cold join", "a profile that is not signed in", "recording by default"],
         "scope": "the invite is the permission, and the participant is a headless browser wearing a "
                  "normal participant's clothes",
@@ -60,14 +60,23 @@ RAILS = {
         "gate": ["MEETING_BROWSER_PROFILE", "MS_TENANT_ID"],
         "signal": "browser ui only, and a tenant policy can end the join before any ui appears",
         "evidence": "the tenant gate is named in the plan; no tenant has been asked for one",
-        "state": "designed",
+        "state": "built",
         "refused": ["a cold join", "an org whose tenant refuses outside guests"],
         "scope": "the platform most likely to refuse a guest mid-join, and the page says so rather "
                  "than blaming the participant later",
     },
 }
 
-STATES = ("designed", "verified")
+# `built` is the rung the page was missing. the join path is implemented and the suite drives it,
+# and no room has been joined, so calling every row `designed` read as "not set up yet" to anybody
+# who did not write the vocabulary. designed stays for a shape read from docs and exercised nowhere.
+STATES = ("designed", "built", "verified")
+
+MEANS = {
+    "designed": "the join path is read from the platform's own documentation and nothing here drives it",
+    "built": "the join path is here and this branch's suite drives it; no room has been joined",
+    "verified": "a room was joined with the person who sent the invite saying it worked",
+}
 
 
 def rail(name):
@@ -76,6 +85,14 @@ def rail(name):
 
 def gates():
     return {name: row["gate"] for name, row in RAILS.items()}
+
+
+def checked(rows=None):
+    """every row's rung has to be one of STATES: a made-up word is a typo that looks like progress."""
+    for row in (rows or RAILS).values():
+        if row.get("state") not in STATES:
+            raise ValueError(f"{row.get('name')} claims {row.get('state')!r}; the rungs are {', '.join(STATES)}")
+    return rows or RAILS
 
 
 def by_state(state):

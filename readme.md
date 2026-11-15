@@ -12,11 +12,11 @@ the table is generated from `rails.py`, and a test fails when the page and the d
 
 | rail | how a bot joins | the signature | audio | state |
 | --- | --- | --- | --- | --- |
-| `zoom` | meeting sdk join token, or the browser client with a link | hs256 jwt over header and payload, iat backdated 30 seconds for clock drift, exp two hours | livekit room | designed |
-| `googlemeet` | a browser participant, because there is no bot api | none, the invite is the permission | livekit room | designed |
-| `teams` | a browser participant, tenant policy permitting | none, and a tenant can refuse outside guests | livekit room | designed |
+| `zoom` | meeting sdk join token, or the browser client with a link | hs256 jwt over header and payload, iat backdated 30 seconds for clock drift, exp two hours | livekit room | built |
+| `googlemeet` | a browser participant, because there is no bot api | none, the invite is the permission | livekit room | built |
+| `teams` | a browser participant, tenant policy permitting | none, and a tenant can refuse outside guests | livekit room | built |
 
-**state is `designed` on every row.** the join path is implemented rather than merely described: the zoom token is minted and re-verified, the plan for a given platform is built and names its gate, and the microphone rail answers per room. nothing on this branch joins a meeting yet, so nothing here is `verified`, and that word stays reserved for a room with the person who sent the invite saying it worked.
+**state is `built` on every row.** the join path is implemented rather than merely described, and `built` is the rung that says so: the zoom token is minted and re-verified by this branch's suite, the plan for a given platform is built and names its gate, and the microphone rail answers per room. what is missing is not code, it is a room: nothing on this branch joins a meeting yet, so nothing is `verified`, and that word stays reserved for a join with the person who sent the invite saying it worked. `designed` is left for a path that is only read from documentation and driven by nothing, which is no longer any row here.
 
 ## what actually runs here
 
