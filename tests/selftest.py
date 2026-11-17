@@ -4034,7 +4034,21 @@ class TestTheBranchIndexMatchesGit(unittest.TestCase):
         for name, cell in self.rows.items():
             self.assertIn(cell, ("yes", "no", "this is it"), f"{name} has an unreadable last cell: {cell!r}")
 
+    @staticmethod
+    def fetches_every_branch(refspec):
+        """a `--single-branch` clone fetches one head, so it cannot answer which branches exist."""
+        return (refspec or "").strip() == "+refs/heads/*:refs/remotes/origin/*"
+
+    def test_a_narrow_fetch_is_recognised_so_the_comparison_can_stand_down(self):
+        self.assertTrue(self.fetches_every_branch("+refs/heads/*:refs/remotes/origin/*"))
+        self.assertFalse(self.fetches_every_branch("+refs/heads/mcp:refs/remotes/origin/mcp"))
+        self.assertFalse(self.fetches_every_branch(""))
+
     def test_the_page_matches_the_branches_git_has(self):
+        refspec = self.git("config", "--get", "remote.origin.fetch").stdout
+        if not self.fetches_every_branch(refspec):
+            self.skipTest("this clone fetches one branch, so it cannot see the rest: "
+                          "clone the repo whole to run the comparison")
         branches = self.remote_branches()
         if "mcp" not in branches:
             self.skipTest("this copy has no origin/mcp ref to compare against")
