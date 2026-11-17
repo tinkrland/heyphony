@@ -2734,6 +2734,51 @@ class TestTheCallWePlacedOurselves(unittest.TestCase):
         self.assertNotIn("livekit room join is shipped", joined)
 
 
+class TestTheBrandAssets(unittest.TestCase):
+    """five colours of one drawing. the rules are the ones that keep a marketing folder from rotting:
+    the size somebody will draw them at, no duplicate art saved twice, every file named on its page,
+    and none of it inside the wheel an install downloads."""
+
+    NAMES = ("maroon", "yellow", "purple", "blue", "green")
+
+    def size(self, path):
+        """the width and height out of the png header, so the suite needs no imaging library."""
+        raw = path.read_bytes()
+        self.assertEqual(raw[:8], b"\x89PNG\r\n\x1a\n", f"{path.name} is not a png")
+        return int.from_bytes(raw[16:20], "big"), int.from_bytes(raw[20:24], "big")
+
+    def test_the_five_colours_are_here(self):
+        found = {p.stem for p in (ROOT / "assets").glob("*.png")}
+        self.assertEqual(found, set(self.NAMES), "the asset set changed without its page")
+
+    def test_every_file_is_the_size_it_is_drawn_at(self):
+        for name in self.NAMES:
+            path = ROOT / "assets" / f"{name}.png"
+            self.assertEqual(self.size(path), (512, 512), f"{name}.png is not a 512 square")
+            self.assertLess(path.stat().st_size, 220_000,
+                            f"{name}.png is {path.stat().st_size} bytes, over the budget")
+
+    def test_no_two_files_are_the_same_art(self):
+        """a colour set is one copy per colour: repeating a file is how a folder loses one quietly."""
+        import hashlib
+        digests = {hashlib.sha256((ROOT / "assets" / f"{n}.png").read_bytes()).hexdigest()
+                   for n in self.NAMES}
+        self.assertEqual(len(digests), len(self.NAMES), "two of the five are the same file")
+
+    def test_the_page_names_each_one_and_invents_none(self):
+        text = (ROOT / "assets" / "readme.md").read_text()
+        for name in self.NAMES:
+            self.assertIn(f"`{name}.png`", text, f"assets/readme.md does not name {name}")
+        named = set(re.findall(r"`([a-z]+)\.png`", text))
+        self.assertTrue(named <= set(self.NAMES) | {"logo"},
+                        f"the page names a file that is not here: {sorted(named - set(self.NAMES))}")
+
+    def test_the_folder_is_not_in_the_wheel(self):
+        build = (ROOT / "pypi" / "build.py").read_text()
+        line = next(l for l in build.splitlines() if l.startswith("SHIPPED_FILES"))
+        self.assertNotIn("assets", line, "the wheel started shipping marketing art")
+
+
 class TestTheStatusLines(unittest.TestCase):
     """`heyphony --status`: eight rails, a mark each, and a reason that is true for this host.
 
